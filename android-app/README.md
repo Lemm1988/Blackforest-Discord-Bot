@@ -68,3 +68,36 @@ Kein Play Store, kein eigenes Signing-Setup - die APK aus dem GitHub-Actions-Art
 (`blackforestbot-tunnel-debug-apk`) ist mit dem Standard-Android-Debug-Schluessel signiert.
 Herunterladen, aufs Handy uebertragen, "Installation aus unbekannten Quellen" fuer die
 jeweilige Quelle (Dateimanager/Downloads) erlauben, APK antippen zum Installieren.
+
+## Mehreren Personen Zugang geben/entziehen
+
+Jede Person bekommt ein **eigenes** Iroh-Ticket (eigener dumbpipe-Dienst, eigenes
+Secret) statt eines geteilten Tickets - dadurch laesst sich der Zugang einer
+einzelnen Person widerrufen, ohne alle anderen (inkl. dem urspruenglichen,
+weiterhin unveraendert laufenden `dumbpipe-discordbot.service`) zu beeintraechtigen.
+
+**Neuen Zugang vergeben** (auf dem Pi, per SSH):
+```bash
+~/Desktop/BlackforestBot-v2/scripts/manage_bot_access.sh add "Name der Person"
+```
+Gibt am Ende ein Ticket aus. Dieses Ticket + die APK (siehe oben, "Installation der
+Debug-APK") an die Person weitergeben - sie traegt das Ticket beim ersten Start der
+App (oder ueber "Ticket aendern" im Overflow-Menue) ein.
+
+**Zugang entziehen:**
+```bash
+~/Desktop/BlackforestBot-v2/scripts/manage_bot_access.sh revoke "Name der Person"
+```
+Stoppt den zugehoerigen Tunnel-Dienst sofort und loescht das Secret - das alte
+Ticket dieser Person funktioniert danach nicht mehr. Alle anderen Zugaenge laufen
+unveraendert weiter.
+
+**Alle Zugaenge auflisten:**
+```bash
+~/Desktop/BlackforestBot-v2/scripts/manage_bot_access.sh list
+```
+Dieselbe Liste (Name, erstellt am, Status) ist auch schreibgeschuetzt im
+Web-Backend unter "App-Zugänge" einsehbar (nur is_admin/Owner) - die Vergabe/der
+Widerruf selbst laeuft aber bewusst NUR ueber dieses Skript per SSH, nicht ueber
+das Web-Backend (das oeffentlich per Iroh-Tunnel erreichbare Backend soll keine
+systemd-Dienste auf dem Pi anlegen/loeschen koennen).

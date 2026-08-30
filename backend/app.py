@@ -1101,6 +1101,18 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             total=total,
         )
 
+    # --- Tunnel-Zugaenge der Android-App (nur is_admin/Owner, rein lesend) ---
+    # Grants werden ausschliesslich ueber scripts/manage_bot_access.sh per SSH
+    # verwaltet (add/revoke) - bewusste Sicherheitsentscheidung, damit das oeffentlich
+    # erreichbare Web-Backend selbst keine systemd-Dienste anlegen/loeschen kann.
+    # Diese Seite zeigt nur den aktuellen Stand aus der Datenbank an.
+
+    @app.route("/tunnel_access")
+    @require_permission("is_admin")
+    def tunnel_access_page():
+        grants = database.get_tunnel_access_grants()
+        return render_template("tunnel_access.html", grants=grants)
+
     # --- Personality/Mood (Spec 1, Phase 9) - nutzt die bestehende
     # "manage_game_settings"-Berechtigung mit: das ist bereits die Berechtigung
     # fuer "wie verhaelt sich der Bot fuer den ganzen Server" (Quiz-/XP-/

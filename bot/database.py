@@ -234,6 +234,24 @@ CREATE TABLE IF NOT EXISTS personality_texts (
     text TEXT NOT NULL,
     created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- Verwaltung der einzelnen Iroh-Tunnel-Zugaenge fuer die Android-App (Spec 1,
+-- Android-Folgeauftrag: mehrere Personen, je eigenes Ticket, einzeln widerrufbar).
+-- Diese Tabelle wird NICHT vom Backend beschrieben (rein lesende Uebersichtsseite,
+-- siehe app.py /tunnel_access), sondern ausschliesslich von
+-- scripts/manage_bot_access.sh ueber die sqlite3-CLI - dieselbe Tabelle wird hier
+-- trotzdem idempotent mitangelegt, damit eine frisch aufgesetzte bot.db (z.B. nach
+-- einem git clone auf einem neuen Pi) die Tabelle schon kennt, bevor das Skript
+-- zum ersten Mal laeuft (das Skript legt sie zusaetzlich defensiv selbst an).
+-- revoked_at = NULL bedeutet aktiv; Zeilen werden beim Widerruf nie geloescht,
+-- nur markiert (gleiches Nachvollziehbarkeits-Prinzip wie beim Audit-Log).
+CREATE TABLE IF NOT EXISTS tunnel_access_grants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL,
+    revoked_at TEXT
+);
 """
 
 # Alle vergebbaren Berechtigungs-Flags. "is_admin" ist ein Sonderflag, das ALLE
@@ -649,6 +667,17 @@ def get_audit_log(limit: int = 100, offset: int = 0):
 def count_audit_log() -> int:
     with get_connection() as conn:
         return conn.execute("SELECT COUNT(*) c FROM audit_log").fetchone()["c"]
+
+
+def get_tunnel_access_grants():
+    """Reine Lesefunktion fuer die Uebersichtsseite - Zeilen werden ausschliesslich
+    von scripts/manage_bot_access.sh geschrieben, nie vom Backend selbst."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            "SELECT label, slug, created_at, revoked_at FROM tunnel_access_grants "
+            "ORDER BY created_at DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def grant_permission(discord_user_id, key: str, granted_by):

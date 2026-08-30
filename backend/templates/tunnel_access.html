@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}App-Zugänge - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">App-Zugänge (Android-App)</h3>
+<p class="text-muted">
+    Wer per Android-App über einen eigenen Iroh-Tunnel auf dieses Backend zugreifen kann.
+    Reine Ansicht — Zugänge werden ausschließlich per SSH auf dem Pi über
+    <code>scripts/manage_bot_access.sh add/revoke "Name"</code> vergeben oder entzogen,
+    nicht über diese Seite (bewusst getrennt: das Web-Backend darf keine
+    Tunnel-Dienste auf dem Pi anlegen oder löschen können).
+</p>
+
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Erstellt am</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for g in grants %}
+                    <tr{% if g.revoked_at %} class="table-secondary"{% endif %}>
+                        <td>{{ g.label }}</td>
+                        <td class="text-nowrap">{{ g.created_at }}</td>
+                        <td>
+                            {% if g.revoked_at %}
+                            <span class="badge bg-secondary">widerrufen am {{ g.revoked_at }}</span>
+                            {% else %}
+                            <span class="badge bg-success">aktiv</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="text-muted">Noch keine App-Zugänge vergeben.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
