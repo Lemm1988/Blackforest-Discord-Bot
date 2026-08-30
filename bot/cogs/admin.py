@@ -1,0 +1,103 @@
+"""Admin-Befehle zur Verwaltung des granularen Backend-Berechtigungssystems.
+
+Früher gab es feste Rollen (admin/moderator/bot_user). Jetzt gibt es einzelne,
+pro Nutzer frei kombinierbare Berechtigungs-Flags (siehe database.ALL_PERMISSIONS),
+identisch zu dem, was auch die Backend-Seite "/users" verwaltet - beide
+Oberflächen (Bot-Befehl und Web-UI) schreiben in dieselbe user_permissions-Tabelle.
+
+grant_access/revoke_access bleiben bewusst NUR für is_admin nutzbar (nicht für
+irgendein anderes Flag) - sonst könnte sich ein Nutzer mit z.B. nur "send_dm"
+selbst weitere Rechte oder sogar is_admin verschaffen.
+"""
+import discord
+from discord.ext import commands
+from discord import app_commands
+
+import config
+import database
+
+
+def is_admin():
+    async def predicate(ctx: commands.Context) -> bool:
+        if not database.has_permission(ctx.author.id, "is_admin"):
+            await ctx.send("⛔ Dieser Befehl ist nur für Admins.")
+            return False
+        return True
+    return commands.check(predicate)
+
+
+def has_permission_check(key: str):
+    async def predicate(ctx: commands.Context) -> bool:
+        if not database.has_permission(ctx.author.id, key):
+            await ctx.send(f"⛔ Dir fehlt die Berechtigung **{key}** für diesen Befehl.")
+            return False
+        return True
+    return commands.check(predicate)
+
+
+class Admin(commands.Cog):
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+
+    @commands.hybrid_command(name="grant_access", description="Vergibt einem Nutzer eine Backend-Berechtigung.")
+    @app_commands.describe(user="Der Discord-Nutzer", permission="Die zu vergebende Berechtigung")
+    @app_commands.choices(permission=[app_commands.Choice(name=p, value=p) for p in database.ALL_PERMISSIONS])
+    @is_admin()
+    async def grant_access(self, ctx: commands.Context, user: discord.User, permission: str):
+        if config.BOT_OWNER_ID and str(user.id) == config.BOT_OWNER_ID:
+            database.log_audit(
+                ctx.author.id, "owner_protection_triggered",
+                target_id=config.BOT_OWNER_ID, detail=f"Versuch, Owner-Recht '{permission}' über /grant_access zu vergeben",
+            )
+            await ctx.send("⛔ Der Bot-Owner kann nicht über dieses Kommando verändert werden.")
+            return
+        if permission not in database.ALL_PERMISSIONS:
+            await ctx.send(f"Ungültige Berechtigung. Erlaubt: {', '.join(database.ALL_PERMISSIONS)}")
+            return
+        database.grant_permission(user.id, permission, granted_by=ctx.author.id)
+        await ctx.send(f"✅ {user.mention} hat jetzt die Berechtigung **{permission}**.")
+
+    @commands.hybrid_command(name="revoke_access", description="Entzieht einem Nutzer eine Backend-Berechtigung.")
+    @app_commands.describe(user="Der Discord-Nutzer", permission="Die zu entziehende Berechtigung")
+    @app_commands.choices(permission=[app_commands.Choice(name=p, value=p) for p in database.ALL_PERMISSIONS])
+    @is_admin()
+    async def revoke_access(self, ctx: commands.Context, user: discord.User, permission: str):
+        if config.BOT_OWNER_ID and str(user.id) == config.BOT_OWNER_ID:
+            database.log_audit(
+                ctx.author.id, "owner_protection_triggered",
+                target_id=config.BOT_OWNER_ID, detail=f"Versuch, Owner-Recht '{permission}' über /revoke_access zu entziehen",
+            )
+            await ctx.send("⛔ Der Bot-Owner kann nicht über dieses Kommando verändert werden.")
+            return
+        database.revoke_user_permission(user.id, permission, actor_id=ctx.author.id)
+        await ctx.send(f"🚫 {user.mention} hat die Berechtigung **{permission}** nicht mehr.")
+
+    @commands.hybrid_command(name="my_access", description="Zeigt deine eigenen Backend-Berechtigungen.")
+    async def my_access(self, ctx: commands.Context):
+        perms = database.get_user_permissions(ctx.author.id)
+        if perms:
+            await ctx.send(f"Deine Backend-Berechtigungen: **{', '.join(perms)}**")
+        else:
+            await ctx.send(
+                "Du hast aktuell keine besonderen Backend-Berechtigungen. "
+                "Als Server-Mitglied kannst du trotzdem Fragen einreichen und das Leaderboard ansehen. "
+                "Ein Admin kann dir per `/grant_access` weitere Rechte geben."
+            )
+
+    @commands.hybrid_command(name="dm", description="Sendet einem Nutzer eine private Nachricht im Namen des Bots.")
+    @app_commands.describe(user="Der Discord-Nutzer", nachricht="Der Nachrichtentext")
+    @has_permission_check("send_dm")
+    async def dm(self, ctx: commands.Context, user: discord.User, *, nachricht: str):
+        try:
+            await user.send(nachricht)
+        except discord.Forbidden:
+            await ctx.send(
+                f"⚠️ Konnte {user.mention} keine DM senden (DMs deaktiviert oder Bot blockiert).",
+                ephemeral=True,
+            )
+            return
+        await ctx.send(f"✅ Nachricht an {user.mention} gesendet.", ephemeral=True)
+
+
+async def setup(bot: commands.Bot):
+    await bot.add_cog(Admin(bot))

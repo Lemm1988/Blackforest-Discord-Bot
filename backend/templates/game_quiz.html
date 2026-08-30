@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_quiz_subnav.html" import quiz_subnav with context %}
+{% block title %}Pflanzenquiz - Blackforest Bot{% endblock %}
+{% block content %}
+<a href="{{ url_for('games_overview') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Zurück zu Spiele</a>
+<h3 class="h4">🌿 Pflanzenquiz</h3>
+{{ quiz_subnav('overview') }}
+<p class="text-muted">Rangliste aller Spieler{% if settings %} und Spieleinstellungen{% endif %}.</p>
+
+{% if settings %}
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Einstellungen</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('quiz_game_save_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-check form-switch mb-3">
+                <input type="checkbox" class="form-check-input" id="enabled" name="enabled" value="1" {% if settings.enabled == "1" %}checked{% endif %}>
+                <label class="form-check-label" for="enabled"><strong>Spiel aktiv</strong></label>
+                <p class="text-muted small mb-0">Bei "aus" antwortet der <code>&gt;frage</code>-Befehl nur noch mit einem Hinweis. Bestehende Stände (Punkte/XP/Achievements) bleiben unberührt und weiterhin einsehbar.</p>
+            </div>
+            <hr class="my-3">
+            <div class="row g-3">
+                <div class="col-6 col-md-4">
+                    <label for="points" class="form-label">Punkte pro richtiger Antwort</label>
+                    <input type="number" min="1" class="form-control" id="points" name="points" value="{{ settings.points }}">
+                </div>
+                <div class="col-6 col-md-4">
+                    <label for="timeout" class="form-label">Zeitlimit zum Antworten (Sekunden)</label>
+                    <input type="number" min="5" class="form-control" id="timeout" name="timeout" value="{{ settings.timeout }}">
+                </div>
+                <div class="col-6 col-md-4">
+                    <label for="cooldown" class="form-label">Cooldown zwischen Fragen (Sekunden)</label>
+                    <input type="number" min="0" class="form-control" id="cooldown" name="cooldown" value="{{ settings.cooldown }}">
+                </div>
+            </div>
+
+            <hr class="my-3">
+            <h6 class="text-muted">Ankündigungen (Level-Up / Achievements)</h6>
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-4">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="announcements_enabled" name="announcements_enabled" value="1" {% if settings.announcements_enabled == "1" %}checked{% endif %}>
+                        <label class="form-check-label" for="announcements_enabled">Ankündigungen aktiv</label>
+                    </div>
+                    <p class="text-muted small mb-0">XP/Achievements werden bei "aus" weiterhin normal vergeben, nur ohne Nachricht.</p>
+                </div>
+                <div class="col-12 col-md-8">
+                    <label for="announcement_channel_id" class="form-label">Ankündigungskanal</label>
+                    <select class="form-select channel-picker" id="announcement_channel_id" name="announcement_channel_id" data-current="{{ settings.announcement_channel_id }}">
+                        <option value="">— kein Kanal (deaktiviert) —</option>
+                    </select>
+                    <div class="form-text">Ohne Kanal postet der Bot KEINE Level-Up-/Achievement-Ankündigungen (kein Fallback mehr auf einen anderen Kanal).</div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary mt-3">Einstellungen speichern</button>
+        </form>
+        <p class="text-muted small mb-0 mt-2">
+            Änderungen wirken sich sofort auf den Bot aus, ohne Neustart. XP-/Level-Kurve und
+            Nachrichten-XP liegen jetzt unter <a href="{{ url_for('xp_level_page') }}">XP &amp; Level</a>.
+        </p>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header"><h5 class="h6 mb-0">🏆 Leaderboard</h5></div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead>
+                    <tr><th style="width:4rem">Rang</th><th>Spieler</th><th>Punkte</th></tr>
+                </thead>
+                <tbody>
+                    {% for row in leaderboard %}
+                    <tr>
+                        <td>{{ row.rank }}</td>
+                        <td>{{ row.name }}</td>
+                        <td>{{ row.score }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="3" class="text-muted">Noch keine Spieler.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if total_pages > 1 %}
+        <nav class="mt-3" aria-label="Leaderboard-Seiten">
+            <ul class="pagination pagination-sm flex-wrap mb-0">
+                {% for p in range(1, total_pages + 1) %}
+                <li class="page-item {% if p == page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('quiz_game_page', page=p) }}">{{ p }}</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

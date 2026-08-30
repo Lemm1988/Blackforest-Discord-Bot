@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Spiele - Blackforest Bot{% endblock %}
+{% block content %}
+<h2 class="h4 mb-3">Spiele</h2>
+<p class="text-muted">Alle Spiele, die der Bot anbietet. Auf ein Spiel klicken für Rangliste{% if has_permission('manage_game_settings') %} und Einstellungen{% endif %}.</p>
+
+<div class="row g-3">
+    {% for game in games %}
+    <div class="col-12 col-md-6 col-lg-4">
+        <a href="{{ url_for(game.page_endpoint) }}" class="card h-100 text-decoration-none text-body shadow-sm">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <h5 class="card-title mb-2">{{ game.emoji }} {{ game.name }}</h5>
+                    {% if game.enabled %}
+                    <span class="badge bg-success">Aktiv</span>
+                    {% else %}
+                    <span class="badge bg-secondary">Deaktiviert</span>
+                    {% endif %}
+                </div>
+                <p class="card-text text-muted small mb-0">{{ game.description }}</p>
+            </div>
+        </a>
+    </div>
+    {% else %}
+    <div class="col-12">
+        <p class="text-muted">Aktuell sind keine Spiele konfiguriert.</p>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

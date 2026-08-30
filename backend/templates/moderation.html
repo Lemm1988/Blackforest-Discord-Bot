@@ -1,0 +1,414 @@
+{% extends "base.html" %}
+{% from "_moderation_subnav.html" import moderation_subnav with context %}
+{% block title %}Automod-Einstellungen - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">Moderation</h3>
+{{ moderation_subnav('automod') }}
+<p class="text-muted">Schimpfwortfilter, Spam-/Flutschutz und Link-Filter verwalten. Willkommensnachricht und Regel-Rolle liegen jetzt unter <a href="{{ url_for('server_setup_page') }}">Server-Setup</a>.</p>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="h6 mb-0">
+            🤬 Schimpfwortfilter
+            <span tabindex="0" role="button" data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="Ablauf: Nachricht wird erkannt (auch verschleiert geschriebene Wörter, siehe unten) → je nach Aktion gelöscht + ggf. Warnung im Kanal → der Verstoß wird gezählt → ab der eingestellten Verstoß-Zahl automatischer Timeout."
+                  class="text-muted" style="cursor: help;">ℹ️</span>
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('moderation_save_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="filterEnabled"
+                       name="filter_enabled" value="1" {% if settings.enabled %}checked{% endif %}>
+                <label class="form-check-label" for="filterEnabled">Schimpfwortfilter aktiv</label>
+            </div>
+
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="aggressiveNormalization"
+                       name="aggressive_normalization" value="1" {% if settings.aggressive_normalization %}checked{% endif %}>
+                <label class="form-check-label" for="aggressiveNormalization">
+                    Erweiterte Umgehungs-Erkennung aktiv
+                    <span tabindex="0" role="button" data-bs-toggle="tooltip" data-bs-placement="right"
+                          title="Erkennt zusätzlich Unicode-Look-alikes (z.B. kyrillisches 'а' statt 'a') und mit Sonderzeichen durchsetzte Wörter (z.B. 'sch.eiss'). Bei Fehlalarmen hier deaktivieren - Leetspeak (0/1/3/4/5), wiederholte Buchstaben und komplett auseinandergezogene Schreibweisen ('s c h e i s s') bleiben davon unabhängig immer erkannt."
+                          class="text-muted" style="cursor: help;">ℹ️</span>
+                </label>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label d-block">Aktion bei Verstoß</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="filter_action" id="actionDeleteOnly"
+                           value="delete_only" {% if settings.action == 'delete_only' %}checked{% endif %}>
+                    <label class="form-check-label" for="actionDeleteOnly">Nur löschen</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="filter_action" id="actionDeleteWarn"
+                           value="delete_warn" {% if settings.action == 'delete_warn' %}checked{% endif %}>
+                    <label class="form-check-label" for="actionDeleteWarn">Löschen + Verwarnung im Kanal</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="filter_action" id="actionTimeout"
+                           value="delete_warn_timeout" {% if settings.action == 'delete_warn_timeout' %}checked{% endif %}>
+                    <label class="form-check-label" for="actionTimeout">Löschen + Verwarnung + Timeout ab X Verstößen</label>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3" id="timeoutOptions">
+                <div class="col-12">
+                    <label class="form-label d-block">Verstoß-Zählung verjährt (gilt auch für den Link-Filter unten)</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="violation_expiry_mode" id="expiryAuto30d"
+                               value="auto_30d" {% if settings.expiry_mode == 'auto_30d' %}checked{% endif %}>
+                        <label class="form-check-label" for="expiryAuto30d">
+                            Automatisch nach 30 Tagen (ältere Verstöße zählen dann nicht mehr für die Timeout-Schwelle)
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="violation_expiry_mode" id="expiryManualOnly"
+                               value="manual_only" {% if settings.expiry_mode == 'manual_only' %}checked{% endif %}>
+                        <label class="form-check-label" for="expiryManualOnly">
+                            Nur manuell durch einen Mod zurücksetzen (kein Zeitlimit, siehe "Verstoß-Zählung
+                            zurücksetzen" weiter unten)
+                        </label>
+                    </div>
+                </div>
+                <div class="col-6 col-md-4">
+                    <label for="timeoutThreshold" class="form-label">Verstöße bis Timeout</label>
+                    <input type="number" min="1" class="form-control" id="timeoutThreshold"
+                           name="timeout_threshold" value="{{ settings.threshold }}">
+                </div>
+                <div class="col-6 col-md-4">
+                    <label for="timeoutDuration" class="form-label">Timeout-Dauer (Minuten)</label>
+                    <input type="number" min="1" class="form-control" id="timeoutDuration"
+                           name="timeout_duration" value="{{ settings.duration }}">
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Schimpfwortfilter speichern</button>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="h6 mb-0">
+            🚨 Spam-/Flutschutz
+            <span tabindex="0" role="button" data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="Ablauf: schreibt ein User mehr als die eingestellte Anzahl Nachrichten innerhalb des Zeitfensters, werden alle diese Nachrichten gelöscht → Verstoß wird gezählt → je nach Aktion zusätzlich Warnung/Timeout, sofort beim ersten Ausbruch (keine Verstoß-Schwelle wie beim Schimpfwortfilter)."
+                  class="text-muted" style="cursor: help;">ℹ️</span>
+        </h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Löst sofort aus, sobald ein User mehr als die angegebene Anzahl Nachrichten
+            innerhalb des Zeitfensters postet — z.B. bei automatisiertem Spam.
+        </p>
+        <form method="POST" action="{{ url_for('moderation_spam_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="spamEnabled"
+                       name="spam_enabled" value="1" {% if spam_settings.enabled %}checked{% endif %}>
+                <label class="form-check-label" for="spamEnabled">Spam-/Flutschutz aktiv</label>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-md-3">
+                    <label for="spamThreshold" class="form-label">Max. Nachrichten</label>
+                    <input type="number" min="1" class="form-control" id="spamThreshold"
+                           name="spam_threshold" value="{{ spam_settings.threshold }}">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="spamWindow" class="form-label">Zeitfenster (Sekunden)</label>
+                    <input type="number" min="1" class="form-control" id="spamWindow"
+                           name="spam_window" value="{{ spam_settings.window }}">
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label d-block">Aktion bei erkannter Flut</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="spam_action" id="spamActionDeleteOnly"
+                           value="delete_only" {% if spam_settings.action == 'delete_only' %}checked{% endif %}>
+                    <label class="form-check-label" for="spamActionDeleteOnly">Nur löschen</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="spam_action" id="spamActionDeleteWarn"
+                           value="delete_warn" {% if spam_settings.action == 'delete_warn' %}checked{% endif %}>
+                    <label class="form-check-label" for="spamActionDeleteWarn">Löschen + Verwarnung im Kanal</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="spam_action" id="spamActionTimeout"
+                           value="delete_warn_timeout" {% if spam_settings.action == 'delete_warn_timeout' %}checked{% endif %}>
+                    <label class="form-check-label" for="spamActionTimeout">Löschen + Verwarnung + sofortiger Timeout</label>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3" id="spamTimeoutOptions">
+                <div class="col-6 col-md-4">
+                    <label for="spamDuration" class="form-label">Timeout-Dauer (Minuten)</label>
+                    <input type="number" min="1" class="form-control" id="spamDuration"
+                           name="spam_duration" value="{{ spam_settings.duration }}">
+                </div>
+            </div>
+            <p class="text-muted small">
+                Kein zusätzlicher Verstöße-Schwellwert nötig — schon ein einzelner
+                erkannter Flut-Ausbruch löst direkt die gewählte Aktion aus.
+            </p>
+
+            <button type="submit" class="btn btn-primary">Spam-/Flutschutz speichern</button>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="h6 mb-0">
+            🔗 Link-Filter
+            <span tabindex="0" role="button" data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="Ablauf: erkannte Links werden zuerst gegen Rollen-Whitelist und Kanal-Ausnahmeliste geprüft (dort komplett befreit) → dann gegen die aktiven Regeln unten (kombinierbar: ein Link ist ein Verstoß, wenn IRGENDEINE aktive Regel zutrifft) → bei Verstoß gelöscht + ggf. Warnung → Verstoß wird gezählt → ab der eingestellten Verstoß-Zahl Timeout."
+                  class="text-muted" style="cursor: help;">ℹ️</span>
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('moderation_link_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="linkEnabled"
+                       name="link_enabled" value="1" {% if link_settings.enabled %}checked{% endif %}>
+                <label class="form-check-label" for="linkEnabled">Link-Filter aktiv</label>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label d-block">Regeln (beliebig kombinierbar - ein Link ist ein Verstoß, sobald EINE aktive Regel zutrifft)</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="link_block_all" id="linkBlockAll"
+                           value="1" {% if link_settings.block_all_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="linkBlockAll">Alle Links entfernen</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="link_whitelist_rule" id="linkWhitelistRule"
+                           value="1" {% if link_settings.whitelist_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="linkWhitelistRule">Nur erlaubte Domains zulassen (Whitelist unten)</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="link_new_members_rule" id="linkNewMembersRule"
+                           value="1" {% if link_settings.new_members_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="linkNewMembersRule">Neue Mitglieder dürfen GAR KEINE Links posten (auch keine gewhitelisteten)</label>
+                </div>
+                <p class="text-muted small mb-0 mt-1">Sind "Alle Links entfernen" und "Nur erlaubte Domains" gleichzeitig aktiv, gewinnt "Alle Links entfernen".</p>
+            </div>
+
+            <div class="row g-3 mb-3" id="linkNewMemberOptions">
+                <div class="col-6 col-md-4">
+                    <label for="linkNewMemberDays" class="form-label">"Neu" bedeutet: seit weniger als X Tagen dabei</label>
+                    <input type="number" min="0" class="form-control" id="linkNewMemberDays"
+                           name="link_new_member_days" value="{{ link_settings.new_member_days }}">
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label d-block">Aktion bei Verstoß</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="link_action" id="linkActionDeleteOnly"
+                           value="delete_only" {% if link_settings.action == 'delete_only' %}checked{% endif %}>
+                    <label class="form-check-label" for="linkActionDeleteOnly">Nur löschen</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="link_action" id="linkActionDeleteWarn"
+                           value="delete_warn" {% if link_settings.action == 'delete_warn' %}checked{% endif %}>
+                    <label class="form-check-label" for="linkActionDeleteWarn">Löschen + Verwarnung im Kanal</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="link_action" id="linkActionTimeout"
+                           value="delete_warn_timeout" {% if link_settings.action == 'delete_warn_timeout' %}checked{% endif %}>
+                    <label class="form-check-label" for="linkActionTimeout">Löschen + Verwarnung + Timeout ab X Verstößen</label>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3" id="linkTimeoutOptions">
+                <div class="col-6 col-md-4">
+                    <label for="linkThreshold" class="form-label">Verstöße bis Timeout</label>
+                    <input type="number" min="1" class="form-control" id="linkThreshold"
+                           name="link_threshold" value="{{ link_settings.threshold }}">
+                </div>
+                <div class="col-6 col-md-4">
+                    <label for="linkDuration" class="form-label">Timeout-Dauer (Minuten)</label>
+                    <input type="number" min="1" class="form-control" id="linkDuration"
+                           name="link_duration" value="{{ link_settings.duration }}">
+                </div>
+            </div>
+
+            <hr class="my-3">
+            <div class="row g-3 mb-3">
+                <div class="col-12 col-md-6">
+                    <label for="whitelistedRoles" class="form-label">
+                        Rollen-Whitelist (komplett vom Link-Filter ausgenommen)
+                    </label>
+                    <select class="form-select role-picker" id="whitelistedRoles" name="whitelisted_roles" multiple
+                            data-current="{{ whitelisted_roles | map(attribute='id') | join(',') }}" size="5"></select>
+                    <div class="form-text">Strg/Cmd-Klick für Mehrfachauswahl. Mitglieder mit einer dieser Rollen dürfen immer Links posten.</div>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="exemptChannels" class="form-label">
+                        Kanal-Ausnahmeliste (komplett vom Link-Filter ausgenommen)
+                    </label>
+                    <select class="form-select channel-picker" id="exemptChannels" name="exempt_channels" multiple
+                            data-current="{{ exempt_channels | map(attribute='id') | join(',') }}" size="5"></select>
+                    <div class="form-text">Strg/Cmd-Klick für Mehrfachauswahl, z.B. für einen "Ressourcen"-Kanal.</div>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Link-Filter speichern</button>
+        </form>
+
+        <hr>
+        <h6>Erlaubte Domains (Whitelist-Modus)</h6>
+        <form method="POST" action="{{ url_for('moderation_link_whitelist_add') }}" class="row g-2 mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-8 col-md-4">
+                <input type="text" name="domain" class="form-control" placeholder="z.B. example.com" required autocomplete="off">
+            </div>
+            <div class="col-4 col-md-2">
+                <button type="submit" class="btn btn-success w-100">Hinzufügen</button>
+            </div>
+        </form>
+        <div class="d-flex flex-wrap gap-2">
+            {% for d in link_whitelist %}
+            <form method="POST" action="{{ url_for('moderation_link_whitelist_remove', domain_id=d['id']) }}" class="d-inline"
+                  onsubmit="return confirm('Domain &quot;{{ d['domain'] }}&quot; wirklich entfernen?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="badge bg-secondary border-0 d-inline-flex align-items-center gap-1 px-2 py-2">
+                    {{ d['domain'] }} <span aria-hidden="true">✕</span>
+                </button>
+            </form>
+            {% else %}
+            <p class="text-muted mb-0">Keine Domains in der Whitelist.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Schimpfwortliste</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('moderation_add_word') }}" class="row g-2 mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-8 col-md-4">
+                <input type="text" name="word" class="form-control" placeholder="Neues Wort" required autocomplete="off">
+            </div>
+            <div class="col-4 col-md-2">
+                <button type="submit" class="btn btn-success w-100">Hinzufügen</button>
+            </div>
+        </form>
+        <div class="d-flex flex-wrap gap-2">
+            {% for w in badwords %}
+            <form method="POST" action="{{ url_for('moderation_remove_word', word_id=w['id']) }}" class="d-inline"
+                  onsubmit="return confirm('Wort &quot;{{ w['word'] }}&quot; wirklich entfernen?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="badge bg-secondary border-0 d-inline-flex align-items-center gap-1 px-2 py-2">
+                    {{ w['word'] }} <span aria-hidden="true">✕</span>
+                </button>
+            </form>
+            {% else %}
+            <p class="text-muted mb-0">Keine Wörter in der Liste.</p>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Verstoß-Zählung zurücksetzen</h5></div>
+    <div class="card-body">
+        <p class="text-muted small mb-3">
+            Setzt nur die Zählung für die Timeout-Schwelle eines Users (für den gewählten
+            Verstoß-Typ) zurück — die Verstöße bleiben unten in der Historie weiterhin
+            sichtbar, zählen aber ab jetzt nicht mehr für einen automatischen Timeout.
+            Für den Spam-/Flutschutz gibt es keine Zählung zum Zurücksetzen (jeder
+            Ausbruch wird sofort einzeln behandelt).
+        </p>
+        <form method="POST" action="{{ url_for('moderation_reset_violations') }}" class="row g-2"
+              onsubmit="return confirm('Verstoß-Zählung für diesen User wirklich zurücksetzen?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-8 col-md-4">
+                <input type="text" id="resetUserId" name="user_id" class="form-control"
+                       placeholder="Name suchen oder User-ID eingeben" required autocomplete="off">
+                <div id="resetUserPreview" class="form-text"></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <select name="violation_type" class="form-select">
+                    <option value="badword">Schimpfwörter</option>
+                    <option value="link">Links</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <button type="submit" class="btn btn-warning w-100">Zurücksetzen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h5 class="h6 mb-0">Letzte Verstöße (alle Automod-Filter)</h5></div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead>
+                    <tr><th class="text-nowrap">Zeit</th><th>Typ</th><th>Nutzer-ID</th><th>Erkannt</th><th>Ausschnitt</th></tr>
+                </thead>
+                <tbody>
+                    {% for v in violations %}
+                    <tr>
+                        <td class="text-nowrap">{{ v['timestamp'] }}</td>
+                        <td>
+                            {% if v['violation_type'] == 'spam' %}<span class="badge bg-danger">Spam</span>
+                            {% elif v['violation_type'] == 'link' %}<span class="badge bg-info text-dark">Link</span>
+                            {% else %}<span class="badge bg-secondary">Schimpfwort</span>{% endif %}
+                        </td>
+                        <td>{{ v['discord_user_id'] }}</td>
+                        <td><code>{{ v['matched_word'] }}</code></td>
+                        <td class="text-muted text-break">{{ v['message_excerpt'] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="5" class="text-muted">Keine Verstöße bisher.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/member-picker.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    attachMemberPicker('resetUserId', 'resetUserPreview');
+
+    function toggleByRadio(radioName, targetId, showValue) {
+        const target = document.getElementById(targetId);
+        function update() {
+            const checked = document.querySelector(`input[name="${radioName}"]:checked`);
+            target.style.display = (checked && checked.value === showValue) ? 'flex' : 'none';
+        }
+        document.querySelectorAll(`input[name="${radioName}"]`).forEach(r => r.addEventListener('change', update));
+        update();
+    }
+
+    function toggleByCheckbox(checkboxId, targetId) {
+        const checkbox = document.getElementById(checkboxId);
+        const target = document.getElementById(targetId);
+        function update() {
+            target.style.display = checkbox.checked ? 'flex' : 'none';
+        }
+        checkbox.addEventListener('change', update);
+        update();
+    }
+
+    toggleByRadio('filter_action', 'timeoutOptions', 'delete_warn_timeout');
+    toggleByRadio('spam_action', 'spamTimeoutOptions', 'delete_warn_timeout');
+    toggleByCheckbox('linkNewMembersRule', 'linkNewMemberOptions');
+    toggleByRadio('link_action', 'linkTimeoutOptions', 'delete_warn_timeout');
+});
+</script>
+{% endblock %}

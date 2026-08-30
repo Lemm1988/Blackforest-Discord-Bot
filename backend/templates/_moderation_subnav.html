@@ -1,0 +1,20 @@
+{# Lokales Sub-Nav für "Moderation" (Menü-Reorganisation), analog zum
+   Pflanzenquiz-Sub-Nav (_quiz_subnav.html). Automod und Aktionen&Überwachung
+   haben unterschiedliche, sich nicht überschneidende Berechtigungen
+   (manage_badword_filter bzw. moderate_members) - beide Tabs werden daher
+   unabhängig voneinander ein-/ausgeblendet, nicht wie beim Quiz-Sub-Nav auf
+   einer gemeinsamen Basis-Rechte-Seite. #}
+{% macro moderation_subnav(active) %}
+<ul class="nav nav-pills mb-3 flex-wrap">
+    {% if has_permission('manage_badword_filter') %}
+    <li class="nav-item">
+        <a class="nav-link {% if active == 'automod' %}active{% endif %}" href="{{ url_for('moderation_page') }}">🤬 Automod</a>
+    </li>
+    {% endif %}
+    {% if has_permission('moderate_members') %}
+    <li class="nav-item">
+        <a class="nav-link {% if active == 'actions' %}active{% endif %}" href="{{ url_for('members_overview') }}">👮 Aktionen &amp; Überwachung</a>
+    </li>
+    {% endif %}
+</ul>
+{% endmacro %}

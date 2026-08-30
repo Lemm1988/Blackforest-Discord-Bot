@@ -1,0 +1,32 @@
+# Secrets - niemals committen
+.env
+*.env
+backend/ssl/*.key
+backend/ssl/*.crt
+
+# Datenbanken (enthalten Nutzerdaten)
+*.db
+*.db-journal
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Logs
+*.log
+
+# Backups (DB- und .env-Snapshots, teils ohne erkennbare Dateiendung - nie ins Repo)
+/backups/
+
+# Test-/IDE-Artefakte
+.pytest_cache/
+.idea/
+.vscode/
+
+# breiter gefasst fuer Zertifikate/Schluessel, nicht nur unter backend/ssl/
+*.pem
+
+# Zeitgestempelte Backup-Dateien mit untypischer Endung (z.B. bot.db.bak_20260829_...)
+*.bak_*

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Text-Varianten - Blackforest Bot{% endblock %}
+{% block extra_head %}
+<style>
+    .personality-text-entry textarea { resize: vertical; }
+</style>
+{% endblock %}
+{% block content %}
+<a href="{{ url_for('personality_page') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Zurück zu Personality</a>
+<h3 class="h4">Text-Varianten bearbeiten</h3>
+<p class="text-muted">
+    Formulierungen, die der Bot je nach aktueller Mood und eingestellter Humor-Stufe
+    zufällig auswählt. Eigene Varianten hinzufügen, bestehende bearbeiten oder löschen -
+    ein leerer Pool fällt automatisch auf einen sicheren Standardtext zurück, statt zu crashen.
+</p>
+
+{% for pool_name, pool in pools.items() %}
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="h6 mb-0">{{ pool.info.label }}</h5>
+        <span class="text-muted small">Platzhalter: {{ pool.info.placeholders }}</span>
+    </div>
+    <div class="card-body">
+        {% for entry in pool.entries %}
+        <form method="POST" action="{{ url_for('personality_texts_update', text_id=entry['id']) }}" class="personality-text-entry border rounded p-2 mb-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="pool" value="{{ pool_name }}">
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                {% if pool.info.has_mood %}
+                <select name="mood" class="form-select form-select-sm w-auto">
+                    {% for m in moods %}
+                    <option value="{{ m }}" {% if m == entry['mood'] %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+                {% if pool.info.has_tier %}
+                <select name="humor_tier" class="form-select form-select-sm w-auto">
+                    {% for t in humor_tiers %}
+                    <option value="{{ t }}" {% if t == entry['humor_tier'] %}selected{% endif %}>{{ t }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+                <div class="ms-sm-auto d-flex gap-2">
+                    <button type="submit" class="btn btn-outline-primary btn-sm">Speichern</button>
+                    <button type="submit" formaction="{{ url_for('personality_texts_delete', text_id=entry['id']) }}"
+                            class="btn btn-outline-danger btn-sm"
+                            onclick="return confirm('Diese Text-Variante wirklich löschen?');">✕ Löschen</button>
+                </div>
+            </div>
+            <textarea name="text" class="form-control form-control-sm w-100" rows="2" required>{{ entry['text'] }}</textarea>
+        </form>
+        {% else %}
+        <p class="text-muted">Noch keine Texte in diesem Pool - der Bot verwendet solange einen Standard-Fallback.</p>
+        {% endfor %}
+
+        <form method="POST" action="{{ url_for('personality_texts_add') }}" class="personality-text-entry border rounded p-2 mt-3 bg-body-secondary bg-opacity-50">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="pool" value="{{ pool_name }}">
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                {% if pool.info.has_mood %}
+                <select name="mood" class="form-select form-select-sm w-auto">
+                    {% for m in moods %}
+                    <option value="{{ m }}">{{ m }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+                {% if pool.info.has_tier %}
+                <select name="humor_tier" class="form-select form-select-sm w-auto">
+                    {% for t in humor_tiers %}
+                    <option value="{{ t }}">{{ t }}</option>
+                    {% endfor %}
+                </select>
+                {% endif %}
+                <button type="submit" class="btn btn-success btn-sm ms-sm-auto">+ Neue Variante hinzufügen</button>
+            </div>
+            <textarea name="text" class="form-control form-control-sm w-100" rows="2" placeholder="Neue Formulierung..." required></textarea>
+        </form>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

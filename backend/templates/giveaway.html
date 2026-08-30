@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Giveaway starten{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='vendor/flatpickr/flatpickr.min.css') }}">
+{% endblock %}
+{% block content %}
+<h3 class="h4">Discord-Gewinnspiel erstellen</h3>
+<p class="text-muted">Hier kannst du ein Gewinnspiel erstellen und es in einen Discord-Kanal senden.</p>
+
+<form id="giveawayForm">
+    <div class="mb-3">
+        <label for="channel" class="form-label">Channel</label>
+        <select id="channel" name="channel" class="form-select" required></select>
+    </div>
+
+    <div class="mb-3">
+        <label for="title" class="form-label">Titel</label>
+        <input type="text" id="title" name="title" class="form-control" placeholder="Gewinnspiel Titel" required>
+    </div>
+
+    <div class="mb-3">
+        <label for="description" class="form-label">Beschreibung</label>
+        <textarea id="description" name="description" class="form-control" rows="3" placeholder="Gewinnspiel Beschreibung" required></textarea>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-12 col-md-8">
+            <label for="end_time" class="form-label">Endzeit</label>
+            <input type="text" id="end_time" name="end_time" class="form-control" required>
+        </div>
+        <div class="col-12 col-md-4">
+            <label for="color" class="form-label">Farbe</label>
+            <input type="color" id="color" name="color" value="#2f7a4d" class="form-control form-control-color w-100">
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-success w-100 w-md-auto mt-3">Giveaway starten</button>
+</form>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='vendor/flatpickr/flatpickr.min.js') }}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const giveawayForm = document.getElementById('giveawayForm');
+
+        flatpickr('#end_time', {
+            enableTime: true,
+            dateFormat: "Y-m-d H:i",
+            time_24hr: true,
+            minDate: "today",
+        });
+
+        fetch('/api/channels')
+            .then(response => response.json())
+            .then(data => {
+                const channelSelect = document.getElementById('channel');
+                data.channels.forEach(channel => {
+                    const option = document.createElement('option');
+                    option.value = channel.id;
+                    option.textContent = channel.name;
+                    channelSelect.appendChild(option);
+                });
+            })
+            .catch(error => {
+                console.error('Fehler beim Abrufen der Kanäle:', error);
+                alert('Konnte die Kanäle nicht laden. Bitte überprüfe die Verbindung zum Server.');
+            });
+
+        giveawayForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const data = {
+                channel_id: document.getElementById('channel').value,
+                title: document.getElementById('title').value,
+                description: document.getElementById('description').value,
+                end_time: document.getElementById('end_time').value,
+                color: document.getElementById('color').value,
+            };
+            try {
+                const response = await fetch('/api/giveaway', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
+                    },
+                    body: JSON.stringify(data),
+                });
+                if (response.ok) {
+                    alert('Giveaway gestartet!');
+                } else {
+                    const result = await response.json();
+                    alert(`Fehler: ${result.error}`);
+                }
+            } catch (error) {
+                console.error('Fehler beim Starten des Gewinnspiels:', error);
+                alert('Ein unerwarteter Fehler ist aufgetreten.');
+            }
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends "base_minimal.html" %}
+{% block title %}OAuth nicht konfiguriert{% endblock %}
+{% block content %}
+<div class="card shadow-sm p-4 border-warning">
+    <h4 class="text-warning-emphasis">Discord-OAuth noch nicht konfiguriert</h4>
+    <p>In <code>bot/.env</code> müssen <code>DISCORD_CLIENT_ID</code> und
+       <code>DISCORD_CLIENT_SECRET</code> aus dem
+       <a href="https://discord.com/developers/applications" target="_blank" rel="noopener">Discord Developer Portal</a>
+       eingetragen werden, bevor der Login funktioniert.</p>
+</div>
+{% endblock %}

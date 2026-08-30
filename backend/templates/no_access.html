@@ -1,0 +1,14 @@
+{% extends "base_minimal.html" %}
+{% block title %}Kein Zugriff{% endblock %}
+{% block content %}
+<div class="card shadow-sm p-4 text-center border-danger">
+    <h4 class="text-danger">Kein Zugriff</h4>
+    {% if username %}
+        <p>Hallo <strong>{{ username }}</strong>, dein Discord-Account ist noch nicht freigeschaltet.</p>
+    {% else %}
+        <p>Du hast keine Berechtigung für diesen Bereich.</p>
+    {% endif %}
+    <p class="small text-muted">Ein Admin kann dir mit <code>/grant_access</code> im Discord-Server Zugriff geben.</p>
+    <a href="{{ url_for('logout') }}" class="btn btn-outline-danger mt-2">Zurück zum Login</a>
+</div>
+{% endblock %}

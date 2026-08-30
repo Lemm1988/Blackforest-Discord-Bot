@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% from "_quiz_subnav.html" import quiz_subnav with context %}
+{% block title %}Frage einreichen - Blackforest Bot{% endblock %}
+{% block content %}
+<a href="{{ url_for('quiz_game_page') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Zurück zu Pflanzenquiz</a>
+<h2 class="h4 mb-3">🌿 Pflanzenquiz</h2>
+{{ quiz_subnav('submit') }}
+<h3 class="h5 mb-3">Frage einreichen</h3>
+
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white"><h4 class="h6 mb-0">Neue Frage</h4></div>
+    <div class="card-body">
+        <form id="question-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label for="question" class="form-label">Frage</label>
+                <input type="text" id="question" name="question" class="form-control" required>
+            </div>
+            <div class="row g-2">
+                <div class="col-12 col-md-6">
+                    <label for="option_a" class="form-label">Antwort A</label>
+                    <input type="text" id="option_a" name="option_a" class="form-control mb-2" required>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="option_b" class="form-label">Antwort B</label>
+                    <input type="text" id="option_b" name="option_b" class="form-control mb-2" required>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="option_c" class="form-label">Antwort C</label>
+                    <input type="text" id="option_c" name="option_c" class="form-control mb-2" required>
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="option_d" class="form-label">Antwort D</label>
+                    <input type="text" id="option_d" name="option_d" class="form-control mb-2" required>
+                </div>
+            </div>
+            <div class="row g-2">
+                <div class="col-6">
+                    <label for="correct_option" class="form-label">Richtige Antwort</label>
+                    <select id="correct_option" name="correct_option" class="form-select" required>
+                        <option value="A">A</option>
+                        <option value="B">B</option>
+                        <option value="C">C</option>
+                        <option value="D">D</option>
+                    </select>
+                </div>
+                <div class="col-6">
+                    <label for="category_id" class="form-label">Kategorie</label>
+                    <select id="category_id" name="category_id" class="form-select">
+                        <option value="">Keine Kategorie</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat['id'] }}">{{ cat['emoji'] or '' }} {{ cat['name'] }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-success w-100 w-md-auto mt-3">Frage speichern</button>
+        </form>
+    </div>
+</div>
+
+<div class="alert alert-success d-none" id="success-popup">
+    Frage wurde erfolgreich gespeichert! Sie muss noch von einem Admin/Moderator verifiziert werden.
+</div>
+
+<div class="card">
+    <div class="card-header bg-warning"><h4 class="h6 mb-0">Deine bisher eingereichten Fragen</h4></div>
+    <div class="card-body">
+        <ul class="list-group">
+            {% for question in user_questions %}
+                <li class="list-group-item">{{ question['question'] }}</li>
+            {% else %}
+                <li class="list-group-item text-muted">Noch keine Fragen eingereicht.</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.getElementById('question-form').onsubmit = function(event) {
+        event.preventDefault();
+        var formData = new FormData(this);
+        fetch('/qinput', { method: 'POST', body: formData })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === "True") {
+                    var popup = document.getElementById('success-popup');
+                    popup.classList.remove('d-none');
+                    document.getElementById('question-form').reset();
+                    setTimeout(() => { popup.classList.add('d-none'); }, 5000);
+                    var questionList = document.querySelector('.list-group');
+                    var newQuestion = document.createElement('li');
+                    newQuestion.classList.add('list-group-item');
+                    newQuestion.textContent = data.new_question;
+                    questionList.prepend(newQuestion);
+                }
+            })
+            .catch(error => console.error('Fehler:', error));
+    };
+</script>
+{% endblock %}

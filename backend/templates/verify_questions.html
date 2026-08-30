@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% from "_quiz_subnav.html" import quiz_subnav with context %}
+{% block title %}Fragen verifizieren - Blackforest Bot{% endblock %}
+{% block content %}
+<a href="{{ url_for('quiz_game_page') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Zurück zu Pflanzenquiz</a>
+<h2 class="h4 mb-1">🌿 Pflanzenquiz</h2>
+{{ quiz_subnav('verify') }}
+<h3 class="h5 mb-1">Fragen verifizieren</h3>
+<p class="text-muted">Hier kannst du alle neu hinzugefügten Fragen der Benutzer verifizieren.</p>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Nicht verifizierte Fragen</h5></div>
+    <div class="card-body">
+        <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle">
+                    <thead>
+                        <tr>
+                            <th style="min-width:180px">Frage</th><th style="min-width:220px">Antworten</th><th style="min-width:90px">Richtig</th>
+                            <th style="min-width:140px">Kategorie</th>
+                            <th>Verifizieren</th><th>Speichern</th><th>Löschen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for q in unverified_questions %}
+                        <tr>
+                            <td><input type="text" class="form-control" style="min-width:160px" name="question_{{ q['id'] }}" value="{{ q['question'] }}"></td>
+                            <td>
+                                <div class="d-flex flex-column gap-1">
+                                    <div class="input-group input-group-sm"><span class="input-group-text">A</span><input type="text" class="form-control" name="answer_{{ q['id'] }}[A]" value="{{ q['option_a'] }}"></div>
+                                    <div class="input-group input-group-sm"><span class="input-group-text">B</span><input type="text" class="form-control" name="answer_{{ q['id'] }}[B]" value="{{ q['option_b'] }}"></div>
+                                    <div class="input-group input-group-sm"><span class="input-group-text">C</span><input type="text" class="form-control" name="answer_{{ q['id'] }}[C]" value="{{ q['option_c'] }}"></div>
+                                    <div class="input-group input-group-sm"><span class="input-group-text">D</span><input type="text" class="form-control" name="answer_{{ q['id'] }}[D]" value="{{ q['option_d'] }}"></div>
+                                </div>
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" name="correct_option_{{ q['id'] }}">
+                                    {% for opt in ['A','B','C','D'] %}
+                                    <option value="{{ opt }}" {% if q['correct_option'] == opt %}selected{% endif %}>{{ opt }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" name="category_{{ q['id'] }}">
+                                    <option value="">Keine</option>
+                                    {% for cat in categories %}
+                                    <option value="{{ cat['id'] }}" {% if q['category_id'] == cat['id'] %}selected{% endif %}>{{ cat['emoji'] or '' }} {{ cat['name'] }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td class="text-center"><input type="checkbox" class="form-check-input" name="verified_{{ q['id'] }}" value="1"></td>
+                            <td><button type="submit" class="btn btn-warning btn-sm" name="edit_question_{{ q['id'] }}">Speichern</button></td>
+                            <td><button type="submit" class="btn btn-danger btn-sm" name="delete_question_{{ q['id'] }}" onclick="return confirm('Diese Frage wirklich löschen?')">Löschen</button></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="text-center text-muted">Keine offenen Fragen.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <nav>
+                <ul class="pagination justify-content-center flex-wrap">
+                    {% for p in range(1, total_unverified_pages + 1) %}
+                    <li class="page-item {% if p == page_unverified %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('verify_questions', page_unverified=p, page_verified=page_verified) }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </nav>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h5 class="h6 mb-0">Bereits verifizierte Fragen</h5></div>
+    <div class="card-body">
+        <form method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="table-responsive">
+                <table class="table table-bordered align-middle">
+                    <thead>
+                        <tr><th style="min-width:180px">Frage</th><th style="min-width:220px">Antworten</th><th style="min-width:90px">Richtig</th><th style="min-width:140px">Kategorie</th><th>Speichern</th><th>Löschen</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for q in verified_questions %}
+                        <tr>
+                            <td><input type="text" class="form-control" style="min-width:160px" name="question_{{ q['id'] }}" value="{{ q['question'] }}"></td>
+                            <td>
+                                <div class="d-flex flex-column gap-1">
+                                    <div class="input-group input-group-sm"><span class="input-group-text">A</span><input type="text" class="form-control" name="answer_{{ q['id'] }}[A]" value="{{ q['option_a'] }}"></div>
+                                    <div class="input-group input-group-sm"><span class="input-group-text">B</span><input type="text" class="form-control" name="answer_{{ q['id'] }}[B]" value="{{ q['option_b'] }}"></div>
+                                    <div class="input-group input-group-sm"><span class="input-group-text">C</span><input type="text" class="form-control" name="answer_{{ q['id'] }}[C]" value="{{ q['option_c'] }}"></div>
+                                    <div class="input-group input-group-sm"><span class="input-group-text">D</span><input type="text" class="form-control" name="answer_{{ q['id'] }}[D]" value="{{ q['option_d'] }}"></div>
+                                </div>
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" name="correct_option_{{ q['id'] }}">
+                                    {% for opt in ['A','B','C','D'] %}
+                                    <option value="{{ opt }}" {% if q['correct_option'] == opt %}selected{% endif %}>{{ opt }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="hidden" name="verified_{{ q['id'] }}" value="1">
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" name="category_{{ q['id'] }}">
+                                    <option value="">Keine</option>
+                                    {% for cat in categories %}
+                                    <option value="{{ cat['id'] }}" {% if q['category_id'] == cat['id'] %}selected{% endif %}>{{ cat['emoji'] or '' }} {{ cat['name'] }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td><button type="submit" class="btn btn-warning btn-sm" name="edit_question_{{ q['id'] }}">Speichern</button></td>
+                            <td><button type="submit" class="btn btn-danger btn-sm" name="delete_question_{{ q['id'] }}" onclick="return confirm('Diese Frage wirklich löschen?')">Löschen</button></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" class="text-center text-muted">Keine verifizierten Fragen.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <nav>
+                <ul class="pagination justify-content-center flex-wrap">
+                    {% for p in range(1, total_verified_pages + 1) %}
+                    <li class="page-item {% if p == page_verified %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('verify_questions', page_verified=p, page_unverified=page_unverified) }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </nav>
+        </form>
+    </div>
+</div>
+{% endblock %}

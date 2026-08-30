@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}Nachricht senden - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">Nachricht senden</h3>
+<p class="text-muted">Der Bot sendet die Nachricht als private Direktnachricht (DM) an den gewählten Nutzer.</p>
+
+<div class="card">
+    <div class="card-body">
+        <form id="dmForm">
+            <div class="mb-3">
+                <label for="userId" class="form-label">Empfänger</label>
+                <input type="text" id="userId" name="user_id" class="form-control"
+                       placeholder="Name suchen oder User-ID eingeben" required autocomplete="off">
+                <div id="userPreview" class="form-text"></div>
+                <div class="form-text">
+                    Tippe einen Servernamen zum Suchen, oder gib direkt eine Discord-User-ID ein
+                    (nötig für Nutzer, die den Server bereits verlassen haben).
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label for="message" class="form-label">Nachricht</label>
+                <textarea id="message" name="message" class="form-control" rows="5" placeholder="Deine Nachricht..." required></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-success w-100 w-md-auto">Nachricht senden</button>
+        </form>
+
+        <div class="alert mt-3 d-none" id="resultAlert" role="alert"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/member-picker.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    attachMemberPicker('userId', 'userPreview');
+
+    const userIdInput = document.getElementById('userId');
+    const userPreview = document.getElementById('userPreview');
+    const dmForm = document.getElementById('dmForm');
+    const resultAlert = document.getElementById('resultAlert');
+    let lookupTimeout;
+
+    userIdInput.addEventListener('input', () => {
+        clearTimeout(lookupTimeout);
+        const id = userIdInput.value.trim();
+        if (!/^[0-9]{5,}$/.test(id)) {
+            userPreview.textContent = '';
+            return;
+        }
+        lookupTimeout = setTimeout(async () => {
+            userPreview.textContent = 'Suche ...';
+            userPreview.className = 'form-text';
+            try {
+                const res = await fetch(`/api/user_lookup?user_id=${id}`);
+                const data = await res.json();
+                if (res.ok) {
+                    userPreview.textContent = `Sendet an: ${data.name}`;
+                    userPreview.className = 'form-text text-success';
+                } else {
+                    userPreview.textContent = 'Kein Nutzer mit dieser ID gefunden.';
+                    userPreview.className = 'form-text text-danger';
+                }
+            } catch (e) {
+                userPreview.textContent = '';
+            }
+        }, 500);
+    });
+
+    dmForm.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        resultAlert.classList.add('d-none');
+        try {
+            const res = await fetch('/api/dm', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
+                },
+                body: JSON.stringify({
+                    user_id: userIdInput.value.trim(),
+                    message: document.getElementById('message').value,
+                }),
+            });
+            const data = await res.json();
+            resultAlert.textContent = res.ok ? data.message : `Fehler: ${data.error}`;
+            resultAlert.className = 'alert mt-3 ' + (res.ok ? 'alert-success' : 'alert-danger');
+            resultAlert.classList.remove('d-none');
+            if (res.ok) {
+                dmForm.reset();
+                userPreview.textContent = '';
+            }
+        } catch (e) {
+            resultAlert.textContent = 'Ein unerwarteter Fehler ist aufgetreten.';
+            resultAlert.className = 'alert mt-3 alert-danger';
+            resultAlert.classList.remove('d-none');
+        }
+    });
+});
+</script>
+{% endblock %}

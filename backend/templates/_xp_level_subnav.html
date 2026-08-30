@@ -1,0 +1,13 @@
+{# Lokales Sub-Nav für "XP & Level" (Menü-Reorganisation) - eigenes Kern-Modul,
+   da sowohl vom Quiz (xp_per_quiz) als auch von Nachrichten-XP gespeist, daher
+   bewusst NICHT unter Pflanzenquiz einsortiert. #}
+{% macro xp_level_subnav(active) %}
+<ul class="nav nav-pills mb-3 flex-wrap">
+    <li class="nav-item">
+        <a class="nav-link {% if active == 'settings' %}active{% endif %}" href="{{ url_for('xp_level_page') }}">⚙️ Einstellungen</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if active == 'achievements' %}active{% endif %}" href="{{ url_for('achievements_page') }}">🏅 Achievements</a>
+    </li>
+</ul>
+{% endmacro %}

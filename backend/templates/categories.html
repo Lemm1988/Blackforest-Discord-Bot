@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_quiz_subnav.html" import quiz_subnav with context %}
+{% block title %}Kategorien - Blackforest Bot{% endblock %}
+{% block content %}
+<a href="{{ url_for('quiz_game_page') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Zurück zu Pflanzenquiz</a>
+<h2 class="h4 mb-1">🌿 Pflanzenquiz</h2>
+{{ quiz_subnav('categories') }}
+<h3 class="h5 mb-2">Quiz-Kategorien</h3>
+<p class="text-muted">
+    Kategorien fürs Pflanzenquiz verwalten. Beim Löschen einer Kategorie werden die
+    zugehörigen Fragen NICHT gelöscht — sie werden nur unkategorisiert (keine Kategorie).
+</p>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Neue Kategorie</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('categories_add') }}" class="row g-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-8 col-md-6">
+                <input type="text" name="name" class="form-control" placeholder="Name der Kategorie" required autocomplete="off">
+            </div>
+            <div class="col-4 col-md-3">
+                <input type="text" name="emoji" class="form-control" placeholder="Emoji (optional)" maxlength="4" autocomplete="off">
+            </div>
+            <div class="col-12 col-md-3">
+                <button type="submit" class="btn btn-success w-100">Hinzufügen</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Bestehende Kategorien</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('categories_update') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="table-responsive">
+                <table class="table table-sm table-striped align-middle mb-0">
+                    <thead>
+                        <tr><th style="width:5rem">Emoji</th><th>Name</th><th>Fragen</th><th style="width:6rem">Speichern</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for cat in categories %}
+                        <tr>
+                            <td><input type="text" class="form-control form-control-sm" name="emoji_{{ cat['id'] }}" value="{{ cat['emoji'] or '' }}" maxlength="4"></td>
+                            <td><input type="text" class="form-control form-control-sm" name="name_{{ cat['id'] }}" value="{{ cat['name'] }}" required></td>
+                            <td>{{ question_counts.get(cat['id'], 0) }}</td>
+                            <td><button type="submit" class="btn btn-warning btn-sm" name="save_category_{{ cat['id'] }}">Speichern</button></td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="4" class="text-muted">Noch keine Kategorien angelegt.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if categories %}
+<div class="card">
+    <div class="card-header"><h5 class="h6 mb-0">Kategorie löschen</h5></div>
+    <div class="card-body">
+        <div class="d-flex flex-wrap gap-2">
+            {% for cat in categories %}
+            <form method="POST" action="{{ url_for('categories_delete', category_id=cat['id']) }}"
+                  onsubmit="return confirm('Kategorie &quot;{{ cat['name'] }}&quot; wirklich löschen? Die {{ question_counts.get(cat['id'], 0) }} zugehörigen Fragen bleiben erhalten und werden unkategorisiert.');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="badge bg-danger border-0 px-2 py-2">{{ cat['emoji'] or '' }} {{ cat['name'] }} ✕</button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% set uncategorized = question_counts.get(none, 0) %}
+{% if uncategorized %}
+<p class="text-muted small mt-3">Aktuell {{ uncategorized }} unkategorisierte Frage(n).</p>
+{% endif %}
+{% endblock %}

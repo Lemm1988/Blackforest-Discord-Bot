@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_xp_level_subnav.html" import xp_level_subnav with context %}
+{% block title %}Achievements - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">🧠 XP &amp; Level</h3>
+{{ xp_level_subnav('achievements') }}
+<h4 class="h5 mb-3">Deine Achievements</h4>
+<p class="text-muted">
+    Freigeschaltete Achievements zeigen Datum und XP-Bonus. Geheime, noch nicht
+    freigeschaltete Achievements werden nur als "???" angezeigt.
+</p>
+
+<div class="row g-3">
+    {% for entry in overview %}
+    <div class="col-12 col-md-6">
+        <div class="card h-100 {% if entry.unlocked %}border-success{% endif %}">
+            <div class="card-body">
+                <h5 class="h6 mb-1">
+                    {% if entry.unlocked %}✅{% elif entry.secret %}🔒{% else %}⬜{% endif %}
+                    {{ entry.name }}
+                </h5>
+                {% if entry.description %}
+                <p class="text-muted small mb-1">{{ entry.description }}</p>
+                {% endif %}
+                {% if entry.unlocked %}
+                <p class="small text-success mb-0">Freigeschaltet am {{ entry.unlocked_at }} (+{{ entry.xp_reward }} XP)</p>
+                {% elif entry.secret %}
+                <p class="small text-muted mb-0">Geheimes Achievement - noch nicht freigeschaltet.</p>
+                {% else %}
+                <p class="small text-muted mb-0">Noch nicht freigeschaltet (+{{ entry.xp_reward }} XP bei Freischaltung).</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <p class="text-muted">Noch keine Achievements definiert.</p>
+    {% endfor %}
+</div>
+{% endblock %}

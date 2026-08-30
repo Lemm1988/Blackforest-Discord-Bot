@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}Personality/Mood - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">Personality / Mood</h3>
+<p class="text-muted">
+    Mood ist ein rein interner, deterministischer Verhaltenszustand - <strong>keine echte
+    Emotion, keine KI</strong>. Häufigkeit, Ort und Ton sind hier vollständig einstellbar,
+    keiner der Werte ist fest einprogrammiert.
+</p>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Aktueller Zustand (nur zur Info, nicht editierbar)</h5></div>
+    <div class="card-body">
+        <div class="row g-2 small">
+            <div class="col-6 col-md-3"><strong>Mood:</strong> {{ state.mood }}</div>
+            <div class="col-6 col-md-3"><strong>Energy:</strong> {{ state.energy }}</div>
+            <div class="col-12 col-md-3"><strong>Letzter Mood-Wechsel:</strong> {{ state.last_mood_change or "—" }}</div>
+            <div class="col-12 col-md-3"><strong>Letzte Status-Änderung:</strong> {{ state.last_status_change or "—" }}</div>
+        </div>
+    </div>
+</div>
+
+<div class="d-flex gap-2 mb-4 flex-wrap">
+    <a href="{{ url_for('personality_texts_page') }}" class="btn btn-outline-primary btn-sm">
+        📝 Text-Varianten bearbeiten
+    </a>
+    <a href="{{ url_for('personality_thresholds_page') }}" class="btn btn-outline-primary btn-sm">
+        🎚️ Mood-Erkennungsschwellen
+    </a>
+</div>
+
+<form method="POST" action="{{ url_for('personality_save_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="card mb-3">
+        <div class="card-header"><h5 class="h6 mb-0">Grundschalter</h5></div>
+        <div class="card-body">
+            <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="personality_enabled" name="personality_enabled" value="1" {% if settings.personality_enabled == "1" %}checked{% endif %}>
+                <label class="form-check-label" for="personality_enabled">Personality aktiv (mood-gefärbte Antworten + spontane Nachrichten)</label>
+            </div>
+            <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="mood_enabled" name="mood_enabled" value="1" {% if settings.mood_enabled == "1" %}checked{% endif %}>
+                <label class="form-check-label" for="mood_enabled">Mood-Neubewertung aktiv</label>
+            </div>
+            <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="dynamic_status_enabled" name="dynamic_status_enabled" value="1" {% if settings.dynamic_status_enabled == "1" %}checked{% endif %}>
+                <label class="form-check-label" for="dynamic_status_enabled">Dynamischer Bot-Status aktiv (unabhängig von Personality)</label>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><h5 class="h6 mb-0">Mood-Erkennung</h5></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-6 col-md-3">
+                    <label for="mood_update_interval_minutes" class="form-label">Neubewertung alle (Min.)</label>
+                    <input type="number" min="1" class="form-control" id="mood_update_interval_minutes" name="mood_update_interval_minutes" value="{{ settings.mood_update_interval_minutes }}">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="mood_night_start_hour" class="form-label">Nachtfenster Start (0-23 Uhr)</label>
+                    <input type="number" min="0" max="23" class="form-control" id="mood_night_start_hour" name="mood_night_start_hour" value="{{ settings.mood_night_start_hour }}">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="mood_night_end_hour" class="form-label">Nachtfenster Ende (0-23 Uhr)</label>
+                    <input type="number" min="0" max="23" class="form-control" id="mood_night_end_hour" name="mood_night_end_hour" value="{{ settings.mood_night_end_hour }}">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="status_rotation_minutes" class="form-label">Status-Rotation alle (Min.)</label>
+                    <input type="number" min="1" class="form-control" id="status_rotation_minutes" name="status_rotation_minutes" value="{{ settings.status_rotation_minutes }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><h5 class="h6 mb-0">Gefärbte Antworten (hallo / Quiz / Willkommen)</h5></div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-6 col-md-4">
+                    <label for="personality_response_frequency" class="form-label">Häufigkeit gefärbter Antworten (%)</label>
+                    <input type="number" min="0" max="100" class="form-control" id="personality_response_frequency" name="personality_response_frequency" value="{{ settings.personality_response_frequency }}">
+                    <div class="form-text">0 = nie, 100 = immer gefärbt statt neutral.</div>
+                </div>
+                <div class="col-6 col-md-4">
+                    <label for="personality_humor_level" class="form-label">Humor-Level</label>
+                    <select class="form-select" id="personality_humor_level" name="personality_humor_level">
+                        {% for level in ["low", "medium", "high"] %}
+                        <option value="{{ level }}" {% if settings.personality_humor_level == level %}selected{% endif %}>{{ level }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><h5 class="h6 mb-0">Spontane Nachrichten &amp; Erwähnungen</h5></div>
+        <div class="card-body">
+            <p class="text-muted small mb-2">
+                Der Modus bestimmt, wie "aufdringlich" der Bot sein darf - von unaufdringlich
+                bis proaktiv:
+            </p>
+            <ul class="text-muted small">
+                <li><strong>status_only</strong> (Standard, am sichersten): der Bot postet nie von sich
+                    aus. Nur bereits bestehende Befehle (<code>&gt;hallo</code>, Quiz-Feedback,
+                    Willkommensnachricht) fallen ggf. mood-gefärbt aus, plus der rotierende Status.</li>
+                <li><strong>mention_only</strong>: zusätzlich zu status_only antwortet der Bot
+                    mood-gefärbt, wenn er direkt mit <code>@BotName</code> erwähnt wird - aber
+                    weiterhin nur als Reaktion, nie unaufgefordert.</li>
+                <li><strong>channel_messages</strong>: zusätzlich postet der Bot unaufgefordert eine
+                    kurze Nachricht in den unten gewählten Kanal, wenn seine Mood deutlich wechselt
+                    (aktuell nur bei einem Wechsel zu excited/annoyed). Am "lautesten" - der
+                    Mindestabstand wird serverseitig zusätzlich auf mindestens
+                    {{ "%.0f"|format(min_spontaneous_hours) }}h abgesichert, egal was unten
+                    eingestellt wird.</li>
+            </ul>
+            <div class="row g-3">
+                <div class="col-12 col-md-4">
+                    <label for="personality_response_mode" class="form-label">Modus</label>
+                    <select class="form-select" id="personality_response_mode" name="personality_response_mode">
+                        {% for m in ["status_only", "mention_only", "channel_messages"] %}
+                        <option value="{{ m }}" {% if settings.personality_response_mode == m %}selected{% endif %}>{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label for="personality_spontaneous_channel_id" class="form-label">Kanal für spontane Nachrichten (nur channel_messages)</label>
+                    <select class="form-select channel-picker" id="personality_spontaneous_channel_id" name="personality_spontaneous_channel_id" data-current="{{ settings.personality_spontaneous_channel_id }}">
+                        <option value="">— kein Kanal (deaktiviert) —</option>
+                    </select>
+                </div>
+                <div class="col-12 col-md-4">
+                    <label for="personality_spontaneous_min_hours" class="form-label">Mindestabstand (Stunden, nur channel_messages)</label>
+                    <input type="number" min="0" step="0.5" class="form-control" id="personality_spontaneous_min_hours" name="personality_spontaneous_min_hours" value="{{ settings.personality_spontaneous_min_hours }}">
+                    {% if settings.personality_spontaneous_min_hours|float < min_spontaneous_hours %}
+                    <div class="form-text text-danger">⚠️ Liegt unter der harten Untergrenze von {{ "%.0f"|format(min_spontaneous_hours) }}h - diese wird trotzdem erzwungen.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><h5 class="h6 mb-0">Zufallsereignisse</h5></div>
+        <div class="card-body">
+            <p class="text-muted small">
+                Die Basis-Wahrscheinlichkeit wird zusätzlich vom aktuellen Mood beeinflusst
+                (excited/bored erhöhen sie, annoyed senkt sie) - das ist bewusst nicht
+                einstellbar, nur die Werte hier unten.
+                {% if state.last_event_check %}Letzter Check: {{ state.last_event_check }}{% endif %}
+            </p>
+            <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="random_events_enabled" name="random_events_enabled" value="1" {% if event_settings.random_events_enabled == "1" %}checked{% endif %}>
+                <label class="form-check-label" for="random_events_enabled">Zufallsereignisse aktiv</label>
+            </div>
+            <div class="row g-3">
+                <div class="col-6 col-md-3">
+                    <label for="event_check_interval_minutes" class="form-label">Check alle (Min.)</label>
+                    <input type="number" min="1" class="form-control" id="event_check_interval_minutes" name="event_check_interval_minutes" value="{{ event_settings.event_check_interval_minutes }}">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="event_probability_percent" class="form-label">Basis-Wahrscheinlichkeit (%)</label>
+                    <input type="number" min="0" max="100" class="form-control" id="event_probability_percent" name="event_probability_percent" value="{{ event_settings.event_probability_percent }}">
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="event_channel_id" class="form-label">Event-Kanal</label>
+                    <select class="form-select channel-picker" id="event_channel_id" name="event_channel_id" data-current="{{ event_settings.event_channel_id }}">
+                        <option value="">— kein Kanal (deaktiviert) —</option>
+                    </select>
+                    <div class="form-text">Ohne Kanal postet der Bot KEINE Zufallsereignis-Nachrichten (kein Fallback mehr auf einen anderen Kanal).</div>
+                </div>
+            </div>
+
+            <hr class="my-3">
+            <h6 class="text-muted">Relative Gewichte der Event-Typen (müssen sich nicht zu 100 aufsummieren)</h6>
+            <div class="row g-3">
+                <div class="col-6 col-md-3">
+                    <label for="event_weight_humor" class="form-label">Humor (kosmetisch)</label>
+                    <input type="number" min="0" class="form-control" id="event_weight_humor" name="event_weight_humor" value="{{ event_settings.event_weight_humor }}">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="event_weight_quiz" class="form-label">Quiz-Blitz</label>
+                    <input type="number" min="0" class="form-control" id="event_weight_quiz" name="event_weight_quiz" value="{{ event_settings.event_weight_quiz }}">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="event_weight_xpdrop" class="form-label">XP-Drop</label>
+                    <input type="number" min="0" class="form-control" id="event_weight_xpdrop" name="event_weight_xpdrop" value="{{ event_settings.event_weight_xpdrop }}">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="event_weight_community" class="form-label">Community-Bonus</label>
+                    <input type="number" min="0" class="form-control" id="event_weight_community" name="event_weight_community" value="{{ event_settings.event_weight_community }}">
+                </div>
+            </div>
+
+            <hr class="my-3">
+            <h6 class="text-muted">Feinjustierung der einzelnen Event-Typen</h6>
+            <div class="row g-3">
+                <div class="col-6 col-md-4">
+                    <label for="event_xpdrop_amount" class="form-label">XP-Drop: Betrag</label>
+                    <input type="number" min="0" class="form-control" id="event_xpdrop_amount" name="event_xpdrop_amount" value="{{ event_settings.event_xpdrop_amount }}">
+                </div>
+                <div class="col-6 col-md-4">
+                    <label for="event_community_bonus_multiplier" class="form-label">Community-Bonus: Multiplikator</label>
+                    <input type="number" min="1" step="0.5" class="form-control" id="event_community_bonus_multiplier" name="event_community_bonus_multiplier" value="{{ event_settings.event_community_bonus_multiplier }}">
+                </div>
+                <div class="col-6 col-md-4">
+                    <label for="event_community_bonus_minutes" class="form-label">Community-Bonus: Dauer (Min.)</label>
+                    <input type="number" min="1" class="form-control" id="event_community_bonus_minutes" name="event_community_bonus_minutes" value="{{ event_settings.event_community_bonus_minutes }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><h5 class="h6 mb-0">Erweiterte Community-Reaktionen</h5></div>
+        <div class="card-body">
+            <p class="text-muted small">
+                Server-Rekorde, Quiz-Serien und Server-Meilensteine. Insgesamt bisher
+                <strong>{{ state.quiz_total_correct }}</strong> richtig beantwortete Quizfragen serverweit.
+            </p>
+            <div class="form-check mb-2">
+                <input type="checkbox" class="form-check-input" id="community_reactions_enabled" name="community_reactions_enabled" value="1" {% if community_settings.community_reactions_enabled == "1" %}checked{% endif %}>
+                <label class="form-check-label" for="community_reactions_enabled">Community-Reaktionen aktiv (zusätzlich zu "Ankündigungen aktiv" oben)</label>
+            </div>
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <label for="streak_announcement_thresholds" class="form-label">Streak-Meilensteine (kommagetrennt)</label>
+                    <input type="text" class="form-control" id="streak_announcement_thresholds" name="streak_announcement_thresholds" value="{{ community_settings.streak_announcement_thresholds }}">
+                </div>
+                <div class="col-12 col-md-6">
+                    <label for="milestone_thresholds" class="form-label">Server-Meilensteine (kommagetrennt)</label>
+                    <input type="text" class="form-control" id="milestone_thresholds" name="milestone_thresholds" value="{{ community_settings.milestone_thresholds }}">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Einstellungen speichern</button>
+</form>
+{% endblock %}

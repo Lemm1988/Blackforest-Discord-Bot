@@ -1,0 +1,112 @@
+/* Blackforest Bot Backend - eigenes Farbschema (grüner Akzent, Grow-Tent-Thema) */
+:root {
+    --bfb-primary: #2f7a4d;
+    --bfb-primary-dark: #1e4d33;
+    --bfb-primary-light: #e8f3ec;
+    --bs-primary: #2f7a4d;
+    --bs-primary-rgb: 47, 122, 77;
+    --bs-link-color: #2f7a4d;
+    --bs-link-hover-color: #1e4d33;
+}
+
+body {
+    background-color: #f4f7f5;
+    min-height: 100vh;
+}
+
+/* Bootstraps kompilierte .btn-primary/.bg-primary/.text-primary nutzen fest einprogrammierte
+   Farbwerte, nicht die CSS-Variable - daher hier direkt ueberschrieben. */
+.btn-primary {
+    background-color: var(--bfb-primary) !important;
+    border-color: var(--bfb-primary) !important;
+}
+.btn-primary:hover, .btn-primary:focus {
+    background-color: var(--bfb-primary-dark) !important;
+    border-color: var(--bfb-primary-dark) !important;
+}
+.btn-outline-primary {
+    color: var(--bfb-primary) !important;
+    border-color: var(--bfb-primary) !important;
+}
+.btn-outline-primary:hover {
+    background-color: var(--bfb-primary) !important;
+    color: #fff !important;
+}
+.bg-primary { background-color: var(--bfb-primary) !important; }
+.text-primary { color: var(--bfb-primary) !important; }
+.border-primary { border-color: var(--bfb-primary) !important; }
+.page-link { color: var(--bfb-primary); }
+.page-item.active .page-link {
+    background-color: var(--bfb-primary);
+    border-color: var(--bfb-primary);
+}
+.form-check-input:checked {
+    background-color: var(--bfb-primary);
+    border-color: var(--bfb-primary);
+}
+a { color: var(--bfb-primary); }
+a:hover { color: var(--bfb-primary-dark); }
+
+/* Navbar */
+.navbar-bfb {
+    background-color: var(--bfb-primary-dark);
+}
+.navbar-bfb .navbar-brand,
+.navbar-bfb .nav-link {
+    color: rgba(255, 255, 255, 0.92);
+}
+.navbar-bfb .nav-link:hover,
+.navbar-bfb .nav-link.active {
+    color: #ffffff;
+    font-weight: 600;
+}
+.navbar-bfb .navbar-text {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.page-content {
+    padding: 1.25rem;
+}
+@media (min-width: 768px) {
+    .page-content {
+        padding: 2rem;
+    }
+}
+
+.card {
+    border: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+/* Discord-Embed-Vorschau: bewusst dunkel gehalten, da sie zeigt wie es echt in Discord aussieht */
+.embed-preview {
+    background-color: #23272a;
+    padding: 15px;
+    border-radius: 10px;
+    color: #fff;
+    max-width: 600px;
+    margin: 20px auto;
+}
+.embed-title { font-weight: bold; font-size: 1.2em; }
+.embed-description { margin: 10px 0; white-space: pre-wrap; }
+.embed-footer { font-size: 0.9em; color: #b9bbbe; margin-top: 10px; }
+.embed-thumbnail { float: right; max-width: 100px; max-height: 100px; margin-left: 10px; border-radius: 4px; }
+
+.embed-toolbar button {
+    color: #fff;
+    background-color: #4f545c;
+    border: none;
+}
+.embed-toolbar button:hover {
+    background-color: var(--bfb-primary);
+}
+
+/* Touch-Bedienung: Mindesthoehe fuer Buttons/Inputs auf schmalen Bildschirmen */
+@media (max-width: 767.98px) {
+    .btn, .form-control, .form-select {
+        min-height: 44px;
+    }
+    .table-responsive td, .table-responsive th {
+        white-space: nowrap;
+    }
+}

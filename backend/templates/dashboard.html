@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Blackforest Bot{% endblock %}
+{% block content %}
+<h2 class="h4 mb-1">Willkommen im Blackforest Bot-Dashboard</h2>
+<p class="text-muted">Hier kannst du alle administrativen Aufgaben erledigen.</p>
+
+<div class="d-flex flex-wrap gap-2 mb-4">
+    <a href="{{ url_for('bot_question_insert') }}" class="btn btn-primary">Frage einreichen</a>
+    {% if has_permission('verify_questions') %}
+        <a href="{{ url_for('verify_questions') }}" class="btn btn-outline-primary">Fragen verifizieren</a>
+    {% endif %}
+</div>
+
+<div class="card mb-4">
+    <div class="card-header bg-success text-white">
+        <h3 class="h6 mb-0">Dein Fortschritt</h3>
+    </div>
+    <div class="card-body">
+        <p class="mb-0">
+            <strong>Level {{ xp_progress.level }}</strong>, {{ xp_progress.xp }} XP
+            {% if xp_progress.xp_to_next > 0 %}
+            — noch <strong>{{ xp_progress.xp_to_next|int }} XP</strong> bis Level {{ xp_progress.level + 1 }}
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header bg-primary text-white">
+        <h3 class="h6 mb-0">Bot-Quiz-Statistiken</h3>
+    </div>
+    <div class="card-body">
+        <div class="row g-3 mb-3">
+            <div class="col-6 col-md-4">
+                <div class="p-3 border rounded h-100">
+                    <div class="small text-muted">Fragen gesamt</div>
+                    <div class="fs-4 fw-bold text-primary">{{ stats.total }}</div>
+                </div>
+            </div>
+            <div class="col-6 col-md-4">
+                <div class="p-3 border rounded h-100">
+                    <div class="small text-muted">Verifiziert</div>
+                    <div class="fs-4 fw-bold text-success">{{ stats.verified }}</div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="p-3 border rounded h-100">
+                    <div class="small text-muted">Nicht verifiziert</div>
+                    <div class="fs-4 fw-bold text-danger">{{ stats.unverified }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="row g-2">
+            {% for opt in ['A', 'B', 'C', 'D'] %}
+            <div class="col-6 col-md-3 text-center">
+                <div class="p-3 border rounded bg-light h-100">
+                    <div class="small text-muted">Richtige Antwort {{ opt }}</div>
+                    <div class="fs-5 fw-bold text-primary">{{ stats.percentages[opt]|int }}%</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

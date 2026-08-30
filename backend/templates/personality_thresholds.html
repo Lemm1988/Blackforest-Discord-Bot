@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Mood-Erkennungsschwellen - Blackforest Bot{% endblock %}
+{% block content %}
+<a href="{{ url_for('personality_page') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Zurück zu Personality</a>
+<h3 class="h4">Mood-Erkennungsschwellen</h3>
+<p class="text-muted">
+    Diese Werte steuern, WANN der Bot intern welche Mood erkennt (Priorität bei
+    gleichzeitig zutreffenden Signalen: annoyed &gt; sleepy &gt; excited &gt; bored &gt; neutral).
+    Das Nachtfenster für "sleepy" liegt weiterhin auf der Haupt-Personality-Seite.
+</p>
+
+<form method="POST" action="{{ url_for('personality_thresholds_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="card mb-3">
+        <div class="card-header"><h5 class="h6 mb-0">😠 annoyed</h5></div>
+        <div class="card-body">
+            <label for="mood_annoyed_violation_threshold" class="form-label">Automod-Verstöße, ab denen die Mood auf "annoyed" springt</label>
+            <div class="input-group" style="max-width: 220px;">
+                <input type="number" min="1" class="form-control" id="mood_annoyed_violation_threshold" name="mood_annoyed_violation_threshold" value="{{ settings.mood_annoyed_violation_threshold }}">
+                <span class="input-group-text">Verstöße</span>
+            </div>
+            <label for="mood_violation_window_minutes" class="form-label mt-2">Zeitfenster, in dem diese Verstöße gezählt werden</label>
+            <div class="input-group" style="max-width: 220px;">
+                <input type="number" min="1" class="form-control" id="mood_violation_window_minutes" name="mood_violation_window_minutes" value="{{ settings.mood_violation_window_minutes }}">
+                <span class="input-group-text">Minuten</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><h5 class="h6 mb-0">🔥 excited</h5></div>
+        <div class="card-body">
+            <label for="mood_excited_active_user_threshold" class="form-label">Eindeutige aktive User, ab denen die Mood auf "excited" springt</label>
+            <div class="input-group" style="max-width: 220px;">
+                <input type="number" min="1" class="form-control" id="mood_excited_active_user_threshold" name="mood_excited_active_user_threshold" value="{{ settings.mood_excited_active_user_threshold }}">
+                <span class="input-group-text">User</span>
+            </div>
+            <label for="mood_activity_window_minutes" class="form-label mt-2">Zeitfenster, in dem aktive User gezählt werden</label>
+            <div class="input-group" style="max-width: 220px;">
+                <input type="number" min="1" class="form-control" id="mood_activity_window_minutes" name="mood_activity_window_minutes" value="{{ settings.mood_activity_window_minutes }}">
+                <span class="input-group-text">Minuten</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><h5 class="h6 mb-0">😌 bored</h5></div>
+        <div class="card-body">
+            <label for="mood_bored_inactivity_minutes" class="form-label">Inaktivität, nach der die Mood auf "bored" springt</label>
+            <div class="input-group" style="max-width: 220px;">
+                <input type="number" min="1" class="form-control" id="mood_bored_inactivity_minutes" name="mood_bored_inactivity_minutes" value="{{ settings.mood_bored_inactivity_minutes }}">
+                <span class="input-group-text">Minuten</span>
+            </div>
+        </div>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Einstellungen speichern</button>
+</form>
+{% endblock %}

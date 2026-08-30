@@ -1,0 +1,30 @@
+{# Lokales Sub-Nav für alle Pflanzenquiz-bezogenen Seiten (Übersicht, Fragen
+   einreichen, Fragen verifizieren, Kategorien) - fasst alles Quiz-Spezifische
+   an einer Stelle unter "Spiele → Pflanzenquiz" zusammen, statt globale,
+   eigenständige Navbar-Punkte dafür zu haben (überschreibt bewusst die
+   frühere Phase-B1-Entscheidung, auf ausdrücklichen späteren User-Wunsch).
+
+   Ein zukünftiges zweites Spiel mit eigenem Fragen-/Verifizierungs-Workflow
+   bekäme sein eigenes, analoges "_<spiel>_subnav.html"-Partial nach demselben
+   Muster - bewusst kein generisches Cross-Game-Nav-System für aktuell nur
+   ein einziges Spiel, das wäre verfrühte Abstraktion. #}
+{% macro quiz_subnav(active) %}
+<ul class="nav nav-pills mb-3 flex-wrap">
+    <li class="nav-item">
+        <a class="nav-link {% if active == 'overview' %}active{% endif %}" href="{{ url_for('quiz_game_page') }}">🏆 Übersicht</a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link {% if active == 'submit' %}active{% endif %}" href="{{ url_for('bot_question_insert') }}">➕ Fragen einreichen</a>
+    </li>
+    {% if has_permission('verify_questions') %}
+    <li class="nav-item">
+        <a class="nav-link {% if active == 'verify' %}active{% endif %}" href="{{ url_for('verify_questions') }}">✅ Fragen verifizieren</a>
+    </li>
+    {% endif %}
+    {% if has_permission('manage_categories') %}
+    <li class="nav-item">
+        <a class="nav-link {% if active == 'categories' %}active{% endif %}" href="{{ url_for('categories_page') }}">🏷️ Kategorien</a>
+    </li>
+    {% endif %}
+</ul>
+{% endmacro %}

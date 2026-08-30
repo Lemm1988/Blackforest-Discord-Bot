@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% from "_moderation_subnav.html" import moderation_subnav with context %}
+{% block title %}{{ member.display_name }} - Blackforest Bot{% endblock %}
+{% block content %}
+<a href="{{ url_for('members_overview') }}" class="btn btn-outline-secondary btn-sm mb-3">&larr; Zurück zur Übersicht</a>
+{{ moderation_subnav('actions') }}
+
+<div class="d-flex align-items-center gap-3 mb-3">
+    <img src="{{ member.avatar }}" alt="" width="56" height="56" class="rounded-circle">
+    <div>
+        <h3 class="h4 mb-0">
+            {{ member.display_name }}
+            {% if is_owner %}<span class="badge bg-warning text-dark">👑 Owner</span>{% endif %}
+            {% if not member.in_guild %}<span class="badge bg-secondary">nicht mehr auf dem Server</span>{% endif %}
+            {% if member.timed_out_until %}<span class="badge bg-secondary">🔇 getimeoutet bis {{ member.timed_out_until[:16].replace("T", " ") }}</span>{% endif %}
+        </h3>
+        <div class="text-muted small">{{ member.username }} · ID {{ member.id }}</div>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-12 col-md-6">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="h6 mb-0">Aktivität</h5></div>
+            <div class="card-body small">
+                <p class="mb-1"><strong>Beigetreten:</strong> {{ member.joined_at[:10] if member.joined_at else "—" }}</p>
+                <p class="mb-1"><strong>Zuletzt aktiv:</strong> {{ overview.last_message_at[:16].replace("T", " ") if overview.last_message_at else "nie" }}</p>
+                <p class="mb-1"><strong>Nachrichten gesamt:</strong> {{ overview.message_count }}</p>
+                <p class="mb-0"><strong>Rollen:</strong> {{ member.roles | join(", ") if member.roles else "—" }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-12 col-md-6">
+        <div class="card h-100">
+            <div class="card-header"><h5 class="h6 mb-0">Quiz &amp; XP</h5></div>
+            <div class="card-body small">
+                <p class="mb-1"><strong>Level:</strong> {{ overview.level }} ({{ overview.xp }} XP)</p>
+                <p class="mb-1"><strong>Punktestand:</strong> {{ overview.score }}</p>
+                <p class="mb-1"><strong>Richtig beantwortet:</strong> {{ overview.quiz_correct_count }}</p>
+                <p class="mb-0"><strong>Aktuelle Serie / Bestwert:</strong> {{ overview.current_streak }} / {{ overview.best_streak }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Automod-Verstoß-Historie ({{ violations | length }})</h5></div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Typ</th><th>Treffer</th><th>Ausschnitt</th><th>Zeitpunkt</th></tr></thead>
+                <tbody>
+                    {% for v in violations %}
+                    <tr>
+                        <td><span class="badge bg-secondary">{{ v['violation_type'] }}</span></td>
+                        <td>{{ v['matched_word'] }}</td>
+                        <td class="text-muted small">{{ v['message_excerpt'] }}</td>
+                        <td class="text-muted small">{{ v['timestamp'] }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-muted">Keine Verstöße erfasst.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Moderationsaktionen</h5></div>
+    <div class="card-body">
+        {% if is_owner %}
+        <p class="text-muted mb-0">👑 Der Bot-Owner ist strukturell vor jeder Moderationsaktion geschützt - keine dieser Aktionen ist gegen ihn ausführbar.</p>
+        {% else %}
+        <div class="row g-3">
+            <div class="col-12 col-md-4">
+                <h6 class="small text-muted">Timeout</h6>
+                <form method="POST" action="{{ url_for('member_timeout', user_id=member.id) }}"
+                      onsubmit="return confirm('{{ member.display_name }} wirklich timeouten?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div class="input-group input-group-sm mb-2">
+                        <input type="number" min="1" max="40320" name="duration_minutes" value="10" class="form-control" required>
+                        <span class="input-group-text">Minuten</span>
+                    </div>
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Grund">
+                    <button type="submit" class="btn btn-warning btn-sm w-100" {% if not member.in_guild %}disabled title="Nutzer ist kein aktuelles Mitglied"{% endif %}>🔇 Timeout</button>
+                </form>
+            </div>
+            <div class="col-12 col-md-4">
+                <h6 class="small text-muted">Kick</h6>
+                <form method="POST" action="{{ url_for('member_kick', user_id=member.id) }}"
+                      onsubmit="return confirm('{{ member.display_name }} wirklich kicken?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Grund">
+                    <button type="submit" class="btn btn-outline-danger btn-sm w-100" {% if not member.in_guild %}disabled title="Nutzer ist kein aktuelles Mitglied"{% endif %}>👢 Kick</button>
+                </form>
+            </div>
+            <div class="col-12 col-md-4">
+                <h6 class="small text-muted">Ban / Unban</h6>
+                <form method="POST" action="{{ url_for('member_ban', user_id=member.id) }}" class="mb-2"
+                      onsubmit="return confirm('{{ member.display_name }} wirklich bannen?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Grund">
+                    <button type="submit" class="btn btn-danger btn-sm w-100">🔨 Ban</button>
+                </form>
+                <form method="POST" action="{{ url_for('member_unban', user_id=member.id) }}"
+                      onsubmit="return confirm('{{ member.display_name }} entbannen (falls gebannt)?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm w-100">♻️ Unban</button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

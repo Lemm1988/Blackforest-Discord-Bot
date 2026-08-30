@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}Blackforest Bot{% endblock %}</title>
+    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    {% include 'navbar.html' %}
+    <div class="page-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Schließen"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+        {% block content %}{% endblock %}
+    </div>
+    <script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
+    <script>
+        // Fuellt jedes <select class="channel-picker"> (Einzelauswahl) bzw.
+        // <select class="channel-picker" multiple> (Mehrfachauswahl, z.B. die
+        // Link-Filter-Kanal-Ausnahmeliste) mit der Live-Kanalliste vom Bot
+        // (ueber /api/channels). data-current traegt bei Einzelauswahl die
+        // aktuell gespeicherte Kanal-ID, bei Mehrfachauswahl eine kommagetrennte
+        // Liste. Bei Einzelauswahl ist immer eine leere erste Option ("kein
+        // Kanal") dabei, damit ein Kanal auch gezielt wieder GELEERT werden
+        // kann - ohne zugewiesenen Kanal postet der Bot dort nirgendwo, statt
+        // in einen anderen Kanal auszuweichen. Dieselbe Fetch-/Populate-Logik
+        // wird unten fuer den Rollen-Picker wiederverwendet (gleiches Formular-
+        // Muster, andere Datenquelle).
+        function _populatePickers(selector, apiUrl, dataKey, labelPrefix) {
+            const pickers = document.querySelectorAll(selector);
+            if (!pickers.length) return;
+            fetch(apiUrl)
+                .then(r => r.json())
+                .then(data => {
+                    pickers.forEach(select => {
+                        const currentRaw = select.dataset.current || '';
+                        const currentValues = new Set(currentRaw.split(',').map(v => v.trim()).filter(Boolean));
+                        select.innerHTML = '';
+                        if (!select.multiple) {
+                            const emptyOption = document.createElement('option');
+                            emptyOption.value = '';
+                            emptyOption.textContent = '— kein Kanal (deaktiviert) —';
+                            select.appendChild(emptyOption);
+                        }
+                        (data[dataKey] || []).forEach(item => {
+                            const option = document.createElement('option');
+                            option.value = item.id;
+                            option.textContent = labelPrefix + item.name;
+                            if (select.multiple && currentValues.has(item.id)) {
+                                option.selected = true;
+                            }
+                            select.appendChild(option);
+                        });
+                        if (!select.multiple) {
+                            select.value = currentRaw;
+                        }
+                    });
+                })
+                .catch(() => {});
+        }
+        _populatePickers('select.channel-picker', '/api/channels', 'channels', '#');
+        _populatePickers('select.role-picker', '/api/roles', 'roles', '@');
+
+        // Bootstrap-Tooltips (data-bs-toggle="tooltip") initialisieren sich
+        // anders als Dropdowns/Collapse NICHT von selbst aus den data-Attributen -
+        // hier einmal zentral fuer alle [data-bs-toggle="tooltip"]-Elemente auf
+        // der Seite erledigt, statt das auf jeder Seite einzeln zu wiederholen.
+        (function () {
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+                new bootstrap.Tooltip(el);
+            });
+        })();
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

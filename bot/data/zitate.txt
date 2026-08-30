@@ -1,0 +1,312 @@
+zi_tat = [
+	"Das Geheimnis des Erfolgs ist anzufangen." – Mark Twain  
+	"Der einzige Weg, großartige Arbeit zu leisten, ist, zu lieben, was man tut." – Steve Jobs  
+	"Die Zukunft gehört denen, die an die Schönheit ihrer Träume glauben." – Eleanor Roosevelt  
+	"Es gibt keinen Aufzug zum Erfolg. Du musst die Treppe nehmen."  
+	"Erfolg ist nicht endgültig, Misserfolg ist nicht fatal: Es ist der Mut, weiterzumachen, der zählt." – Winston Churchill  
+	"Tu, was du kannst, mit dem, was du hast, wo du bist." – Theodore Roosevelt  
+	"Das Leben ist 10% was dir passiert und 90% wie du darauf reagierst." – Charles R. Swindoll  
+	"Die einzige Grenze für unsere Verwirklichung von morgen werden unsere Zweifel von heute sein." – Franklin D. Roosevelt  
+	"Wer kämpft, kann verlieren. Wer nicht kämpft, hat schon verloren." – Bertolt Brecht  
+	"Mut steht am Anfang des Handelns, Glück am Ende." – Demokrit  
+	"Der Weg ist das Ziel." – Konfuzius  
+	"Einfachheit ist die höchste Stufe der Vollendung." – Leonardo da Vinci  
+	"Nicht der Wind, sondern das Segel bestimmt die Richtung." – Chinesisches Sprichwort  
+	"Erfolg ist die Summe richtiger Entscheidungen." – Anonym  
+	"Träume nicht dein Leben, sondern lebe deinen Traum."  
+	"Die beste Zeit, einen Baum zu pflanzen, war vor 20 Jahren. Die zweitbeste Zeit ist jetzt." – Chinesisches Sprichwort  
+	"Das Leben ist zu kurz, um sich über Dinge zu ärgern, die man nicht ändern kann." – Anonym  
+	"Die beste Art, die Zukunft vorherzusagen, ist, sie zu erschaffen." – Peter Drucker  
+	"Wenn du es träumen kannst, kannst du es auch tun." – Walt Disney  
+	"Ein Ziel ohne Plan ist nur ein Wunsch." – Antoine de Saint-Exupéry  
+	"Große Dinge entstehen nicht aus Komfortzonen."  
+	"Die schwierigste Zeit in unserem Leben ist die beste Gelegenheit, innere Stärke zu entwickeln." – Dalai Lama  
+	"Das Leben ist wie Fahrradfahren. Um die Balance zu halten, musst du in Bewegung bleiben." – Albert Einstein  
+	"Erfolg ist nicht der Schlüssel zum Glück. Glück ist der Schlüssel zum Erfolg." – Albert Schweitzer  
+	"Es ist nie zu spät, das zu sein, was du hättest sein können." – George Eliot  
+	"Manchmal gewinnst du, manchmal lernst du." – John C. Maxwell  
+	"Sei du selbst die Veränderung, die du dir wünschst für diese Welt." – Mahatma Gandhi  
+	"Es sind nicht die Jahre in deinem Leben, die zählen. Es ist das Leben in deinen Jahren." – Abraham Lincoln  
+	"Je größer der Kampf, desto herrlicher der Triumph." – Thomas Paine  
+	"Die größte Gefahr für die meisten von uns ist nicht, dass unser Ziel zu hoch ist und wir es verfehlen, sondern dass es zu niedrig ist und wir es erreichen." – Michelangelo  
+	"Ein Schiff im Hafen ist sicher, aber dafür sind Schiffe nicht gebaut." – John A. Shedd  
+	"Glück ist das einzige, das sich verdoppelt, wenn man es teilt." – Albert Schweitzer  
+	"Ein Problem ist eine Chance in Arbeitskleidung." – Henry Ford  
+	"Man kann niemanden überholen, wenn man in seine Fußstapfen tritt." – François Truffaut  
+	"Erfolg besteht darin, dass man genau die Fähigkeiten hat, die im Moment gefragt sind." – Henry Ford  
+	"Die größte Entdeckung unserer Generation ist, dass ein Mensch sein Leben ändern kann, indem er seine Einstellung ändert." – William James  
+	"Die Vergangenheit kann man nicht ändern, aber die Zukunft liegt in deinen Händen."  
+	"Das Leben beginnt am Ende deiner Komfortzone." – Neale Donald Walsch  
+	"Der einzige Unterschied zwischen einem guten Tag und einem schlechten Tag ist deine Einstellung." – Dennis S. Brown  
+	"Denke nicht so oft an das, was dir fehlt, sondern an das, was du hast." – Mark Aurel  
+	"Jeder Tag ist eine zweite Chance."  
+	"Es ist nicht die stärkste Spezies, die überlebt, noch die intelligenteste, sondern diejenige, die am ehesten bereit ist, sich zu verändern." – Charles Darwin  
+	"Auch der weiteste Weg beginnt mit einem ersten Schritt." – Lao Tse  
+	"Phantasie ist wichtiger als Wissen, denn Wissen ist begrenzt." – Albert Einstein  
+	"Du kannst den Wind nicht ändern, aber die Segel anders setzen." – Aristoteles  
+	"Man sieht nur mit dem Herzen gut, das Wesentliche ist für die Augen unsichtbar." – Antoine de Saint-Exupéry  
+	"Wer will, findet Wege. Wer nicht will, findet Gründe." – Götz Werner  
+	"Es gibt keine Grenzen. Weder für Gedanken, noch für Gefühle. Es ist die Angst, die immer Grenzen setzt." – Ingmar Bergman  
+	"Der einzige Weg, um Fehler zu vermeiden, ist, nichts zu tun." – Denis Waitley  
+	"Ein Diamant ist ein Stück Kohle, das unter Druck gesetzt wurde."  
+	"Wer etwas will, findet Wege. Wer etwas nicht will, findet Ausreden."  
+	"Wenn du dich auf das konzentrierst, was du nicht hast, wirst du nie genug haben." – Oprah Winfrey  
+	"Es gibt keinen Mangel an Gelegenheiten, nur einen Mangel an Entschlossenheit."  
+	"Die einzige wirkliche Behinderung im Leben ist eine schlechte Einstellung." – Scott Hamilton  
+	"Die Definition von Wahnsinn ist, immer wieder das Gleiche zu tun und andere Ergebnisse zu erwarten." – Albert Einstein  
+	"Mut ist Widerstand gegen die Angst, Sieg über die Angst, nicht Abwesenheit von Angst." – Mark Twain  
+	"Die einzige Konstante im Leben ist die Veränderung." – Heraklit  
+	"Erfolg ist die Fähigkeit, von einem Misserfolg zum nächsten zu gehen, ohne die Begeisterung zu verlieren." – Winston Churchill  
+	"Es ist besser, unvollkommen anzufangen, als perfekt zu zögern."  
+	"Große Taten werden nicht durch Stärke vollbracht, sondern durch Beharrlichkeit." – Samuel Johnson  
+	"Der beste Weg, einen Freund zu haben, ist der, selbst einer zu sein." – Ralph Waldo Emerson  
+	"Ein kluger Mensch macht nicht alle Fehler selbst. Er gibt auch anderen eine Chance." – Winston Churchill  
+	"Ein Ziel zu setzen ist der erste Schritt, das Unsichtbare sichtbar zu machen." – Tony Robbins  
+	"Wer immer tut, was er schon kann, bleibt immer das, was er schon ist." – Henry Ford  
+	"Nicht weil es schwer ist, wagen wir es nicht, sondern weil wir es nicht wagen, ist es schwer." – Seneca  
+	"Man kann niemanden etwas lehren, man kann ihm nur helfen, es in sich selbst zu entdecken." – Galileo Galilei  
+	"Erfolg ist, einmal mehr aufzustehen, als man hingefallen ist." – Oliver Goldsmith  
+	"Die größten Erfolge kommen nach den größten Herausforderungen."  
+	"Das Leben ist wie eine Kamera. Fokus auf das Gute, entwickle aus den Negativen und wenn es nicht klappt, versuche es erneut."  
+	"Schwierigkeiten brechen manche Männer, andere brechen Rekorde." – William Arthur Ward  
+	"Die beste Art, sich selbst eine Freude zu machen, ist, anderen eine Freude zu bereiten."  
+	"Wer fragt, ist ein Narr für eine Minute. Wer nicht fragt, ist ein Narr für sein Leben." – Konfuzius  
+	"Die Wahrheit ist selten rein und niemals einfach." – Oscar Wilde  
+	"Unsere größte Schwäche liegt im Aufgeben. Der sicherste Weg zum Erfolg ist, es immer noch einmal zu versuchen." – Thomas Edison  
+	"Ein Leben ohne Freude ist wie ein langer Weg ohne Gasthaus." – Demokrit  
+	"Ein Leben ohne Freude ist wie ein langer Weg ohne Coffeshops." – Blackforest Craft&Grow
+	"Der Schlüssel zum Erfolg ist, sich über die eigenen Fehler zu freuen." – Benjamin Franklin  
+	"Das größte Vergnügen im Leben besteht darin, Dinge zu tun, die andere für unmöglich halten." – Walter Bagehot  
+	"Die Menschen sind nicht faul. Sie haben nur keine Ziele, die es wert sind." – Tony Robbins  
+	"Jeder kann wütend werden. Das ist einfach. Aber wütend auf die richtige Person, im richtigen Maß, zur richtigen Zeit und aus dem richtigen Grund – das ist schwer." – Aristoteles  
+	"Es ist nicht wenig Zeit, die wir haben, sondern es ist viel Zeit, die wir nicht nutzen." – Seneca  
+	"Was vor uns liegt und was hinter uns liegt, ist nichts im Vergleich zu dem, was in uns liegt." – Ralph Waldo Emerson  
+	"Das Glück ist das einzige, das sich verdoppelt, wenn man es teilt." – Albert Schweitzer  
+	"Erfolg hat drei Buchstaben: TUN." – Johann Wolfgang von Goethe  
+	"Niemand weiß, was er kann, bis er es versucht." – Publilius Syrus  
+	"Die Welt gehört denen, die sie genießen." – Giacomo Leopardi  
+	"Der Mensch ist, was er aus sich macht." – Jean-Paul Sartre  
+	"Das Schwierigste ist, die Entscheidung zu treffen zu handeln, der Rest ist nur Beharrlichkeit." – Amelia Earhart  
+	"Die beste Rache ist ein enormes Maß an Erfolg." – Frank Sinatra  
+	"Die beste Zeit, einen Baum zu pflanzen, war vor zwanzig Jahren. Die zweitbeste Zeit ist jetzt." – Chinesisches Sprichwort  
+	"Was du nicht willst, dass man dir tu’, das füg auch keinem anderen zu." – Goldene Regel  
+	"Phantasie ist wichtiger als Wissen, denn Wissen ist begrenzt." – Albert Einstein  
+	"Ein guter Plan, heute energisch ausgeführt, ist besser als ein perfekter Plan nächste Woche." – George S. Patton  
+	"Nur wer seinen eigenen Weg geht, kann von niemandem überholt werden." – Marlon Brando  
+	"Es ist nicht wichtig, wie langsam du gehst, solange du nicht stehen bleibst." – Konfuzius  
+	"Der Weise legt nicht alle Eier in einen Korb." – Warren Buffett  
+	"Der beste Weg, die Zukunft vorherzusagen, ist, sie zu erschaffen." – Peter Drucker  
+	"Die beste Zeit, sich auf die Zukunft vorzubereiten, ist jetzt." – Mark Twain  
+	"Wir müssen bereit sein, das Leben loszulassen, das wir geplant haben, um das Leben zu akzeptieren, das auf uns wartet." – Joseph Campbell  
+	"Der Unterschied zwischen dem Unmöglichen und dem Möglichen liegt in der Entschlossenheit einer Person." – Tommy Lasorda  
+	"Der einzige Weg, großartige Arbeit zu leisten, ist, zu lieben, was man tut." – Steve Jobs  
+	"Es gibt keine Grenzen. Es gibt nur Plateaus, und du darfst nicht dort bleiben, du musst sie durchbrechen." – Bruce Lee  
+	"Wer kämpft, kann verlieren. Wer nicht kämpft, hat schon verloren." – Bertolt Brecht  
+	"Es gibt keinen Aufzug zum Erfolg. Du musst die Treppe nehmen."  
+	"Das Leben ist das, was passiert, während du eifrig dabei bist, andere Pläne zu machen." – John Lennon  
+	"Auch aus Steinen, die einem in den Weg gelegt werden, kann man Schönes bauen." – Johann Wolfgang von Goethe  
+	"Freiheit bedeutet Verantwortung. Das ist der Grund, warum die meisten Menschen sich vor ihr fürchten." – George Bernard Shaw  
+	"Der Unterschied zwischen dem Gewöhnlichen und dem Außergewöhnlichen ist der kleine Funken Extra."  
+	"Das größte Risiko im Leben ist, kein Risiko einzugehen." – Mark Zuckerberg  
+	"Niemand kann zurückgehen und einen neuen Anfang machen. Aber jeder kann heute anfangen, ein neues Ende zu schaffen." – Maria Robinson  
+	"Ein kluger Mann macht einen Fehler, lernt daraus und macht diesen Fehler nie wieder." – Winston Churchill  
+	"Es ist nicht der Berg, den wir bezwingen, sondern uns selbst." – Edmund Hillary  
+	"Alles, was du dir vorstellen kannst, ist real." – Pablo Picasso  
+	"Ein Problem ist eine Gelegenheit, dein Bestes zu geben." – Duke Ellington  
+	"Jeder Tag ist eine neue Chance, das zu tun, was du möchtest."  
+	"Das Geheimnis des Erfolgs ist, den Standpunkt des anderen zu verstehen." – Henry Ford  
+	"Wer nicht wagt, der nicht gewinnt." – Sprichwort  
+	"Das Leben ist zu kurz, um auf den perfekten Moment zu warten. Nimm den Moment und mach ihn perfekt."  
+	"Jeder Mensch ist ein Künstler." – Joseph Beuys  
+	"Wer sich selbst vertraut, führt andere." – Laozi  
+	"Wer aufgehört hat, besser zu werden, hat aufgehört, gut zu sein." – Philip Rosenthal  
+	"Die größten Erfolge beginnen mit einer kleinen Idee."  
+	"Glück ist, wenn Gelegenheit auf Vorbereitung trifft." – Seneca  
+	"Manchmal gewinnt man, manchmal lernt man." – Nelson Mandela  
+	"Der beste Weg, Träume wahr werden zu lassen, ist aufzuwachen." – Paul Valéry  
+	"Was wir wissen, ist ein Tropfen. Was wir nicht wissen, ist ein Ozean." – Isaac Newton  
+	"Die Zukunft gehört denen, die an die Wahrhaftigkeit ihrer Träume glauben." – Eleanor Roosevelt  
+	"Wenn du schnell gehen willst, geh allein. Wenn du weit gehen willst, geh zusammen." – Afrikanisches Sprichwort  
+	"Nur wer sein Ziel kennt, findet den Weg." – Laotse  
+	"Der Geist ist wie ein Fallschirm. Er funktioniert nur, wenn er offen ist." – Frank Zappa  
+	"Tue heute etwas, wofür dir dein zukünftiges Ich danken wird."  
+	"Wenn du ein Problem nicht lösen kannst, erweitere es." – Dwight D. Eisenhower  
+	"Es gibt keinen größeren Luxus als die Möglichkeit, das zu tun, was man liebt."  
+	"Was die Raupe das Ende der Welt nennt, nennt der Rest der Welt Schmetterling." – Laozi  
+	"Die einzige Grenze für unsere Verwirklichung von morgen wird unser Zweifel von heute sein." – Franklin D. Roosevelt  
+	"Niemand weiß, wie weit seine Kräfte gehen, bis er sie versucht hat." – Johann Wolfgang von Goethe  
+	"Deine Zeit ist begrenzt, also verschwende sie nicht, das Leben eines anderen zu leben." – Steve Jobs  
+	"Die Strenge ist der Preis für die Freiheit." – Dietrich Bonhoeffer  
+	"Glück ist keine Station, sondern eine Art zu reisen." – Margaret Lee Runbeck  
+	"Der Sinn des Lebens besteht nicht darin, ein erfolgreicher Mensch zu sein, sondern ein wertvoller." – Albert Einstein  
+	"Verbringe deine Zeit nicht damit, dich über Probleme zu ärgern. Löse sie."  
+	"Die beste Vorbereitung für morgen ist, heute dein Bestes zu geben." – H. Jackson Brown Jr.  
+	"Du wirst nie wissen, wie weit du gehen kannst, wenn du es nicht versuchst."  
+	"Man kann den Wind nicht ändern, aber die Segel anders setzen." – Aristoteles  
+	"Die Kunst ist, einmal mehr aufzustehen, als man umgeworfen wird." – Winston Churchill  
+	"Der größte Ruhm liegt nicht darin, nie zu fallen, sondern jedes Mal wieder aufzustehen." – Konfuzius  
+	"Das Leben ist entweder ein großes Abenteuer oder nichts." – Helen Keller  
+	"Die Wahrheit ist nicht immer angenehm, aber immer notwendig." – Friedrich Nietzsche  
+	"Die Essenz des Lebens ist, Fehler zu machen und daraus zu lernen."  
+	"Der einzige Mensch, der dich aufhalten kann, bist du selbst." – Eleanor Roosevelt  
+	"Die wichtigste Stunde ist immer die Gegenwart." – Meister Eckhart  
+	"Sei die Veränderung, die du in der Welt sehen möchtest." – Mahatma Gandhi  
+	"Wer nicht wagt, der nicht gewinnt." – Sprichwort
+	"Der einzige Weg, etwas Großartiges zu tun, ist, zu lieben, was man tut." – Steve Jobs
+	"Es ist nie zu spät, das zu sein, was du hättest sein können." – George Eliot
+	"Jeder Mensch ist der Architekt seines eigenen Schicksals." – Appius Claudius
+	"Der Weg ist das Ziel." – Konfuzius
+	"Glück entsteht oft durch Aufmerksamkeit in kleinen Dingen." – Wilhelm Busch
+	"Du musst das Leben tanzen." – Friedrich Nietzsche
+	"Erfolg ist, einmal mehr aufzustehen, als man hingefallen ist." – Oliver Goldsmith
+	"Die beste Rache ist massiver Erfolg." – Frank Sinatra
+	"Man kann niemanden überholen, wenn man in seine Fußstapfen tritt." – François Truffaut
+	"Es gibt keine Grenzen. Nur Plateaus, und du darfst nicht dort bleiben." – Bruce Lee
+	"Träume nicht dein Leben, sondern lebe deinen Traum."
+	"Die größten Erfolge kommen nach den größten Herausforderungen."
+	"Der Unterschied zwischen dem Unmöglichen und dem Möglichen liegt in der Entschlossenheit einer Person." – Tommy Lasorda
+	"Die Zukunft gehört denen, die an die Schönheit ihrer Träume glauben." – Eleanor Roosevelt
+	"Derjenige, der sich nicht bewegt, wird niemals wissen, wie weit er gehen kann." – Anonymous
+	"Ein Diamant ist ein Stück Kohle, das unter Druck gesetzt wurde."
+	"Alles, was du dir vorstellen kannst, ist real." – Pablo Picasso
+	"Erfolg hat drei Buchstaben: TUN." – Johann Wolfgang von Goethe
+	"Das Leben beginnt am Ende deiner Komfortzone." – Neale Donald Walsch
+	"Die beste Zeit, einen Baum zu pflanzen, war vor zwanzig Jahren. Die zweitbeste Zeit ist jetzt." – Chinesisches Sprichwort
+	"Es gibt keine Zufälle im Leben, nur Chancen, die du ergreifen kannst." – Anonym
+	"Die beste Rache ist ein enormes Maß an Erfolg." – Frank Sinatra
+	"Die größte Entdeckung unserer Generation ist, dass ein Mensch sein Leben ändern kann, indem er seine Einstellung ändert." – William James
+	"Mut steht am Anfang des Handelns, Glück am Ende." – Demokrit
+	"Nicht der Wind, sondern das Segel bestimmt die Richtung." – Chinesisches Sprichwort
+	"Ein Ziel ohne Plan ist nur ein Wunsch." – Antoine de Saint-Exupéry
+	"Der einzige Weg, großartige Arbeit zu leisten, ist, zu lieben, was man tut." – Steve Jobs
+	"Die größte Gefahr für die meisten von uns ist nicht, dass unser Ziel zu hoch ist und wir es verfehlen, sondern dass es zu niedrig ist und wir es erreichen." – Michelangelo
+	"Wer immer tut, was er schon kann, bleibt immer das, was er schon ist." – Henry Ford
+	"Wer kämpft, kann verlieren. Wer nicht kämpft, hat schon verloren." – Bertolt Brecht
+	"Die beste Art, die Zukunft vorherzusagen, ist, sie zu erschaffen." – Peter Drucker
+	"Die schwierigste Zeit in unserem Leben ist die beste Gelegenheit, innere Stärke zu entwickeln." – Dalai Lama
+	"Nicht der Berg, den wir bezwingen, sondern uns selbst." – Edmund Hillary
+	"Es ist nicht die stärkste Spezies, die überlebt, noch die intelligenteste, sondern diejenige, die am ehesten bereit ist, sich zu verändern." – Charles Darwin
+	"Die einzige Konstante im Leben ist die Veränderung." – Heraklit
+	"Das Leben ist das, was passiert, während du eifrig dabei bist, andere Pläne zu machen." – John Lennon
+	"Wenn du es träumen kannst, kannst du es auch tun." – Walt Disney
+	"Die Wahrheit ist selten rein und niemals einfach." – Oscar Wilde
+	"Wenn du dich auf das konzentrierst, was du nicht hast, wirst du nie genug haben." – Oprah Winfrey
+	"Es ist besser, unvollkommen anzufangen, als perfekt zu zögern."
+	"Es gibt keine Mangel an Gelegenheiten, nur einen Mangel an Entschlossenheit."
+	"Die einzige wirkliche Behinderung im Leben ist eine schlechte Einstellung." – Scott Hamilton
+	"Wenn du die Absicht hast, dich zu erheben, dann erhebe dich."
+	"Ein Problem ist eine Gelegenheit, dein Bestes zu geben." – Duke Ellington
+	"Es gibt keinen Mangel an Gelegenheiten, sondern nur an Entschlossenheit."
+	"Die besten Dinge im Leben kommen oft aus den schwierigsten Situationen."
+	"Die Welt gehört denen, die sie genießen." – Giacomo Leopardi
+	"Die Vergangenheit kann man nicht ändern, aber die Zukunft liegt in deinen Händen."
+	"Die beste Rache ist massiver Erfolg." – Frank Sinatra
+	"Die größten Taten entstehen aus Beharrlichkeit, nicht aus Stärke." – Samuel Johnson
+	"Die Definition von Wahnsinn ist, immer wieder das Gleiche zu tun und andere Ergebnisse zu erwarten." – Albert Einstein
+	"Erfolg ist, einmal mehr aufzustehen, als man hingefallen ist." – Oliver Goldsmith
+	"Die größten Erfolge kommen nach den größten Herausforderungen."
+	"Das Leben ist wie eine Kamera. Fokus auf das Gute, entwickle aus den Negativen und wenn es nicht klappt, versuche es erneut."
+	"Es ist nicht der Berg, den wir bezwingen, sondern uns selbst." – Edmund Hillary
+	"Die beste Art, sich selbst eine Freude zu machen, ist, anderen eine Freude zu bereiten."
+	"Die Wahrheit ist selten rein und niemals einfach." – Oscar Wilde
+	"Die einzige wirkliche Behinderung im Leben ist eine schlechte Einstellung." – Scott Hamilton
+	"Ein Diamant ist ein Stück Kohle, das unter Druck gesetzt wurde."
+	"Wer etwas will, findet Wege. Wer nicht will, findet Gründe." – Götz Werner
+	"Das Leben ist zu kurz, um auf den perfekten Moment zu warten. Nimm den Moment und mach ihn perfekt."
+	"Es ist nicht die stärkste Spezies, die überlebt, noch die intelligenteste, sondern diejenige, die am ehesten bereit ist, sich zu verändern." – Charles Darwin
+	"Wer sich selbst vertraut, führt andere." – Laozi
+	"Die beste Zeit, sich auf die Zukunft vorzubereiten, ist jetzt." – Mark Twain
+	"Wer immer tut, was er schon kann, bleibt immer das, was er schon ist." – Henry Ford
+	"Die beste Rache ist ein enormes Maß an Erfolg." – Frank Sinatra
+	"Der Schlüssel zum Erfolg ist, sich über die eigenen Fehler zu freuen." – Benjamin Franklin
+	"Es ist nie zu spät, das zu sein, was du hättest sein können." – George Eliot
+	"Wer sich nicht bewegt, wird niemals wissen, wie weit er gehen kann."
+	"Der Unterschied zwischen dem Unmöglichen und dem Möglichen liegt in der Entschlossenheit einer Person." – Tommy Lasorda
+	"Der Unterschied zwischen dem Unmöglichen und dem Möglichen liegt oft nur an einer guten Tüte." – Blackforest Craft&Grow
+	"Schwierigkeiten brechen manche Männer, andere brechen Rekorde." – William Arthur Ward
+	"Das Leben beginnt am Ende deiner Komfortzone."
+	"Das größte Risiko im Leben ist, kein Risiko einzugehen." – Mark Zuckerberg
+	"Das größte Risiko im Leben ist, wenn einem das Gras ausgeht und man nicht rechtzeitig nachgepflanzt hat." – Blackforest Craft&Grow
+	"Herb is the healing of a nation, alcohol is the destruction." - Bob Marley
+	"When you smoke the herb, it reveals you to yourself." - Bob Marley
+	"The greatness of a man is not in how much wealth he acquires, but in his integrity and his ability to affect those around him positively." - Bob Marley
+	"Don’t gain the world and lose your soul; wisdom is better than silver or gold." - Bob Marley
+	"Love the life you live. Live the life you love." - Bob Marley
+
+	"Ich bin nicht faul, ich bin nur im Energiesparmodus." - Lazy Blunt  
+	"Man sagt, Gras macht dumm. Ich finde das total Banane... Wo war ich nochmal?" - Verplant McGreen  
+	"Es ist 4:20 irgendwo auf der Welt!" - Global Toker  
+	"Ich kiffe nicht, ich betreibe botanische Meditation." - Zen Weedman  
+	"Gras ist die einzige Pflanze, die dich wachsen lässt, wenn du sie rauchst." - High Botanist  
+	"Kiffen ist wie Urlaub im Kopf – nur ohne Sand in den Schuhen." - Chill Traveler  
+	"Ein Joint am Morgen vertreibt Kummer und Sorgen." - Wake'n'Bake Willy  
+	"Manche suchen Erleuchtung – ich zünde sie an." - Smoky Lama  
+	"Ich bin kein Junkie, ich bin ein Enthusiast!" - Enthusiastic Eric  
+	"Leben ist das, was zwischen den Joints passiert." - Cloudy Philosopher  
+	"Kiffen schadet dem Gedächtnis – oder wie war das nochmal?" - Forgetful Freddy  
+	"Ich bin kein Faulpelz, ich genieße einfach die Kunst des Nichts-Tuns." - Lazy Leaf  
+	"Warum laufen, wenn man auch liegen kann?" - Sofa Stoner  
+	"Die einzige Grüne Partei, die ich wähle, ist in meinem Grinder." - Politisch Grün  
+	"High zu sein bedeutet, die Welt aus einer anderen Perspektive zu sehen – meistens liegend." - Perspective Pete  
+	"Ich rauche nur, um der Pflanze eine Stimme zu geben." - Eco-Toker  
+	"Das Leben ist zu kurz, um nüchtern zu bleiben." - Wavy Wanda  
+	"Kiffen ist kein Hobby, es ist eine Lebenseinstellung." - Lifestyle Larry  
+	"Wieso arbeiten, wenn du chillen kannst?" - Relax Max  
+	"Ich habe keinen Heißhunger – ich mache nur gerne Snack-Reisen." - Snack Traveler  
+	"Ich bin nicht langsam – ich genieße die Zeit intensiver." - Slow Mo Joe  
+	"Die besten Ideen kommen immer nach dem dritten Joint." - Creative Carl  
+	"Kiffen ist die beste Art, langweilige Filme erträglich zu machen." - Movie Burner  
+	"Man sagt, Gras macht faul. Ich sage, es macht entspannt." - Chill Bill  
+	"Wenn du denkst, ich sei langsam – warte, bis ich nüchtern bin." - Slow Steve  
+	"High zu sein ist kein Zustand, es ist eine Kunst." - Artistic Alice  
+	"Kiffen ist wie Yoga für die Seele – nur ohne die Schmerzen." - Flexy Smokey  
+	"Lieber einen Joint in der Hand als Sorgen im Kopf." - Happy Harold  
+	"Kiffen ist wie eine Tasse Tee – nur mit mehr Kreativität." - Teatime Toker  
+	"Man sagt, Gras macht gleichgültig. Aber wem interessiert das schon?" - Whatever Walter  
+	"Rauchzeichen – die älteste Form der Kommunikation." - Smoke Signal Sally  
+	"Die besten Gespräche entstehen immer beim Teilen eines Joints." - Talkative Tom  
+	"Ich bin nicht stoned, ich bin künstlerisch inspiriert." - Inspired Irene  
+	"Warum lachen, wenn du high sein kannst und beides gleichzeitig machst?" - Giggly Gary  
+	"Kiffen ist wie der Reset-Knopf für die Seele." - Restart Ralph  
+	"In einer Welt voller Stress bin ich die Wolke aus Gelassenheit." - Chill Cloud Charlie  
+	"Die besten Dinge im Leben sind grün." - Greeny Genie  
+	"Warum kiffen? Weil ich's kann." - Simple Simon  
+	"Gras ist wie Schokolade – man kann nie genug haben." - Sweetie Smoke  
+	"Ein Joint am Tag hält den Wahnsinn fern." - Balanced Bob  
+	"Ich bin nicht verplant, ich bin strategisch entspannt." - Relaxed Ron  
+	"Kiffen macht die Welt nicht besser, aber sie fühlt sich so an." - Happy Haze  
+	"Warum Sorgen machen, wenn du auch kiffen kannst?" - No-Worry Wendy  
+	"Ich bin nicht faul, ich bin nachhaltig – ich spare Energie." - Green Saver  
+	"Die einzige grüne Energie, die ich unterstütze, wächst in meinem Garten." - Eco Grower  
+	"Gras ist wie das Leben – manchmal muss man es einfach genießen." - Life Lover  
+	"Wenn ich stoned bin, ist jeder Tag Sonntag." - Lazy Sunday Sam  
+	"Kiffen ist wie Urlaub, nur günstiger." - Budget Burner  
+	"High sein ist die beste Art, kreativ zu sein." - Creative Chris  
+	"Warum nachdenken, wenn du auch entspannen kannst?" - Relaxing Rex  
+	"Man sagt, ich sei langsam – ich nenne es bewusstes Leben." - Mindful Mike  
+	"Ein Leben ohne Gras ist wie ein Tag ohne Sonne." - Sunny Stoner  
+	"Die besten Geschichten beginnen immer mit einem Joint." - Story Smokey  
+	"Gras ist der Klebstoff, der Freundschaften zusammenhält." - Bonding Barry  
+	"Kiffen ist wie Musik für die Seele." - Soulful Sam  
+	"Ich bin nicht stoned, ich bin auf einer anderen Frequenz." - Frequency Fred  
+	"Manchmal braucht man keinen Plan, nur einen Joint." - Wander Weed  
+	"High sein bedeutet, die kleinen Dinge zu schätzen – wie Chips." - Munchie Marvin  
+	"Ich bin nicht unmotiviert, ich bin einfach in der Wolke des Seins gefangen." - Cloudy Curtis  
+	"Gras ist die Antwort, egal was die Frage ist." - Answer Andy  
+	"Warum eilen, wenn du auch chillen kannst?" - Slow Flow Flo  
+	"Die besten Ideen sind immer die, die du vergisst, wenn du stoned bist." - Forgetful Frank  
+	"Lieber high sein als gestresst." - Chill Carl  
+	"Ich bin nicht langsam, ich genieße einfach den Moment intensiver." - Zen Zack  
+	"High sein bedeutet, die kleinen Dinge zu genießen." - Grateful Greg  
+	"Warum hetzen, wenn du auch genießen kannst?" - Chill Chuck  
+	"Lieber kiffen als streiten." - Peaceful Paul  
+	"Die besten Gespräche entstehen durch einen Joint." - Smoky Steve  
+	"Warum Sorgen machen, wenn du auch lachen kannst?" - Laughing Lily  
+	"High zu sein ist die Kunst, nichts zu tun und es zu genießen." - Happy Henry  
+	"Lieber langsam und glücklich als schnell und gestresst." - Joyful Jill  
+	"Kiffen ist die beste Art, kreativ zu sein." - Artsy Alice  
+	"Warum rennen, wenn du auch chillen kannst?" - Laidback Luke  
+	"High sein bedeutet, die Welt neu zu entdecken." - Explorer Eddie  
+]
+
+

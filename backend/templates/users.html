@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Benutzerverwaltung - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">Benutzerverwaltung</h3>
+<p class="text-muted">
+    Einzelne Berechtigungen pro Nutzer vergeben. Es gibt bewusst kein separates
+    "Nutzer verwalten"-Recht — nur Admins (<code>is_admin</code>) können hier etwas ändern.
+</p>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Berechtigungen zuweisen</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('users_save') }}" id="assignForm"
+              onsubmit="return confirmIfAdmin();">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="mb-3">
+                <label for="userId" class="form-label">Nutzer</label>
+                <input type="text" id="userId" name="user_id" class="form-control"
+                       placeholder="Name suchen oder User-ID eingeben" required autocomplete="off">
+                <div id="userPreview" class="form-text"></div>
+                <div class="form-text">
+                    Auch für Nutzer möglich, die den Server bereits verlassen haben oder ihm
+                    noch nicht beigetreten sind — dann bitte die Discord-User-ID manuell eingeben.
+                </div>
+            </div>
+
+            <label class="form-label d-block">Berechtigungen</label>
+            {% for key in all_permissions %}
+            <div class="form-check{% if key == 'is_admin' %} border border-danger rounded p-2 mb-2{% else %} mb-1{% endif %}">
+                <input class="form-check-input" type="checkbox" name="permissions" value="{{ key }}" id="perm_{{ key }}">
+                <label class="form-check-label{% if key == 'is_admin' %} text-danger fw-bold{% endif %}" for="perm_{{ key }}">
+                    {{ permission_labels.get(key, key) }}
+                </label>
+                {% if key == 'is_admin' %}
+                <div class="small text-danger">⚠️ Voller Zugriff auf ALLES, inklusive dieser Benutzerverwaltung selbst.</div>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            <p class="text-muted small mt-2">
+                Beim Speichern werden für diesen Nutzer <strong>genau</strong> die angehakten
+                Berechtigungen gesetzt — nicht angehakte, die er vorher hatte, werden entfernt.
+            </p>
+
+            <button type="submit" class="btn btn-primary mt-2">Speichern</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h5 class="h6 mb-0">Nutzer mit Berechtigungen</h5></div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle mb-0">
+                <thead>
+                    <tr><th>Nutzer</th><th>Berechtigungen</th></tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td class="text-nowrap">
+                            {{ u.name }}
+                            {% if bot_owner_id and u.discord_user_id == bot_owner_id %}
+                            <span class="badge bg-warning text-dark ms-1" title="Unveränderlicher Bot-Owner (aus .env, nicht über diese Seite entfernbar)">👑 Owner</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-2">
+                                {% for p in u.permissions %}
+                                {% if bot_owner_id and u.discord_user_id == bot_owner_id %}
+                                <span class="badge border-0 px-2 py-2 {% if p.key == 'is_admin' %}bg-danger{% else %}bg-secondary{% endif %}"
+                                      title="Der Bot-Owner kann nicht über diese Seite verändert werden.">
+                                    {{ permission_labels.get(p.key, p.key) }}
+                                </span>
+                                {% else %}
+                                <form method="POST" action="{{ url_for('users_revoke_one') }}" class="d-inline"
+                                      onsubmit="return confirm('Berechtigung &quot;{{ p.key }}&quot; für {{ u.name }} wirklich entfernen?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="user_id" value="{{ u.discord_user_id }}">
+                                    <input type="hidden" name="permission" value="{{ p.key }}">
+                                    <button type="submit"
+                                        class="badge border-0 px-2 py-2 {% if p.key == 'is_admin' %}bg-danger{% else %}bg-secondary{% endif %}"
+                                        title="Vergeben von {{ p.granted_by }} am {{ p.granted_at }}">
+                                        {{ permission_labels.get(p.key, p.key) }} ✕
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% endfor %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="2" class="text-muted">Noch keine Berechtigungen vergeben.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/member-picker.js') }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    attachMemberPicker('userId', 'userPreview');
+});
+
+function confirmIfAdmin() {
+    const adminBox = document.getElementById('perm_is_admin');
+    if (adminBox && adminBox.checked) {
+        return confirm('Achtung: Du vergibst hiermit VOLLEN Admin-Zugriff (is_admin) an diesen Nutzer. Fortfahren?');
+    }
+    return true;
+}
+</script>
+{% endblock %}

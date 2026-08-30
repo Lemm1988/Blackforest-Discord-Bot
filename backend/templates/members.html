@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_moderation_subnav.html" import moderation_subnav with context %}
+{% block title %}Mitglieder - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">Moderation</h3>
+{{ moderation_subnav('actions') }}
+<h4 class="h5 mb-3">Überwachungs-Übersicht</h4>
+<p class="text-muted">
+    Alle aktuellen Server-Mitglieder, sortiert nach Automod-Verstößen (auffälligste zuerst).
+    Klick auf einen Namen für Details, Verstoß-Historie und Moderationsaktionen.
+</p>
+
+<div class="table-responsive">
+    <table class="table table-sm table-striped align-middle">
+        <thead>
+            <tr>
+                <th>Mitglied</th>
+                <th>Beigetreten</th>
+                <th>Zuletzt aktiv</th>
+                <th>Nachrichten</th>
+                <th>Verstöße</th>
+                <th>Level</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for m in members %}
+            <tr>
+                <td>
+                    <img src="{{ m.avatar }}" alt="" width="24" height="24" class="rounded-circle me-1">
+                    {{ m.display_name }}
+                    {% if m.is_owner %}<span class="badge bg-warning text-dark">👑 Owner</span>{% endif %}
+                    {% if m.timed_out_until %}<span class="badge bg-secondary">🔇 getimeoutet</span>{% endif %}
+                </td>
+                <td class="small text-muted">{{ m.joined_at[:10] if m.joined_at else "—" }}</td>
+                <td class="small text-muted">{{ m.last_message_at[:16].replace("T", " ") if m.last_message_at else "nie" }}</td>
+                <td>{{ m.message_count }}</td>
+                <td>
+                    {% if m.violation_count > 0 %}
+                    <span class="badge bg-danger">{{ m.violation_count }}</span>
+                    {% else %}
+                    <span class="text-muted">0</span>
+                    {% endif %}
+                </td>
+                <td>{{ m.level }}</td>
+                <td><a href="{{ url_for('member_detail', user_id=m.id) }}" class="btn btn-outline-primary btn-sm">Details</a></td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-muted">Keine Mitglieder gefunden.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
