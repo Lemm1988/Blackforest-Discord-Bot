@@ -37,8 +37,12 @@ jobs:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: cargo ndk -t arm64-v8a -o ../output build --release
 
+      - name: Verify binary exists
+        run: ls -la dumbpipe-src/target/aarch64-linux-android/release/dumbpipe
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: dumbpipe-android-arm64
-          path: output/arm64-v8a/dumbpipe
+          path: dumbpipe-src/target/aarch64-linux-android/release/dumbpipe
+          if-no-files-found: error
