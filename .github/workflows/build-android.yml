@@ -1,4 +1,4 @@
-name: Build dumbpipe for Android
+name: Build Android app
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  build:
+  build-dumbpipe:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -40,9 +40,56 @@ jobs:
       - name: Verify binary exists
         run: ls -la dumbpipe-src/target/aarch64-linux-android/release/dumbpipe
 
-      - name: Upload artifact
+      - name: Upload dumbpipe artifact
         uses: actions/upload-artifact@v4
         with:
           name: dumbpipe-android-arm64
           path: dumbpipe-src/target/aarch64-linux-android/release/dumbpipe
+          if-no-files-found: error
+
+  build-apk:
+    needs: build-dumbpipe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download dumbpipe binary
+        uses: actions/download-artifact@v4
+        with:
+          name: dumbpipe-android-arm64
+          path: downloaded-binary
+
+      - name: Place binary as jniLibs "shared library"
+        run: |
+          mkdir -p android-app/app/src/main/jniLibs/arm64-v8a
+          cp downloaded-binary/dumbpipe android-app/app/src/main/jniLibs/arm64-v8a/libdumbpipe.so
+          chmod 755 android-app/app/src/main/jniLibs/arm64-v8a/libdumbpipe.so
+          ls -la android-app/app/src/main/jniLibs/arm64-v8a/
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        working-directory: android-app
+        run: gradle assembleDebug --stacktrace
+
+      - name: Verify APK exists
+        run: ls -la android-app/app/build/outputs/apk/debug/
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: blackforestbot-tunnel-debug-apk
+          path: android-app/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error

@@ -39,3 +39,32 @@ selbst nutzt der Agent zusaetzlich `gh` (GitHub CLI, per Device-Code-Login autor
 Das gebaute Binary wird in eine schlanke Android-Kotlin-App gebundlet, die es beim
 App-Start als Subprozess mit einem persoenlichen Iroh-Ticket startet, eine WebView auf
 das Bot-Backend zeigt und den Tunnel beim Schliessen der App wieder beendet.
+
+## Die App selbst
+
+- **Package:** `de.blackforest.bottunnel`, App-Name "BlackforestBot Zugang".
+- **minSdk 26** (Android 8.0) fuer breite Geraeteabdeckung.
+- **Erster Start:** Eingabemaske fuer das persoenliche Iroh-Ticket (Textfeld + Speichern).
+  Wird via `EncryptedSharedPreferences` (Jetpack Security Crypto, AES-256) lokal verschluesselt
+  gespeichert, nie im Klartext, nie fest einkompiliert.
+- **Danach:** Beim App-Start (bzw. jedes Mal, wenn die App in den Vordergrund kommt) wird der
+  Tunnel-Prozess automatisch gestartet, kurze Ladeanzeige, dann laedt eine WebView
+  `https://127.0.0.1:8500`. Geht die App in den Hintergrund oder wird geschlossen, wird der
+  Tunnel-Prozess sofort wieder beendet (`Process.destroy()`) - kein Foreground-Service, keine
+  Dauer-Benachrichtigung, kein Weiterlaufen im Hintergrund.
+- **Ticket aendern:** Ueber das Overflow-Menue (drei Punkte oben rechts) -> "Ticket aendern",
+  z.B. nach einem Widerruf/neuen Ticket vom Owner.
+- **Zertifikats-Pinning:** Das Backend nutzt ein selbstsigniertes Zertifikat. Die App vertraut
+  NICHT pauschal jedem Zertifikat (kein `handler.proceed()` fuer jeden SSL-Fehler), sondern
+  vergleicht in `onReceivedSslError` den SHA-256-Fingerabdruck des tatsaechlich praesentierten
+  Zertifikats exakt gegen den fest hinterlegten, bekannten Fingerabdruck von
+  `backend/ssl/server.crt`. **Falls das Zertifikat auf dem Pi je neu erzeugt wird, muss der
+  Fingerabdruck in `MainActivity.kt` (`EXPECTED_FINGERPRINT_SHA256`) manuell aktualisiert und
+  die App neu gebaut werden** - sonst verweigert die App die Verbindung.
+
+## Installation der Debug-APK
+
+Kein Play Store, kein eigenes Signing-Setup - die APK aus dem GitHub-Actions-Artefakt
+(`blackforestbot-tunnel-debug-apk`) ist mit dem Standard-Android-Debug-Schluessel signiert.
+Herunterladen, aufs Handy uebertragen, "Installation aus unbekannten Quellen" fuer die
+jeweilige Quelle (Dateimanager/Downloads) erlauben, APK antippen zum Installieren.
