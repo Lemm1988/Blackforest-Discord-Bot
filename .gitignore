@@ -1,0 +1,23 @@
+# Rust
+/target/
+Cargo.lock
+**/*.rs.bk
+
+# Android / Gradle (fuer die spaetere Kotlin-App in diesem Repo)
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# CI-Build-Ausgaben (werden als Workflow-Artefakt hochgeladen, nicht committet)
+/output/
+/dumbpipe-src/
