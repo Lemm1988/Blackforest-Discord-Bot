@@ -24,9 +24,30 @@ venv/
 .pytest_cache/
 .idea/
 .vscode/
+*.iml
+.DS_Store
 
 # breiter gefasst fuer Zertifikate/Schluessel, nicht nur unter backend/ssl/
 *.pem
 
 # Zeitgestempelte Backup-Dateien mit untypischer Endung (z.B. bot.db.bak_20260829_...)
 *.bak_*
+
+# Rust (android-app/, dumbpipe-Build wird von GitHub Actions frisch geklont, nicht vendored)
+target/
+Cargo.lock
+*.rs.bk
+dumbpipe-src/
+output/
+
+# Android / Gradle (fuer die kuenftige Kotlin-App unter android-app/)
+.gradle/
+local.properties
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.jks
+*.keystore
