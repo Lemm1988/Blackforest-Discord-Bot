@@ -15,6 +15,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -83,14 +84,17 @@ class MainActivity : AppCompatActivity() {
 
         setupWebView()
 
-        onBackPressedDispatcher.addCallback(this) {
-            if (webView.visibility == View.VISIBLE && webView.canGoBack()) {
-                webView.goBack()
-            } else {
-                isEnabled = false
-                onBackPressedDispatcher.onBackPressed()
+        val backCallback = object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (webView.visibility == View.VISIBLE && webView.canGoBack()) {
+                    webView.goBack()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
             }
         }
+        onBackPressedDispatcher.addCallback(this, backCallback)
     }
 
     override fun onStart() {
