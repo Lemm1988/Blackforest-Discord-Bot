@@ -3,8 +3,6 @@ package de.blackforest.bottunnel
 import android.content.Context
 import android.util.Log
 import java.io.File
-import java.net.InetSocketAddress
-import java.net.Socket
 import java.util.Collections
 import java.util.concurrent.TimeUnit
 
@@ -101,25 +99,16 @@ object TunnelManager {
         logThread = null
     }
 
+    // ACHTUNG, bewusst NICHT vorhanden: eine aktive TCP-Connect-Probe gegen
+    // LOCAL_PORT. Ein frueherer Versuch, den Tunnel-Aufbau ueber eine wiederholte
+    // rohe TCP-Verbindung (verbinden, sofort wieder schliessen) zu ueberwachen,
+    // wurde zurueckgebaut: dumbpipe behandelt jede eingehende lokale Verbindung als
+    // echten Weiterleitungs-Stream ueber die P2P-Verbindung - ein abrupt
+    // geschlossener Socket entspricht exakt dem bekannten Absturzmuster "Endpoint
+    // dropped without calling Endpoint::close. Aborting ungracefully" (serverseitig
+    // mehrfach beobachtet) und konnte dadurch den echten, gerade im Aufbau
+    // befindlichen Tunnel selbst stoeren. Der Bereitschafts-Check laeuft deshalb
+    // wieder ueber die WebView selbst (echter, legitimer Verbindungsversuch statt
+    // synthetischer Wegwerf-Verbindungen), siehe MainActivity.onReceivedError().
     fun isRunning(): Boolean = process?.isAlive == true
-
-    /**
-     * Echter, funktionaler Bereitschafts-Check statt einer festen Wartezeit: baut
-     * eine rohe TCP-Verbindung zum lokalen Port auf. dumbpipe bindet diesen Port
-     * erst, sobald die eigentliche Iroh-Verbindung zum Server steht (empirisch
-     * bestaetigt: Port-offen und erste funktionierende HTTP-Antwort liegen beim
-     * Server-seitigen Test nur Millisekunden auseinander) - "Port erreichbar" ist
-     * deshalb ein verlaesslicher Indikator fuer "Tunnel ist einsatzbereit", nicht
-     * nur "Prozess laeuft".
-     */
-    fun isLocalPortReachable(): Boolean {
-        return try {
-            Socket().use { socket ->
-                socket.connect(InetSocketAddress(LOCAL_HOST, LOCAL_PORT), 800)
-                true
-            }
-        } catch (e: Exception) {
-            false
-        }
-    }
 }

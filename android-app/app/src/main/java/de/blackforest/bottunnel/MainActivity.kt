@@ -3,6 +3,8 @@ package de.blackforest.bottunnel
 import android.net.http.SslCertificate
 import android.net.http.SslError
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -39,12 +41,24 @@ class MainActivity : AppCompatActivity() {
         private const val EXPECTED_FINGERPRINT_SHA256 =
             "6C:6F:DE:28:DF:07:7E:0B:E6:C1:3D:F4:F2:11:64:47:4D:6E:32:2A:6E:F6:D5:46:3A:72:73:79:FC:E1:AA:BD"
 
-        // Maximale Wartezeit auf einen einsatzbereiten Tunnel, bevor aufgegeben wird.
-        // NAT-Hole-Punching bzw. Relay-Fallback koennen je nach Netzwerk (Mobilfunk,
-        // restriktives WLAN) mehrere Sekunden bis eine knappe Minute dauern - eine
-        // feste kurze Wartezeit fuehrte bisher zu vorzeitigen ERR_TIMED_OUT-Fehlern.
-        private const val TUNNEL_READY_TIMEOUT_MS = 45_000L
-        private const val POLL_INTERVAL_MS = 500L
+        // Verzoegerung, bis der Iroh-Tunnel (NAT-Hole-Punching oder Relay-Fallback)
+        // typischerweise steht, bevor die WebView den ersten Ladeversuch macht.
+        // Bewusst wieder EXAKT wie in der nachweislich funktionierenden Erstversion -
+        // ein zwischenzeitlicher Versuch, das durch aktives TCP-Probing zu ersetzen,
+        // wurde zurueckgebaut: die Probe oeffnete alle 500ms eine rohe TCP-Verbindung
+        // zum dumbpipe-Port und schloss sie sofort wieder ab - das entspricht exakt dem
+        // bekannten Absturzmuster "Endpoint dropped without calling Endpoint::close"
+        // (serverseitig mehrfach beobachtet) und konnte den echten, gerade im Aufbau
+        // befindlichen Tunnel selbst gestoert haben.
+        private const val TUNNEL_STARTUP_DELAY_MS = 2000L
+
+        // Retry-Intervall und Obergrenze fuer den WebView-Ladeversuch (siehe
+        // onReceivedError) - das war schon in der Erstversion der Mechanismus, der die
+        // Verbindung tatsaechlich zustande brachte, wenn der Tunnel etwas laenger
+        // brauchte. Jetzt nur mit einer klaren Obergrenze + Fehlermeldung statt
+        // unbegrenzt stillschweigend zu retryen.
+        private const val RETRY_INTERVAL_MS = 1500L
+        private const val MAX_RETRIES = 25 // ca. 37s zusaetzlich zur Startverzoegerung
     }
 
     private lateinit var prefs: android.content.SharedPreferences
@@ -54,23 +68,25 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ticketInput: EditText
 
     private var tunnelRunningForThisSession = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingLoad: Runnable? = null
 
-    // Wird bei jedem neuen Verbindungsversuch UND jedem Abbruch (onStop, Ticket
-    // aendern) erhoeht - eine laufende Polling-Schleife im Hintergrund-Thread
-    // erkennt daran, dass sie ueberholt/nicht mehr relevant ist, und bricht ab,
-    // ohne noch UI-Elemente eines laengst verlassenen Zustands zu veraendern.
+    // Zaehlt Ladeversuche fuer den AKTUELLEN Verbindungsversuch, zusammen mit
+    // retryGeneration gegen veraltete Retry-Callbacks abgesichert (z.B. nach
+    // Ticket-Wechsel sollen alte Retries nicht mehr weiterlaufen).
+    private var retryCount = 0
+    private var retryGeneration = 0
     @Volatile
     private var connectionGeneration = 0
 
-    // EIN einzelner Hintergrund-Thread, der ALLE TunnelManager.start()/stop()-Aufrufe
-    // sequentiell (FIFO) abarbeitet. Zwingend noetig, seit TunnelManager.stop() auf
-    // die tatsaechliche Prozess-Beendigung wartet (bis zu 5s) - das darf NICHT im
-    // UI-Thread laufen (ANR-Risiko), muss aber trotzdem VOR einem nachfolgenden
-    // start() abgeschlossen sein (sonst genau die Port-Race-Condition, die dieser
-    // Mechanismus eigentlich beheben soll). Ein Single-Thread-Executor garantiert
-    // beides gleichzeitig: asynchron zum UI-Thread, aber streng der Reihe nach.
-    // Dient jetzt AUSSERDEM als Ort fuer die (blockierende) Warteschleife, bis der
-    // Tunnel wirklich einsatzbereit ist - ebenfalls bewusst nicht im UI-Thread.
+    // Hintergrund-Thread NUR fuer das (potenziell bis zu 5s blockierende) Beenden
+    // eines BEREITS LAUFENDEN Tunnel-Prozesses (siehe TunnelManager.stop() - wartet
+    // auf tatsaechliche Prozess-Beendigung, damit ein direkt danach gestarteter neuer
+    // Prozess nicht denselben lokalen Port noch belegt vorfindet). WICHTIG: der
+    // normale Erststart (kein vorheriger Prozess) läuft bewusst NICHT über diesen
+    // Executor, sondern synchron im UI-Thread wie in der Erstversion - dort ist
+    // stop() ohnehin ein No-Op, ein Umweg über einen weiteren Thread brachte dort
+    // nur zusaetzliche Verzoegerung/Fehlerquellen ohne Nutzen.
     private lateinit var tunnelExecutor: ExecutorService
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -132,12 +148,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
-        connectionGeneration++ // eine evtl. noch laufende Warteschleife abbrechen
+        connectionGeneration++
+        pendingLoad?.let { mainHandler.removeCallbacks(it) }
+        pendingLoad = null
         if (tunnelRunningForThisSession) {
             tunnelRunningForThisSession = false
-            // Fire-and-forget aus Sicht des UI-Threads - laeuft im tunnelExecutor,
-            // der aber garantiert, dass dieser stop() VOR jedem folgenden start()
-            // (naechstes onStart()) fertig abgearbeitet ist.
             tunnelExecutor.submit { TunnelManager.stop() }
         }
     }
@@ -166,12 +181,23 @@ class MainActivity : AppCompatActivity() {
             override fun onReceivedError(
                 view: WebView, errorCode: Int, description: String?, failingUrl: String?
             ) {
-                // Seltener Randfall (der Port-Bereitschafts-Check in
-                // connectAndShowWebView() faengt den Normalfall schon ab, bevor
-                // ueberhaupt geladen wird) - trotzdem als Sicherheitsnetz kurz
-                // erneut versuchen statt die native Fehlerseite stehen zu lassen.
-                Log.w(TAG, "WebView onReceivedError: $errorCode $description")
-                view.postDelayed({ view.loadUrl(BACKEND_URL) }, 1500)
+                Log.w(TAG, "WebView onReceivedError: $errorCode $description (Versuch ${retryCount + 1})")
+                val myRetryGeneration = retryGeneration
+                if (myRetryGeneration != connectionGeneration) return // ueberholter Versuch
+                if (retryCount < MAX_RETRIES) {
+                    retryCount++
+                    view.postDelayed({
+                        if (myRetryGeneration == connectionGeneration) view.loadUrl(BACKEND_URL)
+                    }, RETRY_INTERVAL_MS)
+                } else {
+                    val logExcerpt = TunnelManager.recentLog.takeLast(8).joinToString("\n")
+                    Log.e(
+                        TAG,
+                        "Tunnel nach $MAX_RETRIES Versuchen nicht erreichbar. Letzte dumbpipe-Ausgabe:\n$logExcerpt"
+                    )
+                    Toast.makeText(this@MainActivity, R.string.tunnel_timeout_error, Toast.LENGTH_LONG).show()
+                    showTicketEntry()
+                }
             }
         }
     }
@@ -210,69 +236,46 @@ class MainActivity : AppCompatActivity() {
         loadingLayout.visibility = View.VISIBLE
         webView.visibility = View.GONE
 
-        val myGeneration = ++connectionGeneration
+        connectionGeneration++
 
-        // TunnelManager.start() ruft intern stop() auf und wartet ggf. bis zu 5s auf
-        // die vollstaendige Beendigung eines vorherigen Prozesses - deshalb im
-        // tunnelExecutor, NICHT im UI-Thread. Das Ergebnis kommt per runOnUiThread
-        // zurueck, da nur dort UI-Elemente veraendert werden duerfen.
-        tunnelExecutor.submit {
-            val started = TunnelManager.start(this, ticket)
-            if (!started) {
-                runOnUiThread {
-                    if (myGeneration == connectionGeneration) {
-                        Toast.makeText(this, R.string.tunnel_start_error, Toast.LENGTH_LONG).show()
-                        showTicketEntry()
-                    }
-                }
-                return@submit
-            }
-            runOnUiThread {
-                if (myGeneration == connectionGeneration) tunnelRunningForThisSession = true
-            }
-
-            // Aktiv pollen statt eine feste Zeit zu warten: der lokale Port wird
-            // von dumbpipe nachweislich erst gebunden, wenn die eigentliche
-            // Iroh-Verbindung zum Server steht (server-seitig verifiziert) - "Port
-            // erreichbar" ist damit ein verlaesslicher Bereitschafts-Indikator,
-            // kein reines Zeit-Raten mehr.
-            val deadline = System.currentTimeMillis() + TUNNEL_READY_TIMEOUT_MS
-            var ready = false
-            var processDied = false
-            while (System.currentTimeMillis() < deadline && myGeneration == connectionGeneration) {
-                if (!TunnelManager.isRunning()) {
-                    processDied = true
-                    break
-                }
-                if (TunnelManager.isLocalPortReachable()) {
-                    ready = true
-                    break
-                }
-                try {
-                    Thread.sleep(POLL_INTERVAL_MS)
-                } catch (e: InterruptedException) {
-                    return@submit
-                }
-            }
-
-            runOnUiThread {
-                if (myGeneration != connectionGeneration) return@runOnUiThread
-                if (ready) {
-                    loadingLayout.visibility = View.GONE
-                    webView.visibility = View.VISIBLE
-                    webView.loadUrl(BACKEND_URL)
-                } else {
-                    val logExcerpt = TunnelManager.recentLog.takeLast(8).joinToString("\n")
-                    Log.e(
-                        TAG,
-                        "Tunnel wurde nicht rechtzeitig einsatzbereit " +
-                            "(Prozess beendet: $processDied). Letzte dumbpipe-Ausgabe:\n$logExcerpt"
-                    )
-                    Toast.makeText(this, R.string.tunnel_timeout_error, Toast.LENGTH_LONG).show()
-                    showTicketEntry()
-                }
+        if (!TunnelManager.isRunning()) {
+            // KEIN vorheriger Prozess vorhanden (Normalfall: Erststart, oder die
+            // App war schon vollstaendig gestoppt) - exakt wie in der
+            // nachweislich funktionierenden Erstversion: synchron im UI-Thread,
+            // kein Executor-Umweg. TunnelManager.start() ruft intern zwar stop()
+            // auf, das ist hier aber ein reines No-Op (kein Prozess vorhanden),
+            // also nicht blockierend.
+            startTunnelAndScheduleLoad(ticket)
+        } else {
+            // Es laeuft noch ein Prozess (z.B. schneller Ticket-Wechsel oder ein
+            // knapper onStop/onStart-Zyklus) - der muss ERST zuverlaessig beendet
+            // werden (TunnelManager.stop() wartet ggf. bis zu 5s auf echte
+            // Terminierung, siehe dortige Begruendung) - das NICHT im UI-Thread.
+            tunnelExecutor.submit {
+                TunnelManager.stop()
+                runOnUiThread { startTunnelAndScheduleLoad(ticket) }
             }
         }
+    }
+
+    private fun startTunnelAndScheduleLoad(ticket: String) {
+        if (!TunnelManager.start(this, ticket)) {
+            Toast.makeText(this, R.string.tunnel_start_error, Toast.LENGTH_LONG).show()
+            showTicketEntry()
+            return
+        }
+        tunnelRunningForThisSession = true
+        retryCount = 0
+        retryGeneration = connectionGeneration
+
+        pendingLoad?.let { mainHandler.removeCallbacks(it) }
+        val runnable = Runnable {
+            loadingLayout.visibility = View.GONE
+            webView.visibility = View.VISIBLE
+            webView.loadUrl(BACKEND_URL)
+        }
+        pendingLoad = runnable
+        mainHandler.postDelayed(runnable, TUNNEL_STARTUP_DELAY_MS)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -282,7 +285,9 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == R.id.action_change_ticket) {
-            connectionGeneration++ // eine evtl. noch laufende Warteschleife abbrechen
+            connectionGeneration++
+            pendingLoad?.let { mainHandler.removeCallbacks(it) }
+            pendingLoad = null
             if (tunnelRunningForThisSession) {
                 tunnelRunningForThisSession = false
                 tunnelExecutor.submit { TunnelManager.stop() }
