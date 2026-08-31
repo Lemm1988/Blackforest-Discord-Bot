@@ -1,0 +1,14 @@
+[Unit]
+Description=Bot Connect Dashboard (lokale Tunnel-Zugangsverwaltung, NUR 127.0.0.1:5050)
+After=network.target
+
+[Service]
+Type=simple
+User=picom
+WorkingDirectory=/home/picom/Desktop/BlackforestBot-v2/bot-connect-dashboard
+ExecStart=/home/picom/Desktop/BlackforestBot-v2/venv/bin/python app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

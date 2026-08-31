@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Bot Connect Dashboard</title>
+<style>
+  body { font-family: sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  h1 { margin-bottom: 0.2rem; }
+  .subtitle { color: #666; margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; }
+  .active { color: #1b5e20; font-weight: bold; }
+  .revoked { color: #888; }
+  .flash { padding: 0.6rem 1rem; margin: 0.6rem 0; border-radius: 4px; }
+  .flash.success { background: #e6f4ea; color: #1b5e20; }
+  .flash.error { background: #fdecea; color: #a61b1b; }
+  .flash.ticket { background: #f0f0f0; font-family: monospace; word-break: break-all; }
+  form.inline { display: inline; }
+  input[type=text] { padding: 0.4rem; width: 260px; }
+  button { padding: 0.4rem 0.9rem; cursor: pointer; }
+  .revoke-btn { color: #a61b1b; }
+</style>
+</head>
+<body>
+<h1>Bot Connect Dashboard</h1>
+<p class="subtitle">Nur lokal erreichbar (127.0.0.1) &mdash; kein Zugriff über den Iroh-Tunnel oder das Internet.</p>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for category, message in messages %}
+    <div class="flash {{ category }}">{{ message }}</div>
+  {% endfor %}
+{% endwith %}
+
+<h2>Neuen Zugang erstellen</h2>
+<form method="post" action="{{ url_for('add') }}">
+  <input type="text" name="label" placeholder="Name der Person" required autofocus>
+  <button type="submit">Erstellen</button>
+</form>
+
+<h2>Bestehende Zugänge</h2>
+<table>
+  <thead>
+    <tr><th>Name</th><th>Erstellt am</th><th>Status</th><th></th></tr>
+  </thead>
+  <tbody>
+    {% for g in grants %}
+    <tr>
+      <td>{{ g.label }}</td>
+      <td>{{ g.created_at }}</td>
+      <td>
+        {% if g.revoked_at %}
+          <span class="revoked">widerrufen am {{ g.revoked_at }}</span>
+        {% else %}
+          <span class="active">aktiv</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if not g.revoked_at %}
+        <form class="inline" method="post" action="{{ url_for('revoke') }}"
+              onsubmit="return confirm('Zugang für {{ g.label }} wirklich widerrufen?');">
+          <input type="hidden" name="label" value="{{ g.label }}">
+          <button type="submit" class="revoke-btn">Widerrufen</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4"><em>Noch keine Zugänge.</em></td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</body>
+</html>
