@@ -75,8 +75,17 @@ Jede Person bekommt ein **eigenes** Iroh-Ticket (eigener dumbpipe-Dienst, eigene
 Secret), **gebunden an ihre Discord-User-ID** (Sicherheits-Fix: nur so kann ein
 Widerruf gezielt auch eine bereits bestehende Backend-Login-Session dieser Person
 mit-beenden, siehe unten) - dadurch laesst sich der Zugang einer einzelnen Person
-widerrufen, ohne alle anderen (inkl. dem urspruenglichen, weiterhin unveraendert
-laufenden `dumbpipe-discordbot.service`) zu beeintraechtigen.
+widerrufen, ohne alle anderen zu beeintraechtigen.
+
+**Wichtig, Sicherheitsvorfall vom 31.08.2026:** Der urspruengliche, geteilte
+`dumbpipe-discordbot.service` (EIN Ticket fuer alle, aus der Zeit vor diesem
+Multi-Ticket-System) wurde bewusst **komplett deaktiviert und entfernt** (Unit-Datei
++ Secret geloescht). Er war nie Teil dieses Verwaltungssystems und konnte deshalb
+auch nie ueber `revoke`/das Dashboard gekappt werden - ein Zugang darueber blieb
+also unabhaengig von jedem individuellen Widerruf bestehen. Wer noch dieses alte,
+geteilte Ticket in der App eingetragen hat (inkl. dem allerersten Test-Setup),
+braucht jetzt einen neuen, individuellen Zugang ueber `add`/das Dashboard und muss
+das Ticket in der App unter "Ticket aendern" aktualisieren.
 
 **Empfohlen: über das [Bot Connect Dashboard](../bot-connect-dashboard/README.md)**
 (lokal, `http://127.0.0.1:5050` oder per SSH-Port-Forwarding) - Person aus einem
