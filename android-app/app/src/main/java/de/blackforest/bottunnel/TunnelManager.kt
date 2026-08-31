@@ -3,6 +3,7 @@ package de.blackforest.bottunnel
 import android.content.Context
 import android.util.Log
 import java.io.File
+import java.util.concurrent.TimeUnit
 
 /**
  * Startet/stoppt den dumbpipe-Tunnel-Prozess. Das Binary liegt als
@@ -42,6 +43,21 @@ object TunnelManager {
         process?.let {
             try {
                 it.destroy()
+                // WICHTIG: destroy() sendet nur das Terminierungssignal, kehrt aber
+                // sofort zurueck, ohne dass der Prozess (und damit der von ihm
+                // gehaltene lokale Port BACKEND_ADDR) tatsaechlich schon frei ist.
+                // Ohne dieses Warten kann start() (z.B. beim "Ticket aendern")
+                // sofort danach einen neuen Prozess auf demselben Port versuchen,
+                // waehrend der alte ihn noch haelt - der neue Connect-Versuch
+                // scheitert dann still an "Address already in use", die WebView
+                // zeigt ERR_CONNECTION_CLOSED, obwohl das neue Ticket serverseitig
+                // einwandfrei funktioniert (genau dieses Muster wurde beim
+                // Bot-Connect-Dashboard-Port 5050 schon einmal beobachtet).
+                if (!it.waitFor(3, TimeUnit.SECONDS)) {
+                    Log.w(TAG, "Tunnel-Prozess reagierte nicht auf destroy(), erzwinge Beendigung.")
+                    it.destroyForcibly()
+                    it.waitFor(2, TimeUnit.SECONDS)
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Fehler beim Beenden des Tunnel-Prozesses", e)
             }

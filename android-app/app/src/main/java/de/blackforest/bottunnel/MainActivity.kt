@@ -23,6 +23,8 @@ import java.io.ByteArrayInputStream
 import java.security.MessageDigest
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
@@ -52,9 +54,20 @@ class MainActivity : AppCompatActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var pendingLoad: Runnable? = null
 
+    // EIN einzelner Hintergrund-Thread, der ALLE TunnelManager.start()/stop()-Aufrufe
+    // sequentiell (FIFO) abarbeitet. Zwingend noetig, seit TunnelManager.stop() auf
+    // die tatsaechliche Prozess-Beendigung wartet (bis zu 5s) - das darf NICHT im
+    // UI-Thread laufen (ANR-Risiko), muss aber trotzdem VOR einem nachfolgenden
+    // start() abgeschlossen sein (sonst genau die Port-Race-Condition, die dieser
+    // Mechanismus eigentlich beheben soll). Ein Single-Thread-Executor garantiert
+    // beides gleichzeitig: asynchron zum UI-Thread, aber streng der Reihe nach.
+    private lateinit var tunnelExecutor: ExecutorService
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        tunnelExecutor = Executors.newSingleThreadExecutor()
 
         val masterKey = MasterKey.Builder(this)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -112,9 +125,17 @@ class MainActivity : AppCompatActivity() {
         pendingLoad?.let { mainHandler.removeCallbacks(it) }
         pendingLoad = null
         if (tunnelRunningForThisSession) {
-            TunnelManager.stop()
             tunnelRunningForThisSession = false
+            // Fire-and-forget aus Sicht des UI-Threads - laeuft im tunnelExecutor,
+            // der aber garantiert, dass dieser stop() VOR jedem folgenden start()
+            // (naechstes onStart()) fertig abgearbeitet ist.
+            tunnelExecutor.submit { TunnelManager.stop() }
         }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        tunnelExecutor.shutdown()
     }
 
     private fun setupWebView() {
@@ -176,21 +197,29 @@ class MainActivity : AppCompatActivity() {
         loadingLayout.visibility = View.VISIBLE
         webView.visibility = View.GONE
 
-        if (!TunnelManager.start(this, ticket)) {
-            Toast.makeText(this, R.string.tunnel_start_error, Toast.LENGTH_LONG).show()
-            showTicketEntry()
-            return
+        // TunnelManager.start() ruft intern stop() auf und wartet ggf. bis zu 5s auf
+        // die vollstaendige Beendigung eines vorherigen Prozesses - deshalb im
+        // tunnelExecutor, NICHT im UI-Thread. Das Ergebnis kommt per runOnUiThread
+        // zurueck, da nur dort UI-Elemente veraendert werden duerfen.
+        tunnelExecutor.submit {
+            val started = TunnelManager.start(this, ticket)
+            runOnUiThread {
+                if (!started) {
+                    Toast.makeText(this, R.string.tunnel_start_error, Toast.LENGTH_LONG).show()
+                    showTicketEntry()
+                    return@runOnUiThread
+                }
+                tunnelRunningForThisSession = true
+                pendingLoad?.let { mainHandler.removeCallbacks(it) }
+                val runnable = Runnable {
+                    loadingLayout.visibility = View.GONE
+                    webView.visibility = View.VISIBLE
+                    webView.loadUrl(BACKEND_URL)
+                }
+                pendingLoad = runnable
+                mainHandler.postDelayed(runnable, TUNNEL_STARTUP_DELAY_MS)
+            }
         }
-        tunnelRunningForThisSession = true
-
-        pendingLoad?.let { mainHandler.removeCallbacks(it) }
-        val runnable = Runnable {
-            loadingLayout.visibility = View.GONE
-            webView.visibility = View.VISIBLE
-            webView.loadUrl(BACKEND_URL)
-        }
-        pendingLoad = runnable
-        mainHandler.postDelayed(runnable, TUNNEL_STARTUP_DELAY_MS)
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
@@ -201,8 +230,8 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == R.id.action_change_ticket) {
             if (tunnelRunningForThisSession) {
-                TunnelManager.stop()
                 tunnelRunningForThisSession = false
+                tunnelExecutor.submit { TunnelManager.stop() }
             }
             ticketInput.setText("")
             showTicketEntry()
