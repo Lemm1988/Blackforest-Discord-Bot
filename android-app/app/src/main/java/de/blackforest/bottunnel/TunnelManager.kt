@@ -58,6 +58,7 @@ object TunnelManager {
                     it.destroyForcibly()
                     it.waitFor(2, TimeUnit.SECONDS)
                 }
+                Unit
             } catch (e: Exception) {
                 Log.e(TAG, "Fehler beim Beenden des Tunnel-Prozesses", e)
             }
