@@ -117,6 +117,28 @@ def slugify(label: str) -> str:
     return slug.strip("-")
 
 
+def _stop_service_reliably(service_name: str) -> bool:
+    """`systemctl stop` allein reicht NICHT zuverlaessig aus: dumbpipe stuerzt
+    gelegentlich selbststaendig ab (Relay-Verbindungsprobleme, unabhaengig von
+    diesem Projekt), und `Restart=always` startet es dann automatisch neu. Trifft
+    ein `stop` GENAU in das Zeitfenster zwischen einem Absturz und dem bereits von
+    systemd gequeueten automatischen Neustart (RestartSec=5), kann der Dienst
+    Sekunden NACH dem `stop` wieder aktiv werden - obwohl `stop` selbst
+    erfolgreich war. Deshalb: mehrfach stoppen und mit `is-active` verifizieren,
+    bis der Dienst nachweislich dauerhaft inaktiv bleibt, statt dem ersten `stop`
+    blind zu vertrauen. Gibt True zurueck, wenn der Dienst am Ende zuverlaessig
+    inaktiv ist."""
+    for _ in range(5):
+        subprocess.run(["sudo", "systemctl", "stop", service_name], capture_output=True)
+        time.sleep(1)
+        result = subprocess.run(
+            ["sudo", "systemctl", "is-active", service_name], capture_output=True, text=True
+        )
+        if result.stdout.strip() != "active":
+            return True
+    return False
+
+
 def list_grants() -> list[dict]:
     with _connect() as conn:
         rows = conn.execute(
@@ -221,7 +243,7 @@ WantedBy=multi-user.target
         # Lieber den bereits gestarteten Dienst wieder einreissen und einen klaren
         # Fehler melden, als einen unsichtbaren, dauerhaft laufenden Zugang zu
         # hinterlassen (genau das ist einmal beim Reproduzieren dieses Bugs passiert).
-        subprocess.run(["sudo", "systemctl", "stop", service_name], capture_output=True)
+        _stop_service_reliably(service_name)
         subprocess.run(["sudo", "systemctl", "disable", service_name], capture_output=True)
         subprocess.run(["sudo", "rm", "-f", str(unit_file)], capture_output=True)
         subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True)
@@ -259,7 +281,13 @@ def revoke_grant(label: str) -> None:
     unit_file = SYSTEMD_DIR / service_name
     secret_file = CONFIG_DIR / f"env-person-{slug}"
 
-    subprocess.run(["sudo", "systemctl", "stop", service_name], capture_output=True)
+    if not _stop_service_reliably(service_name):
+        raise TunnelAccessError(
+            f"Dienst '{service_name}' liess sich nicht zuverlaessig dauerhaft stoppen "
+            "(vermutlich Absturz-Neustart-Schleife von dumbpipe selbst). Widerruf wurde "
+            "NICHT durchgefuehrt, um keine Reste zu hinterlassen - bitte kurz erneut "
+            "versuchen oder den Dienst manuell pruefen (journalctl -u " + service_name + ")."
+        )
     subprocess.run(["sudo", "systemctl", "disable", service_name], capture_output=True)
     subprocess.run(["sudo", "rm", "-f", str(unit_file)], capture_output=True)
     subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True)
