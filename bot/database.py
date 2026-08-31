@@ -248,7 +248,7 @@ CREATE TABLE IF NOT EXISTS personality_texts (
 CREATE TABLE IF NOT EXISTS tunnel_access_grants (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     label TEXT NOT NULL,
-    slug TEXT NOT NULL UNIQUE,
+    slug TEXT NOT NULL,
     created_at TEXT NOT NULL,
     revoked_at TEXT
 );
@@ -409,6 +409,42 @@ def _migrate_link_filter_mode(conn):
         )
 
 
+def _migrate_drop_tunnel_slug_unique(conn):
+    """Bugfix: tunnel_access_grants.slug hatte urspruenglich eine GLOBALE,
+    dauerhafte UNIQUE-Constraint (nicht nur "unter aktiven Zugaengen"). Dadurch
+    schlug jeder erneute Zugang mit einem frueher schon einmal genutzten (und
+    laengst widerrufenen) Namen mit einem unbehandelten sqlite3.IntegrityError
+    fehl. Migriert idempotent auf einen normalen, nicht-eindeutigen Index -
+    Eindeutigkeit wird weiterhin nur unter AKTIVEN Zugaengen erzwungen (siehe
+    scripts/tunnel_access_core.py add_grant()), History bleibt vollstaendig
+    erhalten."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='tunnel_access_grants'"
+    ).fetchone()
+    if not row or not row["sql"] or "UNIQUE" not in row["sql"]:
+        return
+    conn.execute("ALTER TABLE tunnel_access_grants RENAME TO tunnel_access_grants_old_unique")
+    conn.execute(
+        """
+        CREATE TABLE tunnel_access_grants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            revoked_at TEXT,
+            discord_user_id TEXT
+        )
+        """
+    )
+    old_cols = {r["name"] for r in conn.execute("PRAGMA table_info(tunnel_access_grants_old_unique)")}
+    discord_col = "discord_user_id" if "discord_user_id" in old_cols else "NULL"
+    conn.execute(
+        f"INSERT INTO tunnel_access_grants (id, label, slug, created_at, revoked_at, discord_user_id) "
+        f"SELECT id, label, slug, created_at, revoked_at, {discord_col} FROM tunnel_access_grants_old_unique"
+    )
+    conn.execute("DROP TABLE tunnel_access_grants_old_unique")
+
+
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
@@ -446,6 +482,12 @@ def init_db():
         # angelegten (in diesem Projekt ausschliesslich bereits widerrufenen
         # Test-)Eintraegen - fuer die ist keine Session-Invalidierung mehr noetig.
         _ensure_column(conn, "tunnel_access_grants", "discord_user_id", "TEXT")
+        # Bugfix: globale UNIQUE-Constraint auf slug entfernen (siehe Docstring der
+        # Funktion) - MUSS vor dem Index unten laufen, da sie die Tabelle neu aufbaut.
+        _migrate_drop_tunnel_slug_unique(conn)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_tunnel_access_grants_slug ON tunnel_access_grants (slug)"
+        )
         # Indizes fuer die beiden am haeufigsten gefilterten Spalten (jeder Automod-
         # Check fragt count_user_violations()/get_badword_violations() nach
         # discord_user_id ab, jede Quizfrage-Auswahl/Kategorie-Verwaltung nach

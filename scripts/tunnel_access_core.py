@@ -29,6 +29,45 @@ class TunnelAccessError(Exception):
     fehlgeschlagene systemd-Einrichtung) - kein Programmierfehler."""
 
 
+def _migrate_drop_slug_unique(conn: sqlite3.Connection) -> None:
+    """Bugfix: `slug` hatte urspruenglich eine GLOBALE, dauerhafte UNIQUE-Constraint
+    (nicht nur "unter aktiven Zugaengen") - dadurch schlug jeder erneute `add` mit
+    einem frueher schon einmal genutzten (und laengst widerrufenen) Namen mit einem
+    unbehandelten sqlite3.IntegrityError fehl ("kann keine neuen Zugaenge mehr
+    anlegen, wenn ich jemanden geloescht habe"). Migriert idempotent auf einen
+    normalen (nicht-eindeutigen) Index - Eindeutigkeit wird stattdessen weiterhin
+    wie bisher nur unter AKTIVEN Zugaengen erzwungen (siehe add_grant()), History
+    bleibt dabei vollstaendig erhalten (gleiches Nachvollziehbarkeits-Prinzip wie
+    ueberall in diesem Projekt: nie loeschen, nur markieren).
+    """
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='tunnel_access_grants'"
+    ).fetchone()
+    if not row or not row["sql"] or "UNIQUE" not in row["sql"]:
+        return  # bereits migriert oder Tabelle existiert noch gar nicht
+    conn.execute("ALTER TABLE tunnel_access_grants RENAME TO tunnel_access_grants_old_unique")
+    conn.execute(
+        """
+        CREATE TABLE tunnel_access_grants (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            label TEXT NOT NULL,
+            slug TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            revoked_at TEXT,
+            discord_user_id TEXT
+        )
+        """
+    )
+    old_cols = {r["name"] for r in conn.execute("PRAGMA table_info(tunnel_access_grants_old_unique)")}
+    discord_col = "discord_user_id" if "discord_user_id" in old_cols else "NULL"
+    conn.execute(
+        f"INSERT INTO tunnel_access_grants (id, label, slug, created_at, revoked_at, discord_user_id) "
+        f"SELECT id, label, slug, created_at, revoked_at, {discord_col} FROM tunnel_access_grants_old_unique"
+    )
+    conn.execute("DROP TABLE tunnel_access_grants_old_unique")
+    conn.commit()
+
+
 def _ensure_schema(conn: sqlite3.Connection) -> None:
     """Idempotent, wie jede Schema-Aenderung in diesem Projekt - falls
     bot/database.py (Bot-Neustart) das Schema noch nicht auf dem aktuellen Stand
@@ -39,15 +78,19 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS tunnel_access_grants (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             label TEXT NOT NULL,
-            slug TEXT NOT NULL UNIQUE,
+            slug TEXT NOT NULL,
             created_at TEXT NOT NULL,
             revoked_at TEXT
         )
         """
     )
+    _migrate_drop_slug_unique(conn)
     existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tunnel_access_grants)")}
     if "discord_user_id" not in existing_cols:
         conn.execute("ALTER TABLE tunnel_access_grants ADD COLUMN discord_user_id TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tunnel_access_grants_slug ON tunnel_access_grants (slug)"
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS user_session_invalidations (
@@ -164,13 +207,26 @@ WantedBy=multi-user.target
     except subprocess.CalledProcessError as e:
         raise TunnelAccessError(f"Ticket-Erzeugung fehlgeschlagen: {e.stderr}") from e
 
-    with _connect() as conn:
-        conn.execute(
-            "INSERT INTO tunnel_access_grants (label, slug, discord_user_id, created_at, revoked_at) "
-            "VALUES (?, ?, ?, ?, NULL)",
-            (label, slug, discord_user_id, _now()),
-        )
-        conn.commit()
+    try:
+        with _connect() as conn:
+            conn.execute(
+                "INSERT INTO tunnel_access_grants (label, slug, discord_user_id, created_at, revoked_at) "
+                "VALUES (?, ?, ?, ?, NULL)",
+                (label, slug, discord_user_id, _now()),
+            )
+            conn.commit()
+    except Exception as e:
+        # Rollback: ohne DB-Eintrag waere der Dienst eine "Leiche" - nicht in
+        # list_grants() sichtbar, nie ueber revoke_grant() auffindbar/widerrufbar.
+        # Lieber den bereits gestarteten Dienst wieder einreissen und einen klaren
+        # Fehler melden, als einen unsichtbaren, dauerhaft laufenden Zugang zu
+        # hinterlassen (genau das ist einmal beim Reproduzieren dieses Bugs passiert).
+        subprocess.run(["sudo", "systemctl", "stop", service_name], capture_output=True)
+        subprocess.run(["sudo", "systemctl", "disable", service_name], capture_output=True)
+        subprocess.run(["sudo", "rm", "-f", str(unit_file)], capture_output=True)
+        subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True)
+        secret_file.unlink(missing_ok=True)
+        raise TunnelAccessError(f"Datenbank-Eintrag fehlgeschlagen, Dienst wieder zurueckgerollt: {e}") from e
 
     return ticket
 
