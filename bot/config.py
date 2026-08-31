@@ -25,6 +25,13 @@ INTERNAL_HOST = "127.0.0.1"
 INTERNAL_PORT = 5001  # waitress bindet hier nur lokal, nginx macht TLS-Terminierung nach aussen auf FLASK_PORT
 FLASK_PORT = 5000  # der Port, auf dem nginx tatsaechlich lauscht (siehe /etc/nginx/conf.d/blackforestbot.conf)
 
+# NUR fuer das lokale Bot Connect Dashboard (Mitgliederliste), siehe
+# backend/internal_app.py fuer die ausfuehrliche Sicherheitsbegruendung: dieser
+# Port hat bewusst KEINEN nginx-Eintrag und wird NIE getunnelt (anders als
+# INTERNAL_PORT/5001, das ueber nginx+dumbpipe-Tunnel doch aus dem Internet
+# erreichbar ist, obwohl es nur an 127.0.0.1 bindet).
+INTERNAL_MEMBERS_PORT = 5052
+
 # Der Port, den der BROWSER tatsaechlich in der Adressleiste sieht. Das ist NICHT
 # zwingend FLASK_PORT: Beim Zugriff ueber den Iroh/dumbpipe-Tunnel (siehe
 # connect_discordbot.sh) mappt der Client einen eigenen lokalen Port (aktuell 8500)

@@ -16,9 +16,10 @@
   .flash.error { background: #fdecea; color: #a61b1b; }
   .flash.ticket { background: #f0f0f0; font-family: monospace; word-break: break-all; }
   form.inline { display: inline; }
-  input[type=text] { padding: 0.4rem; width: 260px; }
+  select, input[type=text] { padding: 0.4rem; width: 300px; }
   button { padding: 0.4rem 0.9rem; cursor: pointer; }
   .revoke-btn { color: #a61b1b; }
+  .warn { color: #a67c00; }
 </style>
 </head>
 <body>
@@ -32,10 +33,20 @@
 {% endwith %}
 
 <h2>Neuen Zugang erstellen</h2>
+{% if members %}
 <form method="post" action="{{ url_for('add') }}">
-  <input type="text" name="label" placeholder="Name der Person" required autofocus>
+  <select name="discord_user_id" required autofocus>
+    <option value="" disabled selected>Person auswählen…</option>
+    {% for m in members %}
+    <option value="{{ m.id }}">{{ m.username }}</option>
+    {% endfor %}
+  </select>
   <button type="submit">Erstellen</button>
 </form>
+{% else %}
+<p class="warn">Mitgliederliste konnte nicht geladen werden — läuft der Bot? (Interner Endpunkt
+127.0.0.1:5052 nicht erreichbar.)</p>
+{% endif %}
 
 <h2>Bestehende Zugänge</h2>
 <table>

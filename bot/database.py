@@ -252,6 +252,18 @@ CREATE TABLE IF NOT EXISTS tunnel_access_grants (
     created_at TEXT NOT NULL,
     revoked_at TEXT
 );
+
+-- Erzwungener Session-Logout (Sicherheits-Fix: ein widerrufener Tunnel-Zugang
+-- muss auch eine bereits bestehende Browser-Login-Session dieser Person im
+-- Haupt-Backend invalidieren, sonst bleibt ein Discord-OAuth-Session-Cookie trotz
+-- entzogenem Zugang technisch gueltig). Pro Discord-User HOECHSTENS eine Zeile
+-- (PRIMARY KEY) - "invalidiert seit wann", nicht ein Log mehrerer Ereignisse.
+-- Bewusst allgemein gehalten (nicht tunnel-spezifisch benannt), da nuetzlich fuer
+-- jeden Fall von "Session eines Users sofort beenden", nicht nur beim Tunnel-Widerruf.
+CREATE TABLE IF NOT EXISTS user_session_invalidations (
+    discord_user_id TEXT PRIMARY KEY,
+    invalidated_at TEXT NOT NULL
+);
 """
 
 # Alle vergebbaren Berechtigungs-Flags. "is_admin" ist ein Sonderflag, das ALLE
@@ -427,6 +439,13 @@ def init_db():
         # einer eigenen Tabelle, aus demselben Grund wie die Quiz-Serien oben.
         _ensure_column(conn, "user_stats", "message_count", "INTEGER DEFAULT 0")
         _ensure_column(conn, "user_stats", "last_message_at", "TEXT")
+        # Sicherheits-Fix (Android-Folgeauftrag): jeder Tunnel-Zugang wird jetzt an
+        # eine konkrete Discord-User-ID gebunden statt nur an einen freien Namen,
+        # damit ein Widerruf gezielt die Session GENAU dieser Person invalidieren
+        # kann (siehe invalidate_user_session()). NULL bei bereits vor diesem Fix
+        # angelegten (in diesem Projekt ausschliesslich bereits widerrufenen
+        # Test-)Eintraegen - fuer die ist keine Session-Invalidierung mehr noetig.
+        _ensure_column(conn, "tunnel_access_grants", "discord_user_id", "TEXT")
         # Indizes fuer die beiden am haeufigsten gefilterten Spalten (jeder Automod-
         # Check fragt count_user_violations()/get_badword_violations() nach
         # discord_user_id ab, jede Quizfrage-Auswahl/Kategorie-Verwaltung nach
@@ -671,13 +690,39 @@ def count_audit_log() -> int:
 
 def get_tunnel_access_grants():
     """Reine Lesefunktion fuer die Uebersichtsseite - Zeilen werden ausschliesslich
-    von scripts/manage_bot_access.sh geschrieben, nie vom Backend selbst."""
+    von scripts/tunnel_access_core.py (CLI-Wrapper ODER Bot Connect Dashboard)
+    geschrieben, nie vom Haupt-Backend selbst."""
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT label, slug, created_at, revoked_at FROM tunnel_access_grants "
+            "SELECT label, slug, discord_user_id, created_at, revoked_at FROM tunnel_access_grants "
             "ORDER BY created_at DESC"
         ).fetchall()
         return [dict(row) for row in rows]
+
+
+def invalidate_user_session(discord_user_id) -> None:
+    """Erzwingt beim naechsten Request einen Logout fuer diesen User (jede
+    bestehende Browser-Session, die vor jetzt ausgestellt wurde, wird ab sofort
+    als ungueltig behandelt, siehe app.py _enforce_session_invalidation()).
+    Genutzt beim Widerruf eines Tunnel-Zugangs (tunnel_access_core.py), aber
+    bewusst allgemein nutzbar - nicht tunnel-spezifisch."""
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO user_session_invalidations (discord_user_id, invalidated_at) VALUES (?, ?) "
+            "ON CONFLICT(discord_user_id) DO UPDATE SET invalidated_at = excluded.invalidated_at",
+            (str(discord_user_id), now),
+        )
+        conn.commit()
+
+
+def get_session_invalidated_at(discord_user_id):
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT invalidated_at FROM user_session_invalidations WHERE discord_user_id = ?",
+            (str(discord_user_id),),
+        ).fetchone()
+        return row["invalidated_at"] if row else None
 
 
 def grant_permission(discord_user_id, key: str, granted_by):

@@ -43,11 +43,11 @@ Nur von einem Gerät mit direktem Zugriff auf den Pi:
 ## Architektur
 
 - `app.py` — winzige Flask-App (nutzt die bestehende `venv/` des Hauptprojekts
-  mit, keine eigene virtuelle Umgebung nötig, da nur Flask gebraucht wird und das
-  schon vorhanden ist). Läuft absichtlich über Flasks eingebauten Entwicklungs-
-  server statt waitress+nginx wie das Haupt-Backend — das wäre hier unnötiger
-  Aufwand, da der Dienst nie mit echtem Internet-Traffic konfrontiert ist, immer
-  nur mit einem einzelnen lokalen Nutzer.
+  mit, keine eigene virtuelle Umgebung nötig, da nur Flask+requests gebraucht
+  werden und das schon vorhanden ist). Läuft absichtlich über Flasks eingebauten
+  Entwicklungsserver statt waitress+nginx wie das Haupt-Backend — das wäre hier
+  unnötiger Aufwand, da der Dienst nie mit echtem Internet-Traffic konfrontiert
+  ist, immer nur mit einem einzelnen lokalen Nutzer.
 - `templates/index.html` — eine einzige, komplett eigenständige Seite (kein
   Bootstrap/CDN, keine Abhängigkeit vom Haupt-Backend-Design), da dieses Tool
   bewusst unabhängig vom großen Backend bleibt.
@@ -55,6 +55,20 @@ Nur von einem Gerät mit direktem Zugriff auf den Pi:
   `../scripts/tunnel_access_core.py` — dieselbe Logik, die auch
   `../scripts/manage_bot_access.sh` (SSH/CLI-Nutzung) verwendet. Keine doppelte
   Implementierung.
+- **Mitgliederliste fürs Dropdown** kommt per HTTP von `127.0.0.1:5052`
+  (`backend/internal_app.py`, läuft im Bot-Prozess) — bewusst NICHT von einer
+  eigenen Discord-API-Anbindung hier im Dashboard (kein zweiter Bot-Token nötig)
+  und bewusst NICHT vom bestehenden Backend-Port 5001 (der ist trotz
+  "nur 127.0.0.1" tatsächlich über den Iroh-Tunnel aus dem Internet erreichbar,
+  siehe die ausführliche Begründung in `backend/internal_app.py`). Port 5052 hat
+  aus genau demselben Grund wie dieses Dashboard selbst KEINEN nginx-Eintrag.
+- **Jeder Zugang ist an eine konkrete Discord-User-ID gebunden** (Auswahl per
+  Dropdown, nicht mehr freier Text) — Sicherheits-Fix: erst dadurch kann
+  `revoke_grant()` beim Widerruf gezielt eine eventuell bestehende Login-Session
+  dieser Person im Haupt-Backend mit-invalidieren (`invalidate_user_session()` in
+  `bot/database.py`, geprüft bei jedem Request in `backend/app.py`). Ohne diese
+  Bindung bliebe ein bereits eingeloggtes Discord-OAuth-Session-Cookie trotz
+  entzogenem Tunnel-Zugang technisch weiter gültig.
 - `bot-connect-dashboard.service` — Referenz-Unit-Datei zum Einrichten als
   systemd-Dienst (Boot-Autostart), siehe unten.
 

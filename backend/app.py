@@ -10,7 +10,7 @@ import functools
 import logging
 import math
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import discord
 from flask import Flask, flash, redirect, render_template, request, session, url_for, jsonify
@@ -130,6 +130,35 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         return {"csrf_token": _get_csrf_token}
 
     @app.before_request
+    def _enforce_session_invalidation():
+        """Sicherheits-Fix: erzwingt sofortigen Logout, falls die aktuelle Session
+        VOR einem serverseitigen Invalidierungs-Zeitpunkt fuer diesen User
+        ausgestellt wurde (database.invalidate_user_session(), z.B. beim Widerruf
+        eines Tunnel-Zugangs ueber scripts/tunnel_access_core.py). Ohne das bliebe
+        ein bereits bestehendes Discord-OAuth-Session-Cookie im Browser trotz
+        entzogenem Zugang technisch weiter gueltig - Netzwerk-Tunnel und
+        Backend-Session sind sonst zwei unabhaengige Zugriffswege.
+
+        Laeuft VOR der CSRF-Pruefung (Registrierungsreihenfolge), da eine bereits
+        ungueltige Session gar nicht erst gegen CSRF geprueft werden muss.
+        """
+        if "discord_user_id" not in session:
+            return
+        login_time = session.get("login_time")
+        if not login_time:
+            # Session von vor diesem Feature (kein login_time gesetzt) - einmalig
+            # nachtragen statt sie faelschlich als ungueltig zu behandeln.
+            session["login_time"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            return
+        invalidated_at = database.get_session_invalidated_at(session["discord_user_id"])
+        if invalidated_at and login_time < invalidated_at:
+            session.clear()
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Sitzung wurde beendet (Zugang widerrufen). Bitte erneut einloggen."}), 401
+            flash("Deine Sitzung wurde beendet (Zugang widerrufen). Bitte erneut einloggen.", "error")
+            return redirect(url_for("login"))
+
+    @app.before_request
     def _enforce_csrf():
         """CSRF-Schutz für alle zustandsändernden Anfragen (POST/PUT/PATCH/DELETE)
         eingeloggter Nutzer: Token entweder als verstecktes Formularfeld
@@ -212,6 +241,11 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
 
         session["discord_user_id"] = discord_user_id
         session["username"] = discord_user.get("username")
+        # Sicherheits-Fix: Zeitpunkt der Session-Ausstellung festhalten, damit ein
+        # spaeterer Widerruf (z.B. eines Tunnel-Zugangs, siehe
+        # scripts/tunnel_access_core.py) diese Session gezielt invalidieren kann,
+        # siehe _enforce_session_invalidation() unten.
+        session["login_time"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         return redirect(url_for("dashboard"))
 
     @app.route("/logout")

@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))  # damit "backend" importi
 import config
 import database
 from backend.app import create_app
+from backend.internal_app import create_internal_app
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -55,6 +56,27 @@ def start_flask_thread():
     )
 
 
+def start_internal_members_thread():
+    # Bewusst ein ZWEITER, komplett separater waitress-Thread/Port statt einer
+    # weiteren Route im normalen Backend (Port 5001) - siehe
+    # backend/internal_app.py fuer die ausfuehrliche Begruendung, warum Port 5001
+    # trotz "nur 127.0.0.1" tatsaechlich ueber den Iroh-Tunnel aus dem Internet
+    # erreichbar ist und deshalb fuer einen ungeschuetzten Endpunkt nicht sicher waere.
+    from waitress import serve
+
+    internal_app = create_internal_app(bot, bot.loop)
+
+    def run():
+        serve(internal_app, host=config.INTERNAL_HOST, port=config.INTERNAL_MEMBERS_PORT, _quiet=True)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    print(
+        f"Interner Mitglieder-Endpunkt gestartet auf http://{config.INTERNAL_HOST}:{config.INTERNAL_MEMBERS_PORT} "
+        "(NUR fuer lokale Prozesse wie das Bot Connect Dashboard, KEIN nginx-Eintrag, NICHT getunnelt)"
+    )
+
+
 @bot.event
 async def on_ready():
     global _flask_started
@@ -70,6 +92,7 @@ async def on_ready():
 
     if not _flask_started:
         start_flask_thread()
+        start_internal_members_thread()
         _flask_started = True
 
 

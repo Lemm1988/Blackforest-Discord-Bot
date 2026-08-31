@@ -72,13 +72,20 @@ jeweilige Quelle (Dateimanager/Downloads) erlauben, APK antippen zum Installiere
 ## Mehreren Personen Zugang geben/entziehen
 
 Jede Person bekommt ein **eigenes** Iroh-Ticket (eigener dumbpipe-Dienst, eigenes
-Secret) statt eines geteilten Tickets - dadurch laesst sich der Zugang einer
-einzelnen Person widerrufen, ohne alle anderen (inkl. dem urspruenglichen,
-weiterhin unveraendert laufenden `dumbpipe-discordbot.service`) zu beeintraechtigen.
+Secret), **gebunden an ihre Discord-User-ID** (Sicherheits-Fix: nur so kann ein
+Widerruf gezielt auch eine bereits bestehende Backend-Login-Session dieser Person
+mit-beenden, siehe unten) - dadurch laesst sich der Zugang einer einzelnen Person
+widerrufen, ohne alle anderen (inkl. dem urspruenglichen, weiterhin unveraendert
+laufenden `dumbpipe-discordbot.service`) zu beeintraechtigen.
 
-**Neuen Zugang vergeben** (auf dem Pi, per SSH):
+**Empfohlen: über das [Bot Connect Dashboard](../bot-connect-dashboard/README.md)**
+(lokal, `http://127.0.0.1:5050` oder per SSH-Port-Forwarding) - Person aus einem
+Dropdown der aktuellen Server-Mitglieder auswaehlen, Ticket wird direkt angezeigt,
+Widerruf per Knopfdruck.
+
+**Alternativ per SSH/CLI:**
 ```bash
-~/Desktop/BlackforestBot-v2/scripts/manage_bot_access.sh add "Name der Person"
+~/Desktop/BlackforestBot-v2/scripts/manage_bot_access.sh add "Name der Person" <discord_user_id>
 ```
 Gibt am Ende ein Ticket aus. Dieses Ticket + die APK (siehe oben, "Installation der
 Debug-APK") an die Person weitergeben - sie traegt das Ticket beim ersten Start der
@@ -88,16 +95,19 @@ App (oder ueber "Ticket aendern" im Overflow-Menue) ein.
 ```bash
 ~/Desktop/BlackforestBot-v2/scripts/manage_bot_access.sh revoke "Name der Person"
 ```
-Stoppt den zugehoerigen Tunnel-Dienst sofort und loescht das Secret - das alte
-Ticket dieser Person funktioniert danach nicht mehr. Alle anderen Zugaenge laufen
+Stoppt den zugehoerigen Tunnel-Dienst sofort, loescht das Secret **und beendet
+sofort eine eventuell bestehende Backend-Login-Session dieser Person** (Discord-
+OAuth-Session-Cookies bleiben sonst trotz entzogenem Tunnel-Zugang technisch
+gueltig - genau das schliesst dieser Mechanismus). Alle anderen Zugaenge laufen
 unveraendert weiter.
 
 **Alle Zugaenge auflisten:**
 ```bash
 ~/Desktop/BlackforestBot-v2/scripts/manage_bot_access.sh list
 ```
-Dieselbe Liste (Name, erstellt am, Status) ist auch schreibgeschuetzt im
-Web-Backend unter "App-Zugänge" einsehbar (nur is_admin/Owner) - die Vergabe/der
-Widerruf selbst laeuft aber bewusst NUR ueber dieses Skript per SSH, nicht ueber
+Dieselbe Liste (Name, Discord-User-ID, erstellt am, Status) ist auch
+schreibgeschuetzt im Web-Backend unter "App-Zugänge" einsehbar (nur is_admin/Owner)
+- die Vergabe/der Widerruf selbst laeuft aber bewusst NUR ueber das Dashboard oder
+dieses Skript, nicht ueber
 das Web-Backend (das oeffentlich per Iroh-Tunnel erreichbare Backend soll keine
 systemd-Dienste auf dem Pi anlegen/loeschen koennen).
