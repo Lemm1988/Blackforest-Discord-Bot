@@ -1,5 +1,9 @@
 package de.blackforest.bottunnel
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.net.http.SslCertificate
 import android.net.http.SslError
 import android.os.Bundle
@@ -15,8 +19,11 @@ import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -195,8 +202,12 @@ class MainActivity : AppCompatActivity() {
                         TAG,
                         "Tunnel nach $MAX_RETRIES Versuchen nicht erreichbar. Letzte dumbpipe-Ausgabe:\n$logExcerpt"
                     )
-                    Toast.makeText(this@MainActivity, R.string.tunnel_timeout_error, Toast.LENGTH_LONG).show()
                     showTicketEntry()
+                    // Diagnose-Dialog automatisch anzeigen statt nur einem Toast - der
+                    // User soll die Rohdaten direkt kopieren/teilen koennen, ohne
+                    // ADB/PC zu brauchen (ist ueber das Menue auch jederzeit manuell
+                    // erreichbar, siehe onOptionsItemSelected).
+                    showDiagnosticsDialog()
                 }
             }
         }
@@ -278,6 +289,48 @@ class MainActivity : AppCompatActivity() {
         mainHandler.postDelayed(runnable, TUNNEL_STARTUP_DELAY_MS)
     }
 
+    /**
+     * Niedrigschwellige On-Device-Diagnose ohne ADB/PC: zeigt Prozess-Status
+     * (PID, laeuft/abgestuerzt, Exit-Code), Binary-Pfad/Ausfuehrbarkeit, die
+     * letzten dumbpipe-Log-Zeilen und einen einmaligen Port-Erreichbarkeits-Check
+     * als selektierbaren Text an, mit Kopieren- und Teilen-Knopf.
+     */
+    private fun showDiagnosticsDialog() {
+        // TunnelManager.diagnosticsText() macht einen einmaligen (synchronen)
+        // Socket-Verbindungsversuch - kurz, aber sicherheitshalber nicht im
+        // UI-Thread blockierend ausfuehren.
+        tunnelExecutor.submit {
+            val text = TunnelManager.diagnosticsText(this)
+            runOnUiThread {
+                val textView = TextView(this).apply {
+                    setText(text)
+                    setTextIsSelectable(true)
+                    textSize = 11f
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    setPadding(32, 24, 32, 24)
+                }
+                val scrollView = ScrollView(this).apply { addView(textView) }
+                AlertDialog.Builder(this)
+                    .setTitle(R.string.diagnostics_title)
+                    .setView(scrollView)
+                    .setPositiveButton(R.string.diagnostics_copy) { _, _ ->
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("Diagnose", text))
+                        Toast.makeText(this, R.string.diagnostics_copied, Toast.LENGTH_SHORT).show()
+                    }
+                    .setNeutralButton(R.string.diagnostics_share) { _, _ ->
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, text)
+                        }
+                        startActivity(Intent.createChooser(shareIntent, getString(R.string.diagnostics_share)))
+                    }
+                    .setNegativeButton(R.string.diagnostics_close, null)
+                    .show()
+            }
+        }
+    }
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
         return true
@@ -294,6 +347,10 @@ class MainActivity : AppCompatActivity() {
             }
             ticketInput.setText("")
             showTicketEntry()
+            return true
+        }
+        if (item.itemId == R.id.action_show_diagnostics) {
+            showDiagnosticsDialog()
             return true
         }
         return super.onOptionsItemSelected(item)

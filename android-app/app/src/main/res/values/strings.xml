@@ -8,6 +8,12 @@
     <string name="ticket_empty_error">Bitte ein Ticket eingeben</string>
     <string name="cert_mismatch_error">Zertifikat stimmt nicht überein – Verbindung abgelehnt</string>
     <string name="tunnel_start_error">Tunnel konnte nicht gestartet werden</string>
-    <string name="tunnel_timeout_error">Tunnel-Verbindung kam nicht rechtzeitig zustande. Ticket noch gültig? Internetverbindung vorhanden?</string>
+    <string name="tunnel_timeout_error">Tunnel-Verbindung kam nicht rechtzeitig zustande. Diagnose-Ansicht wird angezeigt.</string>
     <string name="action_change_ticket">Ticket ändern</string>
+    <string name="action_show_diagnostics">Diagnose anzeigen</string>
+    <string name="diagnostics_title">Diagnose</string>
+    <string name="diagnostics_copy">Kopieren</string>
+    <string name="diagnostics_copied">In Zwischenablage kopiert</string>
+    <string name="diagnostics_share">Teilen</string>
+    <string name="diagnostics_close">Schließen</string>
 </resources>
