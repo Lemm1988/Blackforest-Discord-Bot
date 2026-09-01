@@ -31,18 +31,30 @@ jobs:
       - name: Clone dumbpipe source
         run: git clone --depth 1 https://github.com/n0-computer/dumbpipe.git dumbpipe-src
 
+      - name: Patch dumbpipe's Cargo.toml - panic=abort -> unwind
+        # dumbpipes eigenes Cargo.toml setzt [profile.release] panic = "abort".
+        # Das macht iroh's eigenes internes catch_unwind fuer den bekannten
+        # Android-JNI-DNS-Panic ("android context was not initialized",
+        # ndk-context, ausgeloest in hickory_resolver::system_conf::read_system_conf
+        # beim Aufbau des DnsResolver) komplett wirkungslos: bei panic=abort wird
+        # NIE abgewickelt, der ganze Prozess stirbt sofort, egal wo im Code ein
+        # catch_unwind steht. Direkter sed-Patch statt nur CARGO_PROFILE_RELEASE_PANIC
+        # env var, da Letzteres allein nicht zuverlaessig genug griff (Exit-Code
+        # aenderte sich zwar von 134/SIGABRT auf 101/unabgefangener Panic, aber der
+        # Prozess starb weiterhin) - dieser direkte Zeilen-Ersatz ist eindeutig.
+        working-directory: dumbpipe-src
+        run: |
+          echo "--- Vorher ---"
+          grep -A5 "\[profile.release\]" Cargo.toml
+          sed -i 's/panic = "abort"/panic = "unwind"/' Cargo.toml
+          echo "--- Nachher ---"
+          grep -A5 "\[profile.release\]" Cargo.toml
+
       - name: Build dumbpipe for aarch64-linux-android (arm64-v8a)
         working-directory: dumbpipe-src
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-          # dumbpipes eigenes Cargo.toml setzt [profile.release] panic = "abort".
-          # Das macht iroh's eigenes internes catch_unwind fuer den bekannten
-          # Android-JNI-DNS-Panic ("android context was not initialized",
-          # ndk-context) komplett wirkungslos: bei panic=abort wird NIE
-          # abgewickelt, der ganze Prozess stirbt sofort per SIGABRT (Exit-Code
-          # 134), egal wo im Code ein catch_unwind steht. Ohne Quellcode-Patch
-          # per Cargo-Profil-Override zurueck auf "unwind" gesetzt, damit iroh's
-          # eigener, dafuer vorgesehener Fallback-Mechanismus tatsaechlich greift.
+          # Redundante Absicherung zusaetzlich zum sed-Patch oben.
           CARGO_PROFILE_RELEASE_PANIC: unwind
         run: cargo ndk -t arm64-v8a -o ../output build --release
 
