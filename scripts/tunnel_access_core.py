@@ -8,6 +8,7 @@ Keine Duplikate dieser Logik pflegen.
 """
 from __future__ import annotations
 
+import getpass
 import os
 import re
 import secrets
@@ -18,10 +19,17 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-DB_PATH = Path("/home/picom/Desktop/BlackforestBot-v2/bot/data/bot.db")
-CONFIG_DIR = Path("/home/picom/.config/dumbpipe")
-DUMBPIPE_BIN = Path("/home/picom/.cargo/bin/dumbpipe")
+# Pfade werden abgeleitet statt hart verdrahtet: Die frueheren Absolutpfade
+# (/home/picom/Desktop/BlackforestBot-v2, /home/picom/.config, /home/picom/.cargo)
+# brachen beim Umzug auf ein neues OS/Benutzerkonto lautlos - das Dashboard lief,
+# konnte aber die DB nicht oeffnen, und neu erzeugte Units hatten einen falschen
+# User. Ableiten haelt das unabhaengig von Installationsort und Benutzername.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+DB_PATH = _REPO_ROOT / "bot" / "data" / "bot.db"
+CONFIG_DIR = Path.home() / ".config" / "dumbpipe"
+DUMBPIPE_BIN = Path.home() / ".cargo" / "bin" / "dumbpipe"
 SYSTEMD_DIR = Path("/etc/systemd/system")
+SERVICE_USER = getpass.getuser()
 
 
 class TunnelAccessError(Exception):
@@ -190,12 +198,12 @@ def add_grant(label: str, discord_user_id: str) -> str:
 
     unit_content = f"""[Unit]
 Description=dumbpipe iroh tunnel for Discord bot backend - person: {label}
-After=network-online.target
+After=network-online.target nginx.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=picom
+User={SERVICE_USER}
 EnvironmentFile={secret_file}
 ExecStart={DUMBPIPE_BIN} listen-tcp --host localhost:5000
 Restart=always
