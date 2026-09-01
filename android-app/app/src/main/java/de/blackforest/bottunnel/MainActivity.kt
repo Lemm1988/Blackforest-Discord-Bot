@@ -7,8 +7,6 @@ import android.content.Intent
 import android.net.http.SslCertificate
 import android.net.http.SslError
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -48,24 +46,27 @@ class MainActivity : AppCompatActivity() {
         private const val EXPECTED_FINGERPRINT_SHA256 =
             "6C:6F:DE:28:DF:07:7E:0B:E6:C1:3D:F4:F2:11:64:47:4D:6E:32:2A:6E:F6:D5:46:3A:72:73:79:FC:E1:AA:BD"
 
-        // Verzoegerung, bis der Iroh-Tunnel (NAT-Hole-Punching oder Relay-Fallback)
-        // typischerweise steht, bevor die WebView den ersten Ladeversuch macht.
-        // Bewusst wieder EXAKT wie in der nachweislich funktionierenden Erstversion -
-        // ein zwischenzeitlicher Versuch, das durch aktives TCP-Probing zu ersetzen,
-        // wurde zurueckgebaut: die Probe oeffnete alle 500ms eine rohe TCP-Verbindung
-        // zum dumbpipe-Port und schloss sie sofort wieder ab - das entspricht exakt dem
-        // bekannten Absturzmuster "Endpoint dropped without calling Endpoint::close"
-        // (serverseitig mehrfach beobachtet) und konnte den echten, gerade im Aufbau
-        // befindlichen Tunnel selbst gestoert haben.
-        private const val TUNNEL_STARTUP_DELAY_MS = 2000L
+        // NEU (ersetzt die fruehere Kombination aus fixer Start-Verzoegerung +
+        // haeufigen WebView-Reload-Retries alle 1,5s): Diagnose hat gezeigt, dass
+        // ein einzelner GEDULDIGER, sauberer HTTPS-Request (volles Verbinden bis
+        // zum Response, kein abruptes Abbrechen) nach ausreichend Wartezeit
+        // zuverlaessig funktioniert - waehrend haeufige, schnelle Neuversuche
+        // (WebView-Reload alle 1,5s, ebenso wie der fruehere aktive Port-Probe) den
+        // eigentlich erfolgreichen Verbindungsaufbau selbst gestoert haben
+        // (dasselbe Absturzmuster "Endpoint dropped without calling
+        // Endpoint::close", das serverseitig mehrfach beobachtet wurde). Deshalb:
+        // wenige, aber lange geduldige Versuche VOR dem WebView-Laden statt vieler
+        // kurzer danach.
+        private const val READINESS_ATTEMPTS = 3
+        private const val READINESS_TIMEOUT_MS = 60_000
 
-        // Retry-Intervall und Obergrenze fuer den WebView-Ladeversuch (siehe
-        // onReceivedError) - das war schon in der Erstversion der Mechanismus, der die
-        // Verbindung tatsaechlich zustande brachte, wenn der Tunnel etwas laenger
-        // brauchte. Jetzt nur mit einer klaren Obergrenze + Fehlermeldung statt
-        // unbegrenzt stillschweigend zu retryen.
-        private const val RETRY_INTERVAL_MS = 1500L
-        private const val MAX_RETRIES = 25 // ca. 37s zusaetzlich zur Startverzoegerung
+        // Leichtes Sicherheitsnetz FALLS die WebView nach erfolgreicher
+        // Bereitschaftspruefung trotzdem einmal einen Ladefehler meldet (z.B.
+        // kurzer Netzwerk-Hakler waehrend des Browsens) - bewusst nur noch wenige,
+        // grosszuegig auseinanderliegende Versuche, nicht mehr der primaere
+        // Verbindungsaufbau-Mechanismus.
+        private const val RETRY_INTERVAL_MS = 4000L
+        private const val MAX_RETRIES = 5
     }
 
     private lateinit var prefs: android.content.SharedPreferences
@@ -75,12 +76,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ticketInput: EditText
 
     private var tunnelRunningForThisSession = false
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private var pendingLoad: Runnable? = null
 
-    // Zaehlt Ladeversuche fuer den AKTUELLEN Verbindungsversuch, zusammen mit
-    // retryGeneration gegen veraltete Retry-Callbacks abgesichert (z.B. nach
-    // Ticket-Wechsel sollen alte Retries nicht mehr weiterlaufen).
+    // Zaehlt Ladeversuche fuer das (leichte) WebView-Sicherheitsnetz NACH
+    // erfolgreicher Bereitschaftspruefung, zusammen mit retryGeneration gegen
+    // veraltete Retry-Callbacks abgesichert (z.B. nach Ticket-Wechsel sollen alte
+    // Retries nicht mehr weiterlaufen).
     private var retryCount = 0
     private var retryGeneration = 0
     @Volatile
@@ -96,11 +96,20 @@ class MainActivity : AppCompatActivity() {
     // nur zusaetzliche Verzoegerung/Fehlerquellen ohne Nutzen.
     private lateinit var tunnelExecutor: ExecutorService
 
+    // EIGENER, separater Hintergrund-Thread nur fuer die (bis zu mehrere Minuten
+    // dauernde) Bereitschaftspruefung. Bewusst NICHT derselbe wie tunnelExecutor:
+    // sonst wuerde ein TunnelManager.stop()-Aufruf aus onStop() (z.B. User
+    // verlaesst die App waehrend die Bereitschaftspruefung noch laeuft) hinter der
+    // noch laufenden, langen Pruefung in der Warteschlange stecken bleiben und der
+    // Tunnel-Prozess wuerde viel zu spaet tatsaechlich beendet.
+    private lateinit var readinessExecutor: ExecutorService
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         tunnelExecutor = Executors.newSingleThreadExecutor()
+        readinessExecutor = Executors.newSingleThreadExecutor()
 
         val masterKey = MasterKey.Builder(this)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
@@ -155,9 +164,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onStop() {
         super.onStop()
+        // Erhoehen genuegt, um eine noch laufende Bereitschaftspruefung
+        // (readinessExecutor) und ein noch laufendes WebView-Sicherheitsnetz-Retry
+        // beim naechsten Generation-Check von selbst abbrechen zu lassen - der
+        // eigentliche Tunnel-Stop unten laeuft unabhaengig davon sofort.
         connectionGeneration++
-        pendingLoad?.let { mainHandler.removeCallbacks(it) }
-        pendingLoad = null
         if (tunnelRunningForThisSession) {
             tunnelRunningForThisSession = false
             tunnelExecutor.submit { TunnelManager.stop() }
@@ -167,6 +178,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         tunnelExecutor.shutdown()
+        readinessExecutor.shutdownNow() // shutdownNow: eine laufende Bereitschaftspruefung soll nicht die App-Zerstoerung verzoegern
     }
 
     private fun setupWebView() {
@@ -286,15 +298,96 @@ class MainActivity : AppCompatActivity() {
         tunnelRunningForThisSession = true
         retryCount = 0
         retryGeneration = connectionGeneration
+        val myGeneration = connectionGeneration
 
-        pendingLoad?.let { mainHandler.removeCallbacks(it) }
-        val runnable = Runnable {
-            loadingLayout.visibility = View.GONE
-            webView.visibility = View.VISIBLE
-            webView.loadUrl(BACKEND_URL)
+        // Statt sofort/nach fixer kurzer Verzoegerung zu laden und dann bei Fehlern
+        // haeufig neu zu versuchen (fruehere Version - siehe Konstanten-Kommentar
+        // oben, warum das den eigentlich erfolgreichen Verbindungsaufbau selbst
+        // stoeren konnte): jetzt GEDULDIG im Hintergrund warten, bis eine echte
+        // HTTPS-Antwort kommt, und die WebView erst DANACH ueberhaupt laden.
+        readinessExecutor.submit {
+            val ready = waitForBackendReady(myGeneration)
+            runOnUiThread {
+                if (myGeneration != connectionGeneration || isFinishing || isDestroyed) return@runOnUiThread
+                if (ready) {
+                    loadingLayout.visibility = View.GONE
+                    webView.visibility = View.VISIBLE
+                    webView.loadUrl(BACKEND_URL)
+                } else {
+                    val logExcerpt = TunnelManager.recentLog.takeLast(8).joinToString("\n")
+                    Log.e(TAG, "Tunnel nach $READINESS_ATTEMPTS Versuchen nicht bereit. Letzte dumbpipe-Ausgabe:\n$logExcerpt")
+                    showTicketEntry()
+                    Toast.makeText(this, R.string.tunnel_timeout_error, Toast.LENGTH_LONG).show()
+                    // includeLivePortCheck=false: siehe Begruendung in onReceivedError weiter unten -
+                    // ein Live-Port-Check hier koennte einen noch laufenden Tunnel-Prozess stoeren.
+                    showDiagnosticsDialog(includeLivePortCheck = false)
+                }
+            }
         }
-        pendingLoad = runnable
-        mainHandler.postDelayed(runnable, TUNNEL_STARTUP_DELAY_MS)
+    }
+
+    /**
+     * Wartet GEDULDIG (mehrere Minuten Gesamtbudget), bis das Backend ueber den
+     * Tunnel tatsaechlich antwortet - wenige lange Versuche statt vieler kurzer,
+     * siehe Begruendung bei READINESS_ATTEMPTS/READINESS_TIMEOUT_MS oben. Bricht
+     * fruehzeitig ab, falls der Verbindungsversuch inzwischen ueberholt wurde
+     * (Ticket gewechselt, App verlassen).
+     */
+    private fun waitForBackendReady(myGeneration: Int): Boolean {
+        repeat(READINESS_ATTEMPTS) { attemptIndex ->
+            if (myGeneration != connectionGeneration) return false
+            Log.i(
+                TAG,
+                "Bereitschafts-Check Versuch ${attemptIndex + 1}/$READINESS_ATTEMPTS " +
+                    "(bis zu ${READINESS_TIMEOUT_MS / 1000}s Geduld)"
+            )
+            if (isBackendReadyOnce(READINESS_TIMEOUT_MS)) return true
+        }
+        return false
+    }
+
+    /**
+     * EIN sauberer, vollstaendiger HTTPS-Request (Verbindungsaufbau bis zur
+     * Antwort, kein abruptes Abbrechen) - genau die Methode, die sich in der
+     * Diagnose als zuverlaessig erwiesen hat, im Gegensatz zu rohen
+     * Connect-und-sofort-Trennen-Proben.
+     *
+     * Das Zertifikat wird hier bewusst NICHT geprueft (permissiver TrustManager) -
+     * das ist an dieser Stelle nur ein reiner Erreichbarkeits-/Bereitschafts-Check,
+     * es werden keine echten Daten ausgetauscht oder vertraut. Die eigentliche
+     * Sicherheitsentscheidung (Certificate Pinning) passiert weiterhin
+     * ausschliesslich beim tatsaechlichen WebView-Laden in onReceivedSslError.
+     */
+    private fun isBackendReadyOnce(timeoutMs: Int): Boolean {
+        var connection: javax.net.ssl.HttpsURLConnection? = null
+        return try {
+            connection = (java.net.URL(BACKEND_URL).openConnection() as javax.net.ssl.HttpsURLConnection).apply {
+                sslSocketFactory = permissiveSslContext.socketFactory
+                hostnameVerifier = javax.net.ssl.HostnameVerifier { _, _ -> true }
+                connectTimeout = timeoutMs
+                readTimeout = timeoutMs
+                requestMethod = "HEAD"
+            }
+            connection.connect()
+            connection.responseCode // erzwingt den tatsaechlichen Request/Response-Zyklus
+            true
+        } catch (e: Exception) {
+            Log.d(TAG, "Bereitschafts-Check fehlgeschlagen: ${e.javaClass.simpleName}: ${e.message}")
+            false
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
+    private val permissiveSslContext: javax.net.ssl.SSLContext by lazy {
+        val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(object : javax.net.ssl.X509TrustManager {
+            override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        })
+        javax.net.ssl.SSLContext.getInstance("TLS").apply {
+            init(null, trustAllCerts, java.security.SecureRandom())
+        }
     }
 
     /**
@@ -351,9 +444,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         if (item.itemId == R.id.action_change_ticket) {
-            connectionGeneration++
-            pendingLoad?.let { mainHandler.removeCallbacks(it) }
-            pendingLoad = null
+            connectionGeneration++ // laesst eine ggf. noch laufende Bereitschaftspruefung/Retry von selbst abbrechen
             if (tunnelRunningForThisSession) {
                 tunnelRunningForThisSession = false
                 tunnelExecutor.submit { TunnelManager.stop() }
