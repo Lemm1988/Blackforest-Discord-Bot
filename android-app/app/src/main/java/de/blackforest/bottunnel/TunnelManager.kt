@@ -28,6 +28,26 @@ object TunnelManager {
     private var process: Process? = null
     private var logThread: Thread? = null
 
+    /**
+     * Liefert die PID eines laufenden Prozesses als String, oder eine
+     * Fehlerbeschreibung. Bewusst per Reflection statt direktem `Process.pid()`-
+     * Aufruf: Letzteres ist zwar eine offiziell dokumentierte Android-API ab
+     * API 26 (unser minSdk), scheiterte aber in der GitHub-Actions-Build-Pipeline
+     * mit "Unresolved reference: pid" trotz compileSdk 34 - vermutlich eine
+     * Eigenheit des dort verwendeten android.jar-Compile-Stubs, deren genaue
+     * Ursache nicht abschliessend geklaert wurde. Die reflection-basierte Variante
+     * umgeht das Problem beim Kompilieren komplett, bei gleichem Laufzeitverhalten
+     * (auf einem echten API-26+-Geraet funktioniert die Methode zur Laufzeit ganz
+     * normal, unabhaengig vom Compile-Stub).
+     */
+    private fun pidOf(p: Process): String {
+        return try {
+            p.javaClass.getMethod("pid").invoke(p).toString()
+        } catch (e: Exception) {
+            "unbekannt (${e.message})"
+        }
+    }
+
     // Ring-artiger Log-Puffer der dumbpipe-Ausgabe (stdout+stderr zusammengefuehrt)
     // - vorher wurde dieser Stream nirgends gelesen, es gab also KEINERLEI
     // Diagnose-Moeglichkeit, was der Tunnel-Prozess tatsaechlich tut/meldet, wenn
@@ -100,7 +120,7 @@ object TunnelManager {
                 start()
             }
 
-            Log.i(TAG, "Tunnel-Prozess gestartet, PID ${try { p.pid() } catch (e: Exception) { "?" }}")
+            Log.i(TAG, "Tunnel-Prozess gestartet, PID ${pidOf(p)}")
             true
         } catch (e: Exception) {
             lastStartException = "${e.javaClass.simpleName}: ${e.message}"
@@ -211,12 +231,7 @@ object TunnelManager {
         if (p == null) {
             sb.appendLine("Kein Prozess-Handle vorhanden (nie gestartet oder bereits beendet+null gesetzt).")
         } else {
-            val pid = try {
-                p.pid().toString()
-            } catch (e: Exception) {
-                "unbekannt (${e.message})"
-            }
-            sb.appendLine("PID: $pid")
+            sb.appendLine("PID: ${pidOf(p)}")
             sb.appendLine(
                 "Gestartet um: " +
                     if (lastStartedAt > 0) timeFmt.format(Date(lastStartedAt)) else "?"
