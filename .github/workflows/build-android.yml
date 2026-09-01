@@ -31,6 +31,28 @@ jobs:
       - name: Clone dumbpipe source
         run: git clone --depth 1 https://github.com/n0-computer/dumbpipe.git dumbpipe-src
 
+      - name: iroh aktualisieren (Android-DNS-Fallback im Release-Build)
+        # KERNURSACHE des "Prozess laeuft, aber keine Verbindung"-Problems:
+        # dumbpipes mitgelieferte Cargo.lock nagelt iroh/iroh-dns auf 1.0.0 fest,
+        # und `cargo build` respektiert die Lockfile. iroh-dns 1.0.0 faengt den
+        # Android-JNI-DNS-Panic NUR in Debug-Builds ab (#[cfg(debug_assertions)]);
+        # im Release-Build laeuft der Panic durch -> genau der beobachtete
+        # Exit-Code 101. Ab iroh-dns 1.0.2 ist das catch_unwind unbedingt aktiv
+        # (Upstream-PR n0-computer/iroh#4371, 25.06.2026, in die 1.0er-Reihe
+        # zurueckportiert) und faellt auf Google-DNS (UDP UND TCP) zurueck.
+        # Zum Vergleich: `cargo install dumbpipe` ignoriert die Lockfile und
+        # zieht deshalb eine neuere iroh-Version - genau dieses Binary
+        # funktioniert nachweislich, das aus diesem Workflow bisher nicht.
+        #
+        # `cargo update -p` (ohne --precise) bleibt bewusst auf der 1.0er-Reihe
+        # (-> 1.0.2): kleinstmoegliche Aenderung, die den Fix enthaelt.
+        working-directory: dumbpipe-src
+        run: |
+          cargo update -p iroh -p iroh-dns
+          echo "--- iroh-Versionen nach dem Update (muss >= 1.0.2 sein) ---"
+          grep -A1 '^name = "iroh"' Cargo.lock
+          grep -A1 '^name = "iroh-dns"' Cargo.lock
+
       - name: Patch dumbpipe's Cargo.toml - panic=abort -> unwind
         # dumbpipes eigenes Cargo.toml setzt [profile.release] panic = "abort".
         # Das macht iroh's eigenes internes catch_unwind fuer den bekannten
@@ -50,15 +72,22 @@ jobs:
           echo "--- Nachher ---"
           grep -A5 "\[profile.release\]" Cargo.toml
 
-      - name: Patch dumbpipe's Endpoint-Aufbau - Android-JNI-DNS-Lookup weglassen
-        # ECHTE Ursachenbehebung statt nur Absturz-Schadensbegrenzung - Details
-        # und Begruendung siehe android-app/patch_dumbpipe_android.py. Laeuft
-        # vom Repo-Root aus (kein working-directory), das Skript kennt den
-        # relativen Pfad zu dumbpipe-src/src/main.rs selbst.
-        run: |
-          python3 android-app/patch_dumbpipe_android.py
-          echo "--- create_endpoint nach Patch ---"
-          grep -A 12 "async fn create_endpoint" dumbpipe-src/src/main.rs
+      # ENTFERNT: "Patch dumbpipe's Endpoint-Aufbau - Android-JNI-DNS-Lookup weglassen"
+      # (android-app/patch_dumbpipe_android.py, jetzt ungenutzt)
+      #
+      # Der Patch ersetzte irohs Standard-Resolver durch
+      # DnsResolver::with_nameserver("8.8.8.8:53") - laut iroh-Doku "a new DNS
+      # resolver configured with a SINGLE UDP DNS nameserver". Er verhinderte
+      # zwar den Panic, ersetzte damit aber irohs getesteten Fallback
+      # (ResolverConfig::udp_and_tcp(&GOOGLE): mehrere Server, UDP UND TCP)
+      # durch einen einzelnen UDP-Server ohne Ausweichpfad. Ergebnis: Der
+      # Prozess lebte, baute aber keine Verbindung mehr auf - kein Fehler,
+      # keine Ausgabe, nur Stille.
+      #
+      # Mit iroh >= 1.0.2 (siehe Update-Schritt oben) ist der Patch unnoetig:
+      # iroh faengt den JNI-Panic selbst ab und nutzt seinen eigenen Fallback.
+      # Der panic=unwind-Patch oben bleibt zwingend erforderlich, weil genau
+      # dieses catch_unwind ohne Unwinding nicht funktionieren kann.
 
       - name: Build dumbpipe for aarch64-linux-android (arm64-v8a)
         working-directory: dumbpipe-src
