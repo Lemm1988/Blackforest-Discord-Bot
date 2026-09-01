@@ -49,10 +49,14 @@ object TunnelManager {
         recentLog.clear()
         lastStartException = null
         lastTicketLength = ticket.length
+        // IMMER maskieren, nie den vollen Wert speichern - der Diagnose-Text wird
+        // per "Teilen" potenziell oeffentlich gepostet (z.B. Discord-Support-Kanal).
+        // Ein Ticket ist ein Bearer-Credential und muss wie ein Passwort behandelt
+        // werden, unabhaengig von seiner Laenge.
         lastTicketPreview = if (ticket.length > 24) {
             ticket.take(14) + "…" + ticket.takeLast(8)
         } else {
-            ticket
+            "*".repeat(ticket.length)
         }
         return try {
             val binary = File(context.applicationInfo.nativeLibraryDir, "libdumbpipe.so")
@@ -165,8 +169,19 @@ object TunnelManager {
     /**
      * Kopier-/teilbarer Diagnose-Text fuer den User ohne ADB/PC - zeigt alles, was
      * fuer die Fehlersuche bei einem Verbindungsproblem relevant ist.
+     *
+     * @param includeLivePortCheck Fuehrt den einmaligen Verbinden-und-sofort-wieder-
+     * schliessen-Port-Check aus (siehe checkPortOnceForDiagnostics). Dieser Test
+     * entspricht dem bekannten Absturzmuster "Endpoint dropped without calling
+     * Endpoint::close" und darf NIEMALS automatisch waehrend eines noch laufenden
+     * Verbindungsversuchs ausgefuehrt werden (siehe MainActivity.onReceivedError -
+     * genau dieser Fehler wurde hier vorher versehentlich wieder eingefuehrt, indem
+     * die automatische Diagnose-Anzeige nach Retry-Erschoepfung diesen Parameter
+     * fehlend/immer-true behandelt hat). Default false, damit ein vergessener
+     * Aufrufer nicht versehentlich wieder in den Bug zurueckfaellt - nur der
+     * EXPLIZITE, User-ausgeloeste Diagnose-Menuepunkt setzt ihn bewusst auf true.
      */
-    fun diagnosticsText(context: Context): String {
+    fun diagnosticsText(context: Context, includeLivePortCheck: Boolean = false): String {
         val timeFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.GERMANY)
         val sb = StringBuilder()
         sb.appendLine("=== BlackforestBot Zugang - Diagnose ===")
@@ -221,7 +236,11 @@ object TunnelManager {
         }
         sb.appendLine()
         sb.appendLine("--- Lokaler Port ($LOCAL_HOST:$LOCAL_PORT) ---")
-        sb.appendLine("Einmaliger Check gerade eben: ${if (checkPortOnceForDiagnostics()) "ERREICHBAR" else "NICHT erreichbar"}")
+        if (includeLivePortCheck) {
+            sb.appendLine("Einmaliger Check gerade eben: ${if (checkPortOnceForDiagnostics()) "ERREICHBAR" else "NICHT erreichbar"}")
+        } else {
+            sb.appendLine("(Live-Check uebersprungen - ein noch laufender Verbindungsversuch darf nicht gestoert werden. Ueber das Diagnose-Menue jederzeit mit Live-Check abrufbar.)")
+        }
         sb.appendLine()
         sb.appendLine("--- Letzte dumbpipe-Ausgabe (stdout+stderr, neueste zuletzt) ---")
         synchronized(recentLog) {

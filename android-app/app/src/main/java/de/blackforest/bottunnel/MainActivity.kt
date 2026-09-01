@@ -203,11 +203,19 @@ class MainActivity : AppCompatActivity() {
                         "Tunnel nach $MAX_RETRIES Versuchen nicht erreichbar. Letzte dumbpipe-Ausgabe:\n$logExcerpt"
                     )
                     showTicketEntry()
-                    // Diagnose-Dialog automatisch anzeigen statt nur einem Toast - der
+                    Toast.makeText(this@MainActivity, R.string.tunnel_timeout_error, Toast.LENGTH_LONG).show()
+                    // Diagnose-Dialog zusaetzlich zum Toast automatisch anzeigen - der
                     // User soll die Rohdaten direkt kopieren/teilen koennen, ohne
                     // ADB/PC zu brauchen (ist ueber das Menue auch jederzeit manuell
-                    // erreichbar, siehe onOptionsItemSelected).
-                    showDiagnosticsDialog()
+                    // erreichbar, siehe onOptionsItemSelected). WICHTIG:
+                    // includeLivePortCheck=false - der Tunnel-PROZESS laeuft nach dem
+                    // Aufgeben der WebView ggf. noch im Hintergrund weiter und
+                    // versucht evtl. noch, die (NAT-Hole-Punching/Relay-)Verbindung
+                    // fertig aufzubauen. Ein Live-Port-Check hier wuerde exakt den
+                    // bekannten Server-Absturz "Endpoint dropped without calling
+                    // Endpoint::close" ausloesen und einen eventuell kurz vor dem
+                    // Erfolg stehenden Verbindungsaufbau selbst zerstoeren.
+                    showDiagnosticsDialog(includeLivePortCheck = false)
                 }
             }
         }
@@ -295,13 +303,18 @@ class MainActivity : AppCompatActivity() {
      * letzten dumbpipe-Log-Zeilen und einen einmaligen Port-Erreichbarkeits-Check
      * als selektierbaren Text an, mit Kopieren- und Teilen-Knopf.
      */
-    private fun showDiagnosticsDialog() {
-        // TunnelManager.diagnosticsText() macht einen einmaligen (synchronen)
+    private fun showDiagnosticsDialog(includeLivePortCheck: Boolean = true) {
+        // TunnelManager.diagnosticsText() macht ggf. einen einmaligen (synchronen)
         // Socket-Verbindungsversuch - kurz, aber sicherheitshalber nicht im
         // UI-Thread blockierend ausfuehren.
         tunnelExecutor.submit {
-            val text = TunnelManager.diagnosticsText(this)
+            val text = TunnelManager.diagnosticsText(this, includeLivePortCheck)
             runOnUiThread {
+                // Activity kann inzwischen beendet/zerstoert worden sein (z.B. User
+                // hat waehrend der ~37s Retry-Wartezeit die App verlassen oder das
+                // Geraet gedreht) - ein AlertDialog auf einer toten Activity wirft
+                // eine ungefangene WindowManager.BadTokenException und crasht die App.
+                if (isFinishing || isDestroyed) return@runOnUiThread
                 val textView = TextView(this).apply {
                     setText(text)
                     setTextIsSelectable(true)
