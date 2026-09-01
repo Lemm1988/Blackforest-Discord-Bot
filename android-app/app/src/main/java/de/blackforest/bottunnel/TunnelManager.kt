@@ -23,7 +23,10 @@ object TunnelManager {
     private const val LOCAL_HOST = "127.0.0.1"
     private const val LOCAL_PORT = 8500
     private const val BACKEND_ADDR = "$LOCAL_HOST:$LOCAL_PORT"
-    private const val MAX_LOG_LINES = 200
+    // Mit aktivem RUST_LOG (siehe start()) produziert iroh deutlich mehr Zeilen als
+    // frueher - 200 waren im Nu von Startup-Rauschen gefuellt, bevor der eigentliche
+    // Verbindungsaufbau ueberhaupt begann.
+    private const val MAX_LOG_LINES = 600
 
     private var process: Process? = null
     private var logThread: Thread? = null
@@ -97,6 +100,14 @@ object TunnelManager {
             val pb = ProcessBuilder(
                 binary.absolutePath, "connect-tcp", "--addr", BACKEND_ADDR, ticket
             )
+            // Ohne RUST_LOG gibt dumbpipe/iroh ausser "using secret key" nichts aus -
+            // ein fehlgeschlagener Verbindungsaufbau ist dann von einem haengenden
+            // nicht zu unterscheiden. Mit gesetztem Filter protokolliert iroh selbst,
+            // ob DNS-Aufloesung, Relay-Verbindung und Hole-Punching klappen. Das ist
+            // in einem Debug-APK zur Fehlersuche gewollt; die Ausgabe landet nur im
+            // App-eigenen Diagnose-Puffer (siehe diagnostics()), nicht nach aussen.
+            pb.environment()["RUST_LOG"] = "iroh=debug,iroh_relay=debug,iroh_dns=debug,dumbpipe=debug"
+            pb.environment()["RUST_BACKTRACE"] = "1"
             pb.redirectErrorStream(true)
             val p = pb.start()
             process = p
@@ -262,7 +273,7 @@ object TunnelManager {
             if (recentLog.isEmpty()) {
                 sb.appendLine("(keine Ausgabe empfangen)")
             } else {
-                recentLog.takeLast(40).forEach { sb.appendLine(it) }
+                recentLog.takeLast(150).forEach { sb.appendLine(it) }
             }
         }
         return sb.toString()
