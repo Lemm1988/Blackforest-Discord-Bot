@@ -35,6 +35,15 @@ jobs:
         working-directory: dumbpipe-src
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+          # dumbpipes eigenes Cargo.toml setzt [profile.release] panic = "abort".
+          # Das macht iroh's eigenes internes catch_unwind fuer den bekannten
+          # Android-JNI-DNS-Panic ("android context was not initialized",
+          # ndk-context) komplett wirkungslos: bei panic=abort wird NIE
+          # abgewickelt, der ganze Prozess stirbt sofort per SIGABRT (Exit-Code
+          # 134), egal wo im Code ein catch_unwind steht. Ohne Quellcode-Patch
+          # per Cargo-Profil-Override zurueck auf "unwind" gesetzt, damit iroh's
+          # eigener, dafuer vorgesehener Fallback-Mechanismus tatsaechlich greift.
+          CARGO_PROFILE_RELEASE_PANIC: unwind
         run: cargo ndk -t arm64-v8a -o ../output build --release
 
       - name: Verify binary exists
