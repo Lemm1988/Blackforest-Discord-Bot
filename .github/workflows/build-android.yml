@@ -50,6 +50,16 @@ jobs:
           echo "--- Nachher ---"
           grep -A5 "\[profile.release\]" Cargo.toml
 
+      - name: Patch dumbpipe's Endpoint-Aufbau - Android-JNI-DNS-Lookup weglassen
+        # ECHTE Ursachenbehebung statt nur Absturz-Schadensbegrenzung - Details
+        # und Begruendung siehe android-app/patch_dumbpipe_android.py. Laeuft
+        # vom Repo-Root aus (kein working-directory), das Skript kennt den
+        # relativen Pfad zu dumbpipe-src/src/main.rs selbst.
+        run: |
+          python3 android-app/patch_dumbpipe_android.py
+          echo "--- create_endpoint nach Patch ---"
+          grep -A 12 "async fn create_endpoint" dumbpipe-src/src/main.rs
+
       - name: Build dumbpipe for aarch64-linux-android (arm64-v8a)
         working-directory: dumbpipe-src
         env:
