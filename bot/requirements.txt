@@ -1,3 +1,7 @@
+# audioop wurde in Python 3.13 aus der Standardbibliothek entfernt (PEP 594),
+# discord.py 2.4.0 importiert es aber fest (discord/player.py). Ohne diesen
+# Backport startet der Bot auf Python >= 3.13 gar nicht (ModuleNotFoundError).
+audioop-lts==0.2.2; python_version >= "3.13"
 discord.py==2.4.0
 Flask==3.0.3
 python-dotenv==1.0.1
