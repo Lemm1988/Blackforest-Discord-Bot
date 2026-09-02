@@ -29,6 +29,23 @@ Für SSH/Iroh-Tunnel/Fernzugriff-Hintergrund: [`docs/Fernzugriff-Setup-Anleitung
 3. Start: `cd bot && ../venv/bin/python main.py` (oder als systemd-Dienst, siehe Doku
    Abschnitt 12).
 
+## Tests
+
+```bash
+pip install pytest
+python -m pytest tests/ -v
+```
+
+Laufen auch in der CI bei jedem Push und Pull Request
+(`.github/workflows/tests.yml`). Sie brauchen **keine** Laufzeit-Abhängigkeiten des
+Bots, kein systemd und kein `dumbpipe` — alles Privilegierte wird durch Fakes ersetzt.
+
+Der Schwerpunkt liegt bewusst auf Fehlern, die real aufgetreten sind und dabei
+**stumm** blieben: ein Widerruf, der Erfolg meldete, während der Tunnel weiterlief;
+ein Löschen, das den falschen Eintrag traf; fest verdrahtete Pfade, die beim Umzug
+alles lahmlegten; und zwei Schritte im Android-Build, ohne die die App nie durchkommt.
+Wer hier etwas ändert, sollte die Tests eher erweitern als anpassen.
+
 ## Sicherheit
 
 `.env`, `*.db`, Zertifikate/Schlüssel (`backend/ssl/*.key`/`*.crt`, `*.pem`) und

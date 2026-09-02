@@ -1,0 +1,37 @@
+name: Tests
+
+# Laeuft bei jedem Push auf main UND bei jedem Pull Request. Bewusst ohne
+# paths-Filter: Die Tests brauchen unter einer Sekunde, und gerade die
+# Regressionen, die hier abgesichert sind, entstanden durch Aenderungen an
+# Stellen, die man nicht mit den Tests in Verbindung gebracht haette (eine
+# Zeile im Build-Workflow, ein Pfad in einem Hilfsskript).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python einrichten
+        uses: actions/setup-python@v5
+        with:
+          # Gleiche Hauptversion wie auf dem Pi (Debian 13 / trixie liefert 3.13).
+          # Wichtig, weil genau ein Versionsunterschied schon einmal zugeschlagen
+          # hat: audioop wurde in 3.13 aus der Standardbibliothek entfernt, was
+          # den Bot beim Start scheitern liess.
+          python-version: "3.13"
+
+      - name: pytest installieren
+        # Die Tests kommen absichtlich ohne die Laufzeit-Abhaengigkeiten des Bots
+        # aus (kein discord.py, kein Flask): Sie pruefen reine Logik und ersetzen
+        # alles Privilegierte durch Fakes. Das haelt die CI schnell und
+        # unabhaengig von Netzwerk und Paketversionen.
+        run: pip install pytest
+
+      - name: Tests ausfuehren
+        run: python -m pytest tests/ -v
