@@ -21,6 +21,7 @@ import config
 import database
 import mood
 from . import oauth
+from .moderation_rules import moderation_block_reason
 
 log = logging.getLogger(__name__)
 
@@ -1544,6 +1545,49 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             )
             flash("Der Bot-Owner kann nicht Ziel einer Moderationsaktion sein.", "error")
             return True
+        if _hierarchy_block(user_id):
+            return True
+        return False
+
+    def _hierarchy_block(user_id) -> bool:
+        """Prueft VOR der Aktion, ob Discord sie ueberhaupt zulassen wuerde, und
+        flasht sonst eine Begruendung im Klartext. True = Aktion abbrechen.
+
+        Hintergrund: Discords Rollenhierarchie ist eine eigene Schranke, die
+        UNABHAENGIG von den Berechtigungen wirkt. Laut offizieller Dokumentation
+        gilt: "A bot can only kick, ban, and edit nicknames for users whose
+        highest role is lower than the bot's highest role." Selbst ADMINISTRATOR
+        hebt das nicht auf.
+
+        Ohne diese Pruefung liefert Discord nur ein generisches "Missing
+        Permissions" (Fehlercode 50013), was die Oberflaeche als "Mir fehlt die
+        Berechtigung" anzeigte. Wer daraufhin die Rechte kontrolliert, findet dort
+        alles Noetige und sucht an der falschen Stelle weiter - genau das ist real
+        passiert. Deshalb hier eine Meldung, die den Grund benennt und sagt, was
+        zu tun ist.
+        """
+        async def _check():
+            guild = bot.guilds[0]
+            target = guild.get_member(int(user_id))
+            if target is None:
+                return None  # kein Mitglied (mehr) - der Aufrufer meldet das selbst
+            me = guild.me
+            return moderation_block_reason(
+                is_guild_owner=target.id == guild.owner_id,
+                target_role_name=target.top_role.name,
+                target_role_position=target.top_role.position,
+                bot_role_name=me.top_role.name,
+                bot_role_position=me.top_role.position,
+            )
+
+        try:
+            grund = run_on_bot(_check())
+        except Exception:
+            log.exception("Hierarchie-Pruefung fehlgeschlagen (user_id=%s)", user_id)
+            return False  # im Zweifel die Aktion versuchen lassen
+        if grund:
+            flash(grund, "error")
+            return True
         return False
 
     @app.route("/members")
@@ -1640,7 +1684,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         try:
             run_on_bot(_kick())
         except discord.Forbidden:
-            flash("Mir fehlt die Berechtigung, diesen Nutzer zu kicken.", "error")
+            flash("Discord hat den Kick abgelehnt. Häufigste Ursache ist die Rollenhierarchie: Die Bot-Rolle muss ÜBER der höchsten Rolle des Nutzers stehen — Berechtigungen allein genügen nicht, auch Administrator nicht.", "error")
         except Exception as exc:
             log.exception("Kick fehlgeschlagen (user_id=%s)", user_id)
             flash(f"Kick fehlgeschlagen: {exc}", "error")
@@ -1665,7 +1709,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         try:
             run_on_bot(_ban())
         except discord.Forbidden:
-            flash("Mir fehlt die Berechtigung, diesen Nutzer zu bannen.", "error")
+            flash("Discord hat den Bann abgelehnt. Häufigste Ursache ist die Rollenhierarchie: Die Bot-Rolle muss ÜBER der höchsten Rolle des Nutzers stehen — Berechtigungen allein genügen nicht, auch Administrator nicht.", "error")
         except Exception as exc:
             log.exception("Ban fehlgeschlagen (user_id=%s)", user_id)
             flash(f"Ban fehlgeschlagen: {exc}", "error")
@@ -1723,7 +1767,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         try:
             run_on_bot(_timeout())
         except discord.Forbidden:
-            flash("Mir fehlt die Berechtigung, diesen Nutzer zu timeouten.", "error")
+            flash("Discord hat den Timeout abgelehnt. Häufigste Ursache ist die Rollenhierarchie: Die Bot-Rolle muss ÜBER der höchsten Rolle des Nutzers stehen — Berechtigungen allein genügen nicht, auch Administrator nicht.", "error")
         except Exception as exc:
             log.exception("Timeout fehlgeschlagen (user_id=%s)", user_id)
             flash(f"Timeout fehlgeschlagen: {exc}", "error")
