@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% from "_moderation_subnav.html" import moderation_subnav with context %}
+{% from "_embed_builder.html" import embed_builder %}
 {% block title %}Discord Embed Builder{% endblock %}
 {% block content %}
 {{ moderation_subnav('embed') }}
 <h3 class="h4">Discord Embed Builder</h3>
-<p class="text-muted">Erstelle und passe hier deine Embed-Nachrichten an.</p>
+<p class="text-muted">Gestalte die Embed-Nachricht frei - alle Änderungen erscheinen sofort in der Vorschau rechts.</p>
 
 <form id="embedForm">
     <div class="mb-3">
@@ -12,168 +13,24 @@
         <select id="channel" name="channel" class="form-select" required></select>
     </div>
 
-    <div class="mb-3">
-        <label for="title" class="form-label">Titel</label>
-        <input type="text" id="title" name="title" class="form-control" placeholder="Embed Title" required>
-    </div>
+    {{ embed_builder('emb') }}
 
-    <div class="mb-3">
-        <label for="description" class="form-label">Beschreibung</label>
-        <div class="embed-toolbar mb-2 d-flex flex-wrap gap-1">
-            <button type="button" data-format="*" class="btn btn-sm">I</button>
-            <button type="button" data-format="**" class="btn btn-sm">B</button>
-            <button type="button" data-format="***" class="btn btn-sm">B+I</button>
-            <button type="button" data-format="```" class="btn btn-sm">Code</button>
-            <button type="button" id="addLink" class="btn btn-sm">🔗 Link</button>
-            <button type="button" id="emojiPickerButton" class="btn btn-sm" data-bs-toggle="modal" data-bs-target="#emojiPickerModal">😀 Emoji</button>
-        </div>
-        <textarea id="description" name="description" class="form-control" rows="4" placeholder="Embed Description" required></textarea>
-    </div>
-
-    <div class="row g-3">
-        <div class="col-6 col-md-3">
-            <label for="color" class="form-label">Farbe</label>
-            <input type="color" id="color" name="color" value="#2f7a4d" class="form-control form-control-color w-100">
-        </div>
-        <div class="col-12 col-md-9">
-            <label for="footer" class="form-label">Footer (optional)</label>
-            <input type="text" id="footer" name="footer" class="form-control" placeholder="Footer Text">
-        </div>
-    </div>
-
-    <div class="row g-3 mt-1">
-        <div class="col-12 col-md-6">
-            <label for="thumbnail" class="form-label">Thumbnail-URL (optional)</label>
-            <input type="url" id="thumbnail" name="thumbnail" class="form-control" placeholder="https://example.com/image.png">
-        </div>
-        <div class="col-12 col-md-6">
-            <label for="banner" class="form-label">Banner-URL (optional)</label>
-            <input type="url" id="banner" name="banner" class="form-control" placeholder="https://example.com/banner.png">
-        </div>
-    </div>
-
-    <div id="fields" class="my-3">
-        <label class="form-label d-block">Felder (optional)</label>
-        <button type="button" class="btn btn-sm btn-outline-primary mb-2" id="addField">+ Feld hinzufügen</button>
-    </div>
-
-    <div id="preview" class="embed-preview">
-        <div id="embedPreviewContent"></div>
-    </div>
-
-    <button type="submit" class="btn btn-success w-100 w-md-auto">Embed senden</button>
+    <button type="submit" class="btn btn-success w-100 w-md-auto mt-3">Embed senden</button>
 </form>
-
-<div class="modal fade" id="emojiPickerModal" tabindex="-1" aria-labelledby="emojiPickerModalLabel" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="emojiPickerModalLabel">Emoji auswählen</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
-            </div>
-            <div class="modal-body" style="max-height: 300px; overflow-y: auto;">
-                <div id="emojiList"></div>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/embed-builder.js') }}"></script>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
+        const builder = initEmbedBuilder('emb');
         const embedForm = document.getElementById('embedForm');
-        const embedPreviewContent = document.getElementById('embedPreviewContent');
-        const emojiList = ['😀', '😎', '😂', '😍', '😢', '😇', '😨', '😉', '🤯', '👽', '🤩', '🥺', '🔥', '🎉', '🌿', '❤️', '💙', '👍', '👎', '🌽', '⭐', '💯', '🤔', '💥', '💫', '🌟', '🎉', '🎶', '🍕', '🍔', '🍎', '🍩', '☕', '🌈', '🍀', '🌳', '🌻', '💤', '🎨', '🛸', '🚀', '🐜', '👀', '☣', '🧬', '❓', '❗', '✅', '☑', '🐞', '🌴'];
-
-        emojiList.forEach(emoji => {
-            const button = document.createElement('button');
-            button.type = 'button';
-            button.className = 'btn btn-light m-1';
-            button.textContent = emoji;
-            button.addEventListener('click', () => {
-                const textarea = document.getElementById('description');
-                textarea.value += emoji;
-                textarea.focus();
-                updatePreview();
-                bootstrap.Modal.getInstance(document.getElementById('emojiPickerModal')).hide();
-            });
-            document.getElementById('emojiList').appendChild(button);
-        });
-
-        document.querySelectorAll('.embed-toolbar button[data-format]').forEach(button => {
-            button.addEventListener('click', () => {
-                const format = button.dataset.format;
-                const textarea = document.getElementById('description');
-                const start = textarea.selectionStart;
-                const end = textarea.selectionEnd;
-                const selectedText = textarea.value.slice(start, end);
-                textarea.value = textarea.value.slice(0, start) + format + selectedText + format + textarea.value.slice(end);
-                textarea.focus();
-                textarea.setSelectionRange(start + format.length, end + format.length);
-                updatePreview();
-            });
-        });
-
-        document.getElementById('addLink').addEventListener('click', () => {
-            const url = prompt('URL eingeben:');
-            if (url) {
-                const textarea = document.getElementById('description');
-                textarea.value += `[Link Text](${url})`;
-                updatePreview();
-            }
-        });
-
-        document.getElementById('addField').addEventListener('click', () => {
-            const fieldsDiv = document.getElementById('fields');
-            const fieldGroup = document.createElement('div');
-            fieldGroup.className = 'field-group mb-2';
-            fieldGroup.innerHTML = `
-                <input type="text" placeholder="Feldname" class="form-control mb-1 field-name">
-                <input type="text" placeholder="Feldwert" class="form-control mb-1 field-value">
-                <div class="form-check">
-                    <input type="checkbox" class="form-check-input field-inline">
-                    <label class="form-check-label">Inline</label>
-                </div>
-            `;
-            fieldsDiv.appendChild(fieldGroup);
-            updatePreview();
-        });
-
-        function updatePreview() {
-            const title = document.getElementById('title').value;
-            const description = document.getElementById('description').value;
-            const color = document.getElementById('color').value;
-            const footer = document.getElementById('footer').value;
-            const thumbnail = document.getElementById('thumbnail').value;
-            const banner = document.getElementById('banner').value;
-            const fields = Array.from(document.querySelectorAll('.field-name')).map((_, i) => ({
-                name: document.querySelectorAll('.field-name')[i].value,
-                value: document.querySelectorAll('.field-value')[i].value,
-                inline: document.querySelectorAll('.field-inline')[i].checked
-            }));
-
-            embedPreviewContent.innerHTML = `
-                <div style="border-left: 4px solid ${color}; padding-left: 10px;">
-                    ${thumbnail ? `<img src="${thumbnail}" class="embed-thumbnail">` : ''}
-                    <div class="embed-title">${title}</div>
-                    <div class="embed-description">${description}</div>
-                    ${fields.map(field => `
-                        <div class="embed-field" style="display: ${field.inline ? 'inline-block' : 'block'};">
-                            <strong>${field.name}</strong>: ${field.value}
-                        </div>
-                    `).join('')}
-                    ${banner ? `<img src="${banner}" alt="Banner" style="width: 100%; margin-top: 10px;">` : ''}
-                    ${footer ? `<div class="embed-footer">${footer}</div>` : ''}
-                </div>
-            `;
-        }
 
         fetch('/api/channels')
-            .then(response => response.json())
-            .then(data => {
+            .then((response) => response.json())
+            .then((data) => {
                 const channelSelect = document.getElementById('channel');
-                data.channels.forEach(channel => {
+                data.channels.forEach((channel) => {
                     const option = document.createElement('option');
                     option.value = channel.id;
                     option.textContent = channel.name;
@@ -181,27 +38,14 @@
                 });
             });
 
-        document.querySelectorAll('#embedForm input, #embedForm textarea').forEach(input => {
-            input.addEventListener('input', updatePreview);
-        });
-        updatePreview();
-
         embedForm.addEventListener('submit', async (event) => {
             event.preventDefault();
-            const data = {
-                channel_id: document.getElementById('channel').value,
-                title: document.getElementById('title').value,
-                description: document.getElementById('description').value,
-                color: document.getElementById('color').value,
-                footer: document.getElementById('footer').value,
-                thumbnail: document.getElementById('thumbnail').value,
-                banner: document.getElementById('banner').value,
-                fields: Array.from(document.querySelectorAll('.field-name')).map((_, i) => ({
-                    name: document.querySelectorAll('.field-name')[i].value,
-                    value: document.querySelectorAll('.field-value')[i].value,
-                    inline: document.querySelectorAll('.field-inline')[i].checked
-                }))
-            };
+            const embedData = builder.getEmbedData();
+            if (builder.isEmpty(embedData)) {
+                alert('Bitte mindestens Titel, Beschreibung, ein Feld oder ein Bild ausfüllen.');
+                return;
+            }
+            const data = { channel_id: document.getElementById('channel').value, ...embedData };
             try {
                 const response = await fetch('/api/embed', {
                     method: 'POST',

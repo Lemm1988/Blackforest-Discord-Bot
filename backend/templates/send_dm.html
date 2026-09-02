@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% from "_moderation_subnav.html" import moderation_subnav with context %}
+{% from "_embed_builder.html" import embed_builder %}
 {% block title %}Nachricht senden - Blackforest Bot{% endblock %}
 {% block content %}
 {{ moderation_subnav('dm') }}
 <h3 class="h4">Nachricht senden</h3>
-<p class="text-muted">Der Bot sendet die Nachricht als private Direktnachricht (DM) an den gewählten Nutzer.</p>
+<p class="text-muted">Der Bot sendet die Nachricht als private Direktnachricht (DM) an den gewählten Nutzer - wahlweise als reinen Text oder als frei gestaltetes Embed.</p>
 
 <div class="card">
     <div class="card-body">
@@ -20,9 +21,21 @@
                 </div>
             </div>
 
+            <div class="mb-3 btn-group dm-mode-toggle" role="group" aria-label="Nachrichtenart">
+                <input type="radio" class="btn-check" name="dmMode" id="dmModeText" value="text" checked>
+                <label class="btn btn-outline-primary" for="dmModeText">💬 Nur Text</label>
+                <input type="radio" class="btn-check" name="dmMode" id="dmModeEmbed" value="embed">
+                <label class="btn btn-outline-primary" for="dmModeEmbed">📢 Mit Embed</label>
+            </div>
+
             <div class="mb-3">
-                <label for="message" class="form-label">Nachricht</label>
-                <textarea id="message" name="message" class="form-control" rows="5" placeholder="Deine Nachricht..." required></textarea>
+                <label for="message" class="form-label" id="messageLabel">Nachricht</label>
+                <textarea id="message" name="message" class="form-control" rows="5" placeholder="Deine Nachricht..." required maxlength="2000"></textarea>
+                <div class="form-text text-end"><span id="messageCounter">0 / 2000</span></div>
+            </div>
+
+            <div id="dmEmbedSection" class="d-none mb-3">
+                {{ embed_builder('dmemb') }}
             </div>
 
             <button type="submit" class="btn btn-success w-100 w-md-auto">Nachricht senden</button>
@@ -35,15 +48,41 @@
 
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/member-picker.js') }}"></script>
+<script src="{{ url_for('static', filename='js/embed-builder.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     attachMemberPicker('userId', 'userPreview');
+    const embedBuilder = initEmbedBuilder('dmemb');
 
     const userIdInput = document.getElementById('userId');
     const userPreview = document.getElementById('userPreview');
     const dmForm = document.getElementById('dmForm');
     const resultAlert = document.getElementById('resultAlert');
+    const messageInput = document.getElementById('message');
+    const messageLabel = document.getElementById('messageLabel');
+    const messageCounter = document.getElementById('messageCounter');
+    const dmEmbedSection = document.getElementById('dmEmbedSection');
     let lookupTimeout;
+
+    function updateMessageCounter() {
+        messageCounter.textContent = `${messageInput.value.length} / 2000`;
+        messageCounter.classList.toggle('text-danger', messageInput.value.length > 2000);
+    }
+    messageInput.addEventListener('input', updateMessageCounter);
+    updateMessageCounter();
+
+    // Im Embed-Modus ist der Textblock nur noch der optionale Begleittext
+    // über dem Embed (Discord unterstützt content + embed gleichzeitig in
+    // derselben Nachricht) - deshalb nicht mehr "required" und umbenannt.
+    document.querySelectorAll('input[name="dmMode"]').forEach((radio) => {
+        radio.addEventListener('change', () => {
+            const isEmbed = document.getElementById('dmModeEmbed').checked;
+            dmEmbedSection.classList.toggle('d-none', !isEmbed);
+            messageInput.required = !isEmbed;
+            messageLabel.textContent = isEmbed ? 'Zusätzlicher Text (optional)' : 'Nachricht';
+            messageInput.placeholder = isEmbed ? 'Optionaler Text über dem Embed...' : 'Deine Nachricht...';
+        });
+    });
 
     userIdInput.addEventListener('input', () => {
         clearTimeout(lookupTimeout);
@@ -74,6 +113,23 @@ document.addEventListener('DOMContentLoaded', () => {
     dmForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         resultAlert.classList.add('d-none');
+
+        const isEmbed = document.getElementById('dmModeEmbed').checked;
+        const payload = {
+            user_id: userIdInput.value.trim(),
+            message: messageInput.value,
+        };
+        if (isEmbed) {
+            const embedData = embedBuilder.getEmbedData();
+            if (embedBuilder.isEmpty(embedData)) {
+                resultAlert.textContent = 'Bitte mindestens Titel, Beschreibung, ein Feld oder ein Bild für das Embed ausfüllen.';
+                resultAlert.className = 'alert mt-3 alert-danger';
+                resultAlert.classList.remove('d-none');
+                return;
+            }
+            payload.embed = embedData;
+        }
+
         try {
             const res = await fetch('/api/dm', {
                 method: 'POST',
@@ -81,10 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': document.querySelector('meta[name="csrf-token"]').content,
                 },
-                body: JSON.stringify({
-                    user_id: userIdInput.value.trim(),
-                    message: document.getElementById('message').value,
-                }),
+                body: JSON.stringify(payload),
             });
             const data = await res.json();
             resultAlert.textContent = res.ok ? data.message : `Fehler: ${data.error}`;
@@ -93,6 +146,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (res.ok) {
                 dmForm.reset();
                 userPreview.textContent = '';
+                updateMessageCounter();
+                document.getElementById('dmModeText').dispatchEvent(new Event('change'));
+                document.getElementById('dmemb_fields').innerHTML = '';
+                document.getElementById('dmemb_fieldCount').textContent = '0 / 25';
+                embedBuilder.refresh();
             }
         } catch (e) {
             resultAlert.textContent = 'Ein unerwarteter Fehler ist aufgetreten.';

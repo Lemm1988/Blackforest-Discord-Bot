@@ -25,6 +25,106 @@ from .moderation_rules import moderation_block_reason
 
 log = logging.getLogger(__name__)
 
+# Grenzwerte fuer das Discord-Embed-Objekt, exakt nach offizieller Doku:
+# https://discord.com/developers/docs/resources/message#embed-object-embed-limits
+EMBED_LIMITS = {
+    "title": 256,
+    "description": 4096,
+    "field_name": 256,
+    "field_value": 1024,
+    "footer_text": 2048,
+    "author_name": 256,
+    "fields_max": 25,
+    "total": 6000,
+}
+
+
+def _parse_embed_color(value):
+    """Wandelt einen Hex-Farbstring (z.B. '#2f7a4d' oder '2f7a4d') in den von
+    discord.Embed erwarteten Integer um. Leer/None -> kein Farbbalken (Discord
+    zeigt dann seinen Standard-Grauton)."""
+    text = str(value or "").strip().lstrip("#")
+    if not text:
+        return None
+    try:
+        color = int(text, 16)
+    except ValueError:
+        raise ValueError("Ungültiger Farbwert (erwartet Hex, z.B. #2f7a4d).")
+    if not 0 <= color <= 0xFFFFFF:
+        raise ValueError("Farbwert außerhalb des gültigen Bereichs.")
+    return color
+
+
+def _build_embed_from_payload(data: dict) -> discord.Embed:
+    """Baut ein discord.Embed aus dem JSON-Payload der Embed-Builder-Seiten
+    (create_embed.html sowie der Embed-Modus von send_dm.html - gemeinsames
+    Formular-Markup in _embed_builder.html / gemeinsame Vorschau-Logik in
+    static/js/embed-builder.js). Erzwingt serverseitig dieselben Zeichenlimits,
+    die das Frontend live anzeigt: die Anzeige dort ist nur Komfort, /api/embed
+    und /api/dm koennen auch direkt (ohne das Formular) aufgerufen werden, die
+    eigentliche Grenze muss also hier greifen.
+    """
+    title = str(data.get("title") or "").strip()
+    description = str(data.get("description") or "").strip()
+    fields = data.get("fields") or []
+    thumbnail = str(data.get("thumbnail") or "").strip()
+    banner = str(data.get("banner") or "").strip()
+    author_name = str(data.get("author_name") or "").strip()
+    footer_text = str(data.get("footer") or "").strip()
+
+    if not any([title, description, fields, thumbnail, banner, author_name]):
+        raise ValueError("Embed braucht mindestens Titel, Beschreibung, ein Feld oder ein Bild.")
+    if len(title) > EMBED_LIMITS["title"]:
+        raise ValueError(f"Titel darf maximal {EMBED_LIMITS['title']} Zeichen haben.")
+    if len(description) > EMBED_LIMITS["description"]:
+        raise ValueError(f"Beschreibung darf maximal {EMBED_LIMITS['description']} Zeichen haben.")
+    if len(fields) > EMBED_LIMITS["fields_max"]:
+        raise ValueError(f"Maximal {EMBED_LIMITS['fields_max']} Felder pro Embed erlaubt.")
+
+    embed = discord.Embed(
+        title=title or None,
+        description=description or None,
+        color=_parse_embed_color(data.get("color")),
+        url=str(data.get("url") or "").strip() or None,
+    )
+
+    if author_name:
+        if len(author_name) > EMBED_LIMITS["author_name"]:
+            raise ValueError(f"Autor-Name darf maximal {EMBED_LIMITS['author_name']} Zeichen haben.")
+        embed.set_author(
+            name=author_name,
+            url=str(data.get("author_url") or "").strip() or None,
+            icon_url=str(data.get("author_icon") or "").strip() or None,
+        )
+
+    for field in fields:
+        name = str(field.get("name") or "").strip()
+        value = str(field.get("value") or "").strip()
+        if not name or not value:
+            continue
+        if len(name) > EMBED_LIMITS["field_name"]:
+            raise ValueError(f"Feldname darf maximal {EMBED_LIMITS['field_name']} Zeichen haben.")
+        if len(value) > EMBED_LIMITS["field_value"]:
+            raise ValueError(f"Feldwert darf maximal {EMBED_LIMITS['field_value']} Zeichen haben.")
+        embed.add_field(name=name, value=value, inline=bool(field.get("inline", False)))
+
+    if thumbnail:
+        embed.set_thumbnail(url=thumbnail)
+    if banner:
+        embed.set_image(url=banner)
+    if footer_text:
+        if len(footer_text) > EMBED_LIMITS["footer_text"]:
+            raise ValueError(f"Footer darf maximal {EMBED_LIMITS['footer_text']} Zeichen haben.")
+        embed.set_footer(text=footer_text, icon_url=str(data.get("footer_icon") or "").strip() or None)
+
+    if data.get("timestamp"):
+        embed.timestamp = datetime.now(timezone.utc)
+
+    if len(embed) > EMBED_LIMITS["total"]:
+        raise ValueError(f"Embed ist insgesamt zu groß (max. {EMBED_LIMITS['total']} Zeichen über alle Textfelder).")
+
+    return embed
+
 
 def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     app = Flask(__name__)
@@ -663,28 +763,18 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     @require_permission("create_embed")
     def send_embed():
         data = request.json or {}
-        required = ["channel_id", "title", "description", "color"]
-        if not all(k in data for k in required):
-            return jsonify({"error": "Fehlende Felder"}), 400
+        if not data.get("channel_id"):
+            return jsonify({"error": "Kanal wird benötigt."}), 400
+
+        try:
+            embed = _build_embed_from_payload(data)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
 
         async def _post():
             channel = bot.get_channel(int(data["channel_id"]))
             if not channel:
                 raise ValueError("Kanal nicht gefunden")
-            embed = discord.Embed(
-                title=data["title"],
-                description=data["description"],
-                color=int(data["color"].lstrip("#"), 16),
-            )
-            for field in data.get("fields", []):
-                if field.get("name") and field.get("value"):
-                    embed.add_field(name=field["name"], value=field["value"], inline=field.get("inline", False))
-            if data.get("thumbnail"):
-                embed.set_thumbnail(url=data["thumbnail"])
-            if data.get("banner"):
-                embed.set_image(url=data["banner"])
-            if data.get("footer"):
-                embed.set_footer(text=data["footer"])
             await channel.send(embed=embed)
 
         try:
@@ -727,14 +817,27 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         data = request.json or {}
         user_id = str(data.get("user_id", "")).strip()
         message = str(data.get("message", "")).strip()
-        if not user_id or not message:
-            return jsonify({"error": "Nutzer-ID und Nachricht sind erforderlich."}), 400
+        embed_payload = data.get("embed")
+
+        embed = None
+        if embed_payload:
+            try:
+                embed = _build_embed_from_payload(embed_payload)
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+
+        if not user_id:
+            return jsonify({"error": "Nutzer-ID ist erforderlich."}), 400
+        if not message and not embed:
+            return jsonify({"error": "Nachricht oder Embed wird benötigt."}), 400
+        if len(message) > 2000:
+            return jsonify({"error": "Nachricht darf maximal 2000 Zeichen haben."}), 400
         if not user_id.isdigit():
             return jsonify({"error": "Nutzer-ID muss die numerische Discord-User-ID sein."}), 400
 
         async def _send():
             user = await bot.fetch_user(int(user_id))
-            await user.send(message)
+            await user.send(content=message or None, embed=embed)
             return str(user)
 
         try:

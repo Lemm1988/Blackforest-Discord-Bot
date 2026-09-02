@@ -1,0 +1,130 @@
+{# Gemeinsames Markup für den Discord-Embed-Builder (Formularfelder + Live-
+   Vorschau). Wird von create_embed.html und im Embed-Modus von send_dm.html
+   eingebunden - `prefix` sorgt dafür, dass alle Element-IDs pro Einbindung
+   eindeutig bleiben (siehe static/js/embed-builder.js: initEmbedBuilder(prefix)).
+   Deckt exakt die Felder des Discord-Embed-Objekts ab (siehe
+   https://discord.com/developers/docs/resources/message#embed-object):
+   author (name/url/icon), title, url, description, color, fields[],
+   thumbnail, image, footer (text/icon), timestamp. #}
+{% macro embed_builder(prefix) %}
+<div class="row g-4">
+    <div class="col-12 col-lg-6">
+        <div class="eb-section mb-3">
+            <h6 class="eb-section-title">Autor <span class="text-muted small fw-normal">(optional)</span></h6>
+            <div class="row g-2">
+                <div class="col-12 col-md-5">
+                    <input type="text" id="{{ prefix }}_authorName" class="form-control form-control-sm" placeholder="Autor-Name" maxlength="256">
+                </div>
+                <div class="col-6 col-md-4">
+                    <input type="url" id="{{ prefix }}_authorUrl" class="form-control form-control-sm" placeholder="Autor-Link">
+                </div>
+                <div class="col-6 col-md-3">
+                    <input type="url" id="{{ prefix }}_authorIcon" class="form-control form-control-sm" placeholder="Autor-Icon-URL">
+                </div>
+            </div>
+            <div class="form-text text-end mb-0"><span id="{{ prefix }}_authorNameCounter">0 / 256</span></div>
+        </div>
+
+        <div class="mb-3">
+            <label for="{{ prefix }}_title" class="form-label">Titel</label>
+            <input type="text" id="{{ prefix }}_title" class="form-control" placeholder="Embed-Titel" maxlength="256">
+            <div class="form-text text-end"><span id="{{ prefix }}_titleCounter">0 / 256</span></div>
+        </div>
+
+        <div class="mb-3">
+            <label for="{{ prefix }}_url" class="form-label">Titel-Link <span class="text-muted small fw-normal">(optional, macht den Titel klickbar)</span></label>
+            <input type="url" id="{{ prefix }}_url" class="form-control" placeholder="https://...">
+        </div>
+
+        <div class="mb-3">
+            <label for="{{ prefix }}_description" class="form-label">Beschreibung</label>
+            <div class="embed-toolbar mb-2 d-flex flex-wrap gap-1">
+                <button type="button" data-format="*" data-target="{{ prefix }}_description" class="btn btn-sm" title="Kursiv">I</button>
+                <button type="button" data-format="**" data-target="{{ prefix }}_description" class="btn btn-sm" title="Fett">B</button>
+                <button type="button" data-format="__" data-target="{{ prefix }}_description" class="btn btn-sm" title="Unterstrichen">U</button>
+                <button type="button" data-format="~~" data-target="{{ prefix }}_description" class="btn btn-sm" title="Durchgestrichen">S</button>
+                <button type="button" data-format="`" data-target="{{ prefix }}_description" class="btn btn-sm" title="Inline-Code">Code</button>
+                <button type="button" class="btn btn-sm eb-add-link" data-target="{{ prefix }}_description">🔗 Link</button>
+                <button type="button" class="btn btn-sm" data-bs-toggle="modal" data-bs-target="#{{ prefix }}_emojiModal">😀 Emoji</button>
+            </div>
+            <textarea id="{{ prefix }}_description" class="form-control" rows="4" placeholder="Embed-Beschreibung (Discord-Markdown wird unterstützt)"></textarea>
+            <div class="form-text text-end"><span id="{{ prefix }}_descriptionCounter">0 / 4096</span></div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-12 col-md-5">
+                <label for="{{ prefix }}_color" class="form-label">Farbe</label>
+                <div class="input-group input-group-sm">
+                    <input type="color" id="{{ prefix }}_color" value="#2f7a4d" class="form-control form-control-color">
+                    <input type="text" id="{{ prefix }}_colorHex" class="form-control" value="#2F7A4D" maxlength="7">
+                </div>
+                <div class="eb-swatches mt-2 d-flex flex-wrap align-items-center gap-1"></div>
+            </div>
+            <div class="col-12 col-md-7">
+                <label class="form-label">Footer <span class="text-muted small fw-normal">(optional)</span></label>
+                <div class="d-flex gap-2">
+                    <input type="text" id="{{ prefix }}_footer" class="form-control form-control-sm" placeholder="Footer-Text" maxlength="2048">
+                    <input type="url" id="{{ prefix }}_footerIcon" class="form-control form-control-sm" placeholder="Footer-Icon-URL">
+                </div>
+                <div class="form-text text-end"><span id="{{ prefix }}_footerCounter">0 / 2048</span></div>
+                <div class="form-check mt-1">
+                    <input type="checkbox" class="form-check-input" id="{{ prefix }}_timestamp">
+                    <label class="form-check-label small" for="{{ prefix }}_timestamp">Zeitstempel (jetzt) anzeigen</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-12 col-md-6">
+                <label for="{{ prefix }}_thumbnail" class="form-label">Thumbnail-URL <span class="text-muted small fw-normal">(klein, oben rechts)</span></label>
+                <input type="url" id="{{ prefix }}_thumbnail" class="form-control" placeholder="https://example.com/image.png">
+            </div>
+            <div class="col-12 col-md-6">
+                <label for="{{ prefix }}_banner" class="form-label">Bild-URL <span class="text-muted small fw-normal">(groß, unten)</span></label>
+                <input type="url" id="{{ prefix }}_banner" class="form-control" placeholder="https://example.com/banner.png">
+            </div>
+        </div>
+
+        <div id="{{ prefix }}_fieldsWrap" class="mb-2">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <label class="form-label mb-0">Felder <span class="text-muted small fw-normal">(optional)</span></label>
+                <span class="text-muted small" id="{{ prefix }}_fieldCount">0 / 25</span>
+            </div>
+            <div id="{{ prefix }}_fields"></div>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="{{ prefix }}_addField">+ Feld hinzufügen</button>
+        </div>
+
+        <div class="text-end">
+            <span id="{{ prefix }}_totalCounter" class="small text-muted">Gesamt: 0 / 6000 Zeichen</span>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-6">
+        <div class="eb-preview-sticky">
+            <label class="form-label d-block">Live-Vorschau</label>
+            <div class="disc-message">
+                <div class="disc-avatar">🌿</div>
+                <div class="disc-message-body">
+                    <div class="disc-message-header">
+                        <span class="disc-username">Blackforest Bot</span>
+                        <span class="disc-bot-tag">BOT</span>
+                    </div>
+                    <div id="{{ prefix }}_previewContent"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="{{ prefix }}_emojiModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Emoji auswählen</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Schließen"></button>
+            </div>
+            <div class="modal-body" id="{{ prefix }}_emojiList" style="max-height: 300px; overflow-y: auto;"></div>
+        </div>
+    </div>
+</div>
+{% endmacro %}

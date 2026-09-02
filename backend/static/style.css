@@ -78,20 +78,6 @@ a:hover { color: var(--bfb-primary-dark); }
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
 
-/* Discord-Embed-Vorschau: bewusst dunkel gehalten, da sie zeigt wie es echt in Discord aussieht */
-.embed-preview {
-    background-color: #23272a;
-    padding: 15px;
-    border-radius: 10px;
-    color: #fff;
-    max-width: 600px;
-    margin: 20px auto;
-}
-.embed-title { font-weight: bold; font-size: 1.2em; }
-.embed-description { margin: 10px 0; white-space: pre-wrap; }
-.embed-footer { font-size: 0.9em; color: #b9bbbe; margin-top: 10px; }
-.embed-thumbnail { float: right; max-width: 100px; max-height: 100px; margin-left: 10px; border-radius: 4px; }
-
 .embed-toolbar button {
     color: #fff;
     background-color: #4f545c;
@@ -100,6 +86,134 @@ a:hover { color: var(--bfb-primary-dark); }
 .embed-toolbar button:hover {
     background-color: var(--bfb-primary);
 }
+
+/* --- Embed-Builder (create_embed.html / send_dm.html Embed-Modus) --- */
+
+.eb-section-title {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.4rem;
+}
+
+.eb-swatch {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+    padding: 0;
+    cursor: pointer;
+}
+.eb-swatch:hover { box-shadow: 0 0 0 2px var(--bfb-primary); }
+
+.eb-field-group { background-color: #f8f9fa; }
+
+/* Bleibt beim Scrollen sichtbar, solange auf Desktop-Breite genug Platz neben
+   dem Formular ist - auf Schmalbreite (siehe Media-Query unten) normal im
+   Fluss, sonst waere die Vorschau nicht erreichbar. */
+.eb-preview-sticky {
+    position: sticky;
+    top: 1rem;
+}
+
+/* Vorschau: eine Discord-Nachricht (Avatar + Username + BOT-Tag), darunter
+   das eigentliche Embed - bewusst im Discord-Dunkelmodus-Look, weil die
+   Vorschau zeigen soll wie es *echt* in Discord aussieht, unabhängig vom
+   (hellen) Dashboard-Theme drumherum. */
+.disc-message {
+    display: flex;
+    gap: 0.75rem;
+    background-color: #313338;
+    border-radius: 10px;
+    padding: 1rem;
+    color: #dbdee1;
+    font-family: "gg sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+.disc-avatar {
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--bfb-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+}
+.disc-message-body { min-width: 0; flex: 1 1 auto; }
+.disc-message-header { display: flex; align-items: baseline; gap: 0.4rem; margin-bottom: 0.15rem; }
+.disc-username { font-weight: 600; color: #fff; }
+.disc-bot-tag {
+    background-color: var(--bfb-primary);
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    line-height: 1.3;
+}
+
+.disc-embed {
+    margin-top: 0.4rem;
+    max-width: 520px;
+    border-left: 4px solid #2f7a4d;
+    background-color: #2b2d31;
+    border-radius: 4px;
+}
+.disc-embed-main { display: flex; gap: 1rem; padding: 0.65rem 1rem; }
+.disc-embed-body { min-width: 0; flex: 1 1 auto; }
+.disc-embed-author { display: flex; align-items: center; gap: 0.4rem; font-size: 0.8rem; font-weight: 600; color: #fff; margin-bottom: 0.25rem; }
+.disc-embed-author-icon { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+.disc-embed-author a { color: inherit; text-decoration: none; }
+.disc-embed-title { font-weight: 700; font-size: 0.95rem; color: #fff; margin-bottom: 0.25rem; }
+.disc-embed-title a { color: #00a8fc; text-decoration: none; }
+.disc-embed-title a:hover { text-decoration: underline; }
+.disc-embed-description { font-size: 0.875rem; line-height: 1.375; color: #dbdee1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.disc-embed-description a { color: #00a8fc; }
+.disc-embed-thumbnail { flex: 0 0 80px; width: 80px; height: 80px; object-fit: cover; border-radius: 4px; align-self: flex-start; }
+.disc-embed-fields {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem 1rem;
+    margin-top: 0.5rem;
+}
+.disc-embed-field { grid-column: span 3; font-size: 0.8rem; min-width: 0; }
+.disc-embed-field-inline { grid-column: span 1; }
+@media (max-width: 440px) {
+    .disc-embed-fields { grid-template-columns: 1fr; }
+    .disc-embed-field-inline { grid-column: span 1; }
+}
+.disc-embed-field-name { font-weight: 600; color: #fff; margin-bottom: 0.1rem; }
+.disc-embed-field-value { color: #dbdee1; white-space: pre-wrap; overflow-wrap: anywhere; }
+.disc-embed-image { display: block; max-width: 100%; border-radius: 4px; margin-top: 0.6rem; }
+.disc-embed-footer {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    color: #b5bac1;
+    margin-top: 0.6rem;
+}
+.disc-embed-footer-icon { width: 18px; height: 18px; border-radius: 50%; object-fit: cover; }
+.disc-code-block {
+    background-color: #1e1f22;
+    padding: 0.4rem 0.55rem;
+    border-radius: 4px;
+    margin: 0.3rem 0;
+    font-size: 0.8em;
+    overflow-x: auto;
+}
+.disc-inline-code { background-color: #1e1f22; padding: 0.05rem 0.3rem; border-radius: 3px; font-size: 0.9em; }
+.disc-spoiler { background-color: #1e1f22; color: transparent; border-radius: 3px; cursor: pointer; }
+.disc-spoiler:hover { color: #dbdee1; }
+
+@media (max-width: 991.98px) {
+    .eb-preview-sticky { position: static; margin-top: 1.5rem; }
+}
+
+/* --- DM-Formular: Umschalter "Nur Text" / "Embed" --- */
+.dm-mode-toggle .btn { min-width: 110px; }
 
 /* Touch-Bedienung: Mindesthoehe fuer Buttons/Inputs auf schmalen Bildschirmen */
 @media (max-width: 767.98px) {
