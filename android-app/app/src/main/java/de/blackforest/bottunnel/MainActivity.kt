@@ -11,7 +11,9 @@ import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.webkit.JsResult
 import android.webkit.SslErrorHandler
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
@@ -215,6 +217,42 @@ class MainActivity : AppCompatActivity() {
     private fun setupWebView() {
         webView.settings.javaScriptEnabled = true
         webView.settings.domStorageEnabled = true
+
+        // OHNE WebChromeClient verwirft eine WebView jeden JavaScript-Dialog
+        // stillschweigend: window.confirm() liefert dann sofort false, ohne dass
+        // dem Benutzer etwas angezeigt wird. Das Backend sichert zehn Formulare in
+        // vier Templates mit onsubmit="return confirm(...)" ab - darunter Kick, Ban
+        // und Timeout. Ein false aus onsubmit bricht das Absenden ab, und zwar
+        // lautlos: kein Dialog, keine Fehlermeldung, keine Anfrage an den Server.
+        // Aus Sicht des Bedienenden "passiert einfach nichts". Im normalen Browser
+        // funktionieren dieselben Formulare, weshalb es dort nie auffiel.
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onJsConfirm(
+                view: WebView?, url: String?, message: String?, result: JsResult?
+            ): Boolean {
+                AlertDialog.Builder(this@MainActivity)
+                    .setMessage(message ?: "")
+                    .setPositiveButton(android.R.string.ok) { _, _ -> result?.confirm() }
+                    .setNegativeButton(android.R.string.cancel) { _, _ -> result?.cancel() }
+                    // Wegtippen zaehlt als Abbruch - niemals als Bestaetigung, sonst
+                    // koennte ein versehentlicher Tipp jemanden vom Server werfen.
+                    .setOnCancelListener { result?.cancel() }
+                    .show()
+                return true
+            }
+
+            override fun onJsAlert(
+                view: WebView?, url: String?, message: String?, result: JsResult?
+            ): Boolean {
+                AlertDialog.Builder(this@MainActivity)
+                    .setMessage(message ?: "")
+                    .setPositiveButton(android.R.string.ok) { _, _ -> result?.confirm() }
+                    .setOnCancelListener { result?.confirm() }
+                    .show()
+                return true
+            }
+        }
+
         webView.webViewClient = object : WebViewClient() {
             override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
                 val actual = fingerprintOf(error)
