@@ -57,8 +57,25 @@ class MainActivity : AppCompatActivity() {
         // Endpoint::close", das serverseitig mehrfach beobachtet wurde). Deshalb:
         // wenige, aber lange geduldige Versuche VOR dem WebView-Laden statt vieler
         // kurzer danach.
-        private const val READINESS_ATTEMPTS = 3
+        // 5 statt 3 Versuche: zusammen mit READINESS_RETRY_DELAY_MS deckt das rund
+        // 12s Anlaufzeit ab. Im WLAN war der Tunnel nach ~3,2s bereit; ueber
+        // Mobilfunk (weiterer Relay, langsameres net_report) darf es deutlich
+        // laenger dauern, ohne dass die App vorschnell aufgibt. Haengt ein Versuch
+        // dagegen, greift weiterhin READINESS_TIMEOUT_MS.
+        private const val READINESS_ATTEMPTS = 5
         private const val READINESS_TIMEOUT_MS = 60_000
+
+        // Pause ZWISCHEN den Versuchen. Ohne sie war die "Geduld" oben wirkungslos,
+        // sobald ein Versuch nicht haengt, sondern SOFORT fehlschlaegt: dumbpipe
+        // lauscht auf 127.0.0.1:8500 bereits ~20ms nach dem Start, sein Iroh-Pfad
+        // steht aber erst nach ~3s (net_report + Relay-Verbindung). Ein Dial in
+        // diesem Fenster scheitert unmittelbar, die Verbindung wird sofort
+        // geschlossen - und alle drei Versuche waren binnen Millisekunden
+        // aufgebraucht, lange bevor der Tunnel ueberhaupt einsatzbereit war. Die App
+        // zeigte dann die Diagnose, obwohl der Tunnel Sekunden spaeter einwandfrei
+        // funktionierte (nachgewiesen: der Port-Check der Diagnose selbst baute
+        // anschliessend eine direkte LAN-Verbindung zum Pi auf).
+        private const val READINESS_RETRY_DELAY_MS = 3_000L
 
         // Leichtes Sicherheitsnetz FALLS die WebView nach erfolgreicher
         // Bereitschaftspruefung trotzdem einmal einen Ladefehler meldet (z.B.
@@ -342,6 +359,19 @@ class MainActivity : AppCompatActivity() {
                     "(bis zu ${READINESS_TIMEOUT_MS / 1000}s Geduld)"
             )
             if (isBackendReadyOnce(READINESS_TIMEOUT_MS)) return true
+
+            // Nur warten, wenn noch ein Versuch folgt. Entscheidend fuer den Fall
+            // "schlaegt sofort fehl" - siehe READINESS_RETRY_DELAY_MS: ohne diese
+            // Pause waren alle Versuche verbraucht, bevor der Tunnel bereit war.
+            if (attemptIndex < READINESS_ATTEMPTS - 1) {
+                Log.i(TAG, "Warte ${READINESS_RETRY_DELAY_MS}ms vor dem naechsten Versuch")
+                try {
+                    Thread.sleep(READINESS_RETRY_DELAY_MS)
+                } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return false
+                }
+            }
         }
         return false
     }
