@@ -16,5 +16,19 @@
         <a class="nav-link {% if active == 'actions' %}active{% endif %}" href="{{ url_for('members_overview') }}">👮 Aktionen &amp; Überwachung</a>
     </li>
     {% endif %}
+    {# Embed und DM sind Moderationsmittel (Ansagen, Verwarnungen per DM) und
+       stehen seit der Menue-Umstellung unter Moderation statt unter
+       Admin-Werkzeugen - hier ebenso, damit Haupt- und Untermenue dasselbe
+       zeigen. Eigene Berechtigungen, daher wieder unabhaengig geschaltet. #}
+    {% if has_permission('create_embed') %}
+    <li class="nav-item">
+        <a class="nav-link {% if active == 'embed' %}active{% endif %}" href="{{ url_for('create_embed_page') }}">📢 Embed senden</a>
+    </li>
+    {% endif %}
+    {% if has_permission('send_dm') %}
+    <li class="nav-item">
+        <a class="nav-link {% if active == 'dm' %}active{% endif %}" href="{{ url_for('send_dm_page') }}">✉️ DM senden</a>
+    </li>
+    {% endif %}
 </ul>
 {% endmacro %}

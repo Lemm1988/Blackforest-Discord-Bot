@@ -17,7 +17,12 @@
                     <a class="nav-link" href="{{ url_for('xp_level_page') }}">XP &amp; Level</a>
                 </li>
 
-                {% if has_permission('manage_badword_filter') or has_permission('moderate_members') %}
+                {# Moderation: alles, was sich an einzelne Mitglieder richtet.
+                   Embed und DM stehen hier statt unter Admin-Werkzeugen, weil beides
+                   in der Praxis Moderationsmittel sind (Ansagen, Verwarnungen per DM)
+                   und keine Verwaltung des Bots. #}
+                {% if has_permission('manage_badword_filter') or has_permission('moderate_members')
+                      or has_permission('create_embed') or has_permission('send_dm') %}
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Moderation</a>
                     <ul class="dropdown-menu dropdown-menu-dark">
@@ -27,36 +32,11 @@
                         {% if has_permission('moderate_members') %}
                         <li><a class="dropdown-item" href="{{ url_for('members_overview') }}">Aktionen &amp; Überwachung</a></li>
                         {% endif %}
-                    </ul>
-                </li>
-                {% endif %}
-
-                {% if has_permission('manage_game_settings') %}
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('personality_page') }}">Personality</a>
-                </li>
-                {% endif %}
-
-                {% if has_permission('manage_badword_filter') or has_permission('create_giveaway') %}
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Server-Setup</a>
-                    <ul class="dropdown-menu dropdown-menu-dark">
-                        {% if has_permission('manage_badword_filter') %}
-                        <li><a class="dropdown-item" href="{{ url_for('server_setup_page') }}">Willkommen &amp; Regeln</a></li>
+                        {% if has_permission('create_embed') or has_permission('send_dm') %}
+                        <li><hr class="dropdown-divider"></li>
                         {% endif %}
-                        {% if has_permission('create_giveaway') %}
-                        <li><a class="dropdown-item" href="{{ url_for('create_giveaway_page') }}">Giveaway starten</a></li>
-                        {% endif %}
-                    </ul>
-                </li>
-                {% endif %}
-
-                {% if has_permission('create_embed') or has_permission('send_dm') %}
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Admin-Werkzeuge</a>
-                    <ul class="dropdown-menu dropdown-menu-dark">
                         {% if has_permission('create_embed') %}
-                        <li><a class="dropdown-item" href="{{ url_for('create_embed_page') }}">Embed erstellen</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('create_embed_page') }}">Embed senden</a></li>
                         {% endif %}
                         {% if has_permission('send_dm') %}
                         <li><a class="dropdown-item" href="{{ url_for('send_dm_page') }}">DM senden</a></li>
@@ -65,15 +45,39 @@
                 </li>
                 {% endif %}
 
+                {# Bot-Setup (frueher "Server-Setup"): alles, was das Verhalten und
+                   Auftreten des Bots einrichtet - Willkommensablauf, Giveaways und
+                   seine Persoenlichkeit. Personality stand vorher als eigener
+                   Menuepunkt daneben, gehoert aber sachlich genau hierher. #}
+                {% if has_permission('manage_badword_filter') or has_permission('create_giveaway')
+                      or has_permission('manage_game_settings') %}
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Bot-Setup</a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        {% if has_permission('manage_badword_filter') %}
+                        <li><a class="dropdown-item" href="{{ url_for('server_setup_page') }}">Willkommen &amp; Regeln</a></li>
+                        {% endif %}
+                        {% if has_permission('create_giveaway') %}
+                        <li><a class="dropdown-item" href="{{ url_for('create_giveaway_page') }}">Giveaway starten</a></li>
+                        {% endif %}
+                        {% if has_permission('manage_game_settings') %}
+                        <li><a class="dropdown-item" href="{{ url_for('personality_page') }}">Personality</a></li>
+                        {% endif %}
+                    </ul>
+                </li>
+                {% endif %}
+
+                {# Admin-Werkzeuge: Verwaltung des Bots selbst und seiner Zugaenge -
+                   nicht des Servers. Die drei Punkte lagen vorher einzeln in der
+                   Hauptleiste und haben sie unnoetig verbreitert. #}
                 {% if has_permission('is_admin') %}
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('users_page') }}">Benutzerverwaltung</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('audit_log_page') }}">Audit-Log</a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('tunnel_access_page') }}">App-Zugänge</a>
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Admin-Werkzeuge</a>
+                    <ul class="dropdown-menu dropdown-menu-dark">
+                        <li><a class="dropdown-item" href="{{ url_for('users_page') }}">Benutzerverwaltung</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('audit_log_page') }}">Audit-Log</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('tunnel_access_page') }}">App-Zugänge</a></li>
+                    </ul>
                 </li>
                 {% endif %}
             </ul>

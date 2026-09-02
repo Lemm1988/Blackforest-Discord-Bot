@@ -365,10 +365,20 @@ Code/Ordner bleiben technisch wo sie sind:
 | **XP & Level** | Eigenständiges Kern-Modul, da sowohl vom Quiz als auch von Nachrichten-XP gespeist |
 | **Moderation → Automod** | Schimpfwort-/Spam-/Link-Filter |
 | **Moderation → Aktionen & Überwachung** | Kick/Ban/Timeout, Überwachungs-Dashboard |
-| **Personality** | Haupt-Settings, Text-Varianten, Mood-Schwellen |
-| **Server-Setup** | Willkommensnachricht, Rollen-Reaktion, Giveaway-Link |
-| **Admin-Werkzeuge** | Embed erstellen, DM senden |
-| **Benutzerverwaltung** | `/users`, `/audit_log`, `/tunnel_access` — Kernsystem, kein Modul |
+| **Moderation → Embed senden** | Ansagen als Embed in einen Kanal (vorher unter Admin-Werkzeuge) |
+| **Moderation → DM senden** | Private Nachricht im Namen des Bots, z.B. Verwarnung (vorher unter Admin-Werkzeuge) |
+| **Bot-Setup → Willkommen & Regeln** | Willkommensnachricht, Rollen-Reaktion |
+| **Bot-Setup → Giveaway starten** | Giveaway anlegen |
+| **Bot-Setup → Personality** | Haupt-Settings, Text-Varianten, Mood-Schwellen (vorher eigener Menüpunkt) |
+| **Admin-Werkzeuge** | Benutzerverwaltung, Audit-Log, App-Zugänge — Kernsystem, kein Modul |
+
+**Umbenennung und Umsortierung (02.09.2026):** „Server-Setup" heißt jetzt **Bot-Setup**,
+weil dort das Verhalten des *Bots* eingerichtet wird und nicht der Discord-Server.
+Personality gehört sachlich dorthin und stand vorher als eigener Punkt daneben. Embed und
+DM sind in der Praxis Moderationsmittel (Ansagen, Verwarnungen) und keine Bot-Verwaltung —
+sie liegen deshalb unter Moderation. Unter Admin-Werkzeugen stehen jetzt nur noch
+Benutzerverwaltung, Audit-Log und App-Zugänge, die vorher einzeln die Hauptleiste
+verbreiterten.
 
 ---
 
