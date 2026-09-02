@@ -15,6 +15,9 @@
      springen: entweder ist ein Zugang trotz Widerruf offen, oder jemand kommt
      nicht durch, obwohl er soll. */
   .danger { color: #a61b1b; font-weight: bold; }
+  .legend { margin-top: 1.5rem; font-size: 0.9rem; }
+  .legend th { background: #f6f6f6; }
+  .legend td:first-child { white-space: nowrap; }
   td small { color: #666; }
   table { table-layout: auto; }
   body { max-width: 980px; }
@@ -119,12 +122,12 @@
             <button type="submit" class="revoke-btn">Widerrufen</button>
           </form>
         {% endif %}
-        <form class="inline" method="post" action="{{ url_for('delete') }}"
-              onsubmit="return confirm('Eintrag für {{ g.label }} endgültig löschen? {% if not g.revoked_at %}Der Zugang wird dabei zuerst widerrufen. {% endif %}Die Historie geht verloren.');">
-          <input type="hidden" name="label" value="{{ g.label }}">
-          <input type="hidden" name="grant_id" value="{{ g.id }}">
-          <button type="submit" class="revoke-btn">Löschen</button>
-        </form>
+        {# "Löschen" gibt es hier bewusst NICHT: Auf einen laufenden Zugang
+           angewandt haette es exakt dieselbe Wirkung wie Widerrufen (Zugang weg),
+           nur zusaetzlich ohne Nachweis. Zwei Knoepfe fuer dieselbe Wirkung sind
+           irrefuehrend. Loeschen erscheint deshalb nur in der Historie, wo es eine
+           eigene Bedeutung hat: einen bereits beendeten Eintrag endgueltig
+           wegraeumen. #}
       </td>
     </tr>
     {% else %}
@@ -133,12 +136,36 @@
   </tbody>
 </table>
 
+<table class="legend">
+  <thead><tr><th>Aktion</th><th>Verbindung</th><th>Ticket danach</th><th>Wofür</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>Pausieren</strong></td>
+      <td>sofort unterbrochen</td>
+      <td><span class="active">bleibt gültig</span></td>
+      <td>vorübergehend aussetzen — nach dem Fortsetzen gilt dasselbe Ticket weiter,
+          es muss nichts neu verteilt werden</td>
+    </tr>
+    <tr>
+      <td><strong>Widerrufen</strong></td>
+      <td>sofort unterbrochen</td>
+      <td><span class="danger">dauerhaft ungültig</span></td>
+      <td>Zugang endgültig entziehen — Secret wird gelöscht, eine bestehende
+          Login-Session der Person wird beendet</td>
+    </tr>
+    <tr>
+      <td><strong>Neu setzen</strong></td>
+      <td>kurz unterbrochen</td>
+      <td><span class="danger">neues Ticket</span></td>
+      <td>Ticket ersetzen, z.B. wenn es in falsche Hände geraten ist — die Person
+          braucht danach zwingend das neue</td>
+    </tr>
+  </tbody>
+</table>
 <p><small>
-  <strong>Widerrufen</strong> macht das Ticket dauerhaft ungültig (Secret wird gelöscht, eine
-  bestehende Login-Session der Person wird beendet) — für erneuten Zugang ist ein neues Ticket
-  nötig. <strong>Pausieren</strong> unterbricht die Verbindung sofort, lässt das Ticket aber
-  gültig; nach dem Fortsetzen funktioniert es unverändert weiter. <strong>Neu setzen</strong>
-  widerruft und legt sofort neu an — ergibt zwingend ein neues Ticket.
+  Pausieren blockiert übrigens wirklich: Ohne laufenden Tunnel-Prozess gibt es keine
+  Gegenstelle, das Ticket zeigt ins Leere — auch ein Neustart der App auf dem Handy hilft
+  dann nicht.
 </small></p>
 
 {# Historie bewusst eingeklappt und getrennt: Bei vielen Nutzern waere sonst nicht
