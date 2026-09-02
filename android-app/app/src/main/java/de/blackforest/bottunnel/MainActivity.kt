@@ -20,6 +20,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import android.widget.VideoView
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -89,6 +90,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var prefs: android.content.SharedPreferences
     private lateinit var ticketLayout: LinearLayout
     private lateinit var loadingLayout: LinearLayout
+    private lateinit var loadingVideo: VideoView
     private lateinit var webView: WebView
     private lateinit var ticketInput: EditText
 
@@ -141,8 +143,20 @@ class MainActivity : AppCompatActivity() {
 
         ticketLayout = findViewById(R.id.ticketLayout)
         loadingLayout = findViewById(R.id.loadingLayout)
+        loadingVideo = findViewById(R.id.loadingVideo)
         webView = findViewById(R.id.webView)
         ticketInput = findViewById(R.id.ticketInput)
+
+        // Logo-Animation des Ladebildschirms. Stumm und in Dauerschleife: ein
+        // Ladebildschirm, der ungefragt Ton abspielt, waere aufdringlich, und der
+        // Clip ist mit 8s kuerzer als ein langsamer Tunnelaufbau dauern kann.
+        loadingVideo.setVideoURI(
+            android.net.Uri.parse("android.resource://$packageName/${R.raw.loading}")
+        )
+        loadingVideo.setOnPreparedListener { player ->
+            player.isLooping = true
+            player.setVolume(0f, 0f)
+        }
 
         findViewById<Button>(R.id.saveTicketButton).setOnClickListener {
             val ticket = ticketInput.text.toString().trim()
@@ -270,8 +284,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun showTicketEntry() {
         ticketLayout.visibility = View.VISIBLE
-        loadingLayout.visibility = View.GONE
+        setLoadingVisible(false)
         webView.visibility = View.GONE
+    }
+
+    /**
+     * Blendet den Ladebildschirm ein/aus und steuert dabei die Logo-Animation
+     * mit. Die Wiedergabe wird pausiert, sobald der Ladebildschirm verschwindet -
+     * sonst liefe der Decoder waehrend der gesamten WebView-Nutzung unsichtbar
+     * weiter und wuerde nur Akku kosten.
+     */
+    private fun setLoadingVisible(visible: Boolean) {
+        loadingLayout.visibility = if (visible) View.VISIBLE else View.GONE
+        if (visible) {
+            if (!loadingVideo.isPlaying) loadingVideo.start()
+        } else {
+            if (loadingVideo.isPlaying) loadingVideo.pause()
+        }
     }
 
     private fun connectAndShowWebView() {
@@ -281,7 +310,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         ticketLayout.visibility = View.GONE
-        loadingLayout.visibility = View.VISIBLE
+        setLoadingVisible(true)
         webView.visibility = View.GONE
 
         connectionGeneration++
@@ -327,7 +356,7 @@ class MainActivity : AppCompatActivity() {
             runOnUiThread {
                 if (myGeneration != connectionGeneration || isFinishing || isDestroyed) return@runOnUiThread
                 if (ready) {
-                    loadingLayout.visibility = View.GONE
+                    setLoadingVisible(false)
                     webView.visibility = View.VISIBLE
                     webView.loadUrl(BACKEND_URL)
                 } else {

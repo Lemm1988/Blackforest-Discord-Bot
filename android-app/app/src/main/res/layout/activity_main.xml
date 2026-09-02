@@ -36,22 +36,37 @@
             android:text="@string/save_ticket_button" />
     </LinearLayout>
 
+    <!-- Ladebildschirm: Logo-Animation auf Schwarz. Der Hintergrund ist bewusst
+         fest schwarz (nicht Theme-abhaengig), weil der Clip selbst schwarz
+         hinterlegt ist - so ist auch im hellen System-Theme keine Kante um das
+         Video sichtbar. Kein ProgressBar mehr: die Animation zeigt bereits, dass
+         etwas passiert. Der Text bleibt, damit ein langer Tunnelaufbau nicht wie
+         eine haengende App wirkt. -->
     <LinearLayout
         android:id="@+id/loadingLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
         android:gravity="center"
+        android:background="@android:color/black"
+        android:padding="24dp"
         android:visibility="gone">
 
-        <ProgressBar
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" />
+        <!-- Feste 16:9-Flaeche, entspricht dem Seitenverhaeltnis des Clips
+             (614x346). VideoView skaliert seitenverhaeltnistreu hinein; ein
+             etwaiger Rand bliebe schwarz auf schwarz und faellt nicht auf. -->
+        <VideoView
+            android:id="@+id/loadingVideo"
+            android:layout_width="320dp"
+            android:layout_height="180dp" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
+            android:layout_marginTop="24dp"
+            android:gravity="center"
+            android:textColor="@android:color/white"
+            android:textSize="14sp"
             android:text="@string/loading_label" />
     </LinearLayout>
 
