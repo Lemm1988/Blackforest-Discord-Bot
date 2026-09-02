@@ -11,6 +11,13 @@
   th, td { text-align: left; padding: 0.4rem 0.6rem; border-bottom: 1px solid #ddd; }
   .active { color: #1b5e20; font-weight: bold; }
   .revoked { color: #888; }
+  /* Abweichung zwischen gewolltem und tatsaechlichem Zustand - muss ins Auge
+     springen: entweder ist ein Zugang trotz Widerruf offen, oder jemand kommt
+     nicht durch, obwohl er soll. */
+  .danger { color: #a61b1b; font-weight: bold; }
+  td small { color: #666; }
+  table { table-layout: auto; }
+  body { max-width: 980px; }
   .flash { padding: 0.6rem 1rem; margin: 0.6rem 0; border-radius: 4px; }
   .flash.success { background: #e6f4ea; color: #1b5e20; }
   .flash.error { background: #fdecea; color: #a61b1b; }
@@ -51,7 +58,7 @@
 <h2>Bestehende Zugänge</h2>
 <table>
   <thead>
-    <tr><th>Name</th><th>Erstellt am</th><th>Status</th><th></th></tr>
+    <tr><th>Name</th><th>Erstellt am</th><th>Status</th><th>Zeigt auf</th><th>Aktionen</th></tr>
   </thead>
   <tbody>
     {% for g in grants %}
@@ -59,26 +66,83 @@
       <td>{{ g.label }}</td>
       <td>{{ g.created_at }}</td>
       <td>
-        {% if g.revoked_at %}
-          <span class="revoked">widerrufen am {{ g.revoked_at }}</span>
-        {% else %}
+        {# Status kommt aus dem Abgleich von DB, Secret, Unit-Datei und laufendem
+           Dienst - nicht allein aus der Datenbank. Abweichungen werden benannt
+           statt verborgen. #}
+        {% if g.status == 'aktiv' %}
           <span class="active">aktiv</span>
+        {% elif g.status == 'pausiert' %}
+          <span class="revoked">pausiert seit {{ g.paused_at }}</span><br>
+          <small>Ticket bleibt gültig</small>
+        {% elif g.status == 'widerrufen' %}
+          <span class="revoked">widerrufen am {{ g.revoked_at }}</span>
+        {% elif g.status == 'ersetzt' %}
+          <span class="revoked">ersetzt am {{ g.revoked_at }}</span><br>
+          <small>durch neueren Zugang desselben Namens</small>
+        {% elif g.status == 'GEFAHR' %}
+          <span class="danger">GEFAHR: widerrufen, aber Tunnel läuft noch!</span><br>
+          <small>Zugang ist trotz Widerruf offen — sofort prüfen</small>
+        {% elif g.status == 'DEFEKT' %}
+          <span class="danger">DEFEKT: kein laufender Tunnel</span><br>
+          <small>
+            {% if not g.unit_exists %}Unit-Datei fehlt{% elif not g.secret_exists %}Secret fehlt{%
+            else %}Dienst: {{ g.service_state }}{% endif %} — Person kommt nicht durch
+          </small>
+        {% elif g.status == 'FEHLER' %}
+          <span class="danger">FEHLER: als pausiert geführt, läuft aber</span>
         {% endif %}
       </td>
       <td>
+        {% if g.target %}<code>{{ g.target }}</code>{% else %}<span class="revoked">—</span>{% endif %}
+      </td>
+      <td>
         {% if not g.revoked_at %}
-        <form class="inline" method="post" action="{{ url_for('revoke') }}"
-              onsubmit="return confirm('Zugang für {{ g.label }} wirklich widerrufen?');">
-          <input type="hidden" name="label" value="{{ g.label }}">
-          <button type="submit" class="revoke-btn">Widerrufen</button>
-        </form>
+          <form class="inline" method="post" action="{{ url_for('ticket') }}">
+            <input type="hidden" name="label" value="{{ g.label }}">
+            <button type="submit">Ticket anzeigen</button>
+          </form>
+          {% if g.paused_at %}
+          <form class="inline" method="post" action="{{ url_for('resume') }}">
+            <input type="hidden" name="label" value="{{ g.label }}">
+            <button type="submit">Fortsetzen</button>
+          </form>
+          {% else %}
+          <form class="inline" method="post" action="{{ url_for('pause') }}"
+                onsubmit="return confirm('Zugang für {{ g.label }} pausieren? Die Verbindung wird sofort unterbrochen, das Ticket bleibt gültig.');">
+            <input type="hidden" name="label" value="{{ g.label }}">
+            <button type="submit">Pausieren</button>
+          </form>
+          {% endif %}
+          <form class="inline" method="post" action="{{ url_for('reset') }}"
+                onsubmit="return confirm('Zugang für {{ g.label }} neu setzen? Das bisherige Ticket wird dauerhaft ungültig, {{ g.label }} braucht danach das neue.');">
+            <input type="hidden" name="label" value="{{ g.label }}">
+            <button type="submit">Neu setzen</button>
+          </form>
+          <form class="inline" method="post" action="{{ url_for('revoke') }}"
+                onsubmit="return confirm('Zugang für {{ g.label }} wirklich widerrufen? Das Ticket wird dauerhaft ungültig.');">
+            <input type="hidden" name="label" value="{{ g.label }}">
+            <button type="submit" class="revoke-btn">Widerrufen</button>
+          </form>
         {% endif %}
+        <form class="inline" method="post" action="{{ url_for('delete') }}"
+              onsubmit="return confirm('Eintrag für {{ g.label }} endgültig löschen? {% if not g.revoked_at %}Der Zugang wird dabei zuerst widerrufen. {% endif %}Die Historie geht verloren.');">
+          <input type="hidden" name="label" value="{{ g.label }}">
+          <button type="submit" class="revoke-btn">Löschen</button>
+        </form>
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="4"><em>Noch keine Zugänge.</em></td></tr>
+    <tr><td colspan="5"><em>Noch keine Zugänge.</em></td></tr>
     {% endfor %}
   </tbody>
 </table>
+
+<p><small>
+  <strong>Widerrufen</strong> macht das Ticket dauerhaft ungültig (Secret wird gelöscht, eine
+  bestehende Login-Session der Person wird beendet) — für erneuten Zugang ist ein neues Ticket
+  nötig. <strong>Pausieren</strong> unterbricht die Verbindung sofort, lässt das Ticket aber
+  gültig; nach dem Fortsetzen funktioniert es unverändert weiter. <strong>Neu setzen</strong>
+  widerruft und legt sofort neu an — ergibt zwingend ein neues Ticket.
+</small></p>
 </body>
 </html>

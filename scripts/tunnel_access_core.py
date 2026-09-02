@@ -96,6 +96,13 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(tunnel_access_grants)")}
     if "discord_user_id" not in existing_cols:
         conn.execute("ALTER TABLE tunnel_access_grants ADD COLUMN discord_user_id TEXT")
+    if "paused_at" not in existing_cols:
+        # Pausieren ist bewusst ein EIGENER Zustand und nicht bloss "Dienst laeuft
+        # gerade nicht": Ohne diese Spalte waere ein absichtlich pausierter Zugang
+        # nicht von einem defekten zu unterscheiden (Dienst weg, obwohl er laufen
+        # sollte) - genau diese Verwechslung gab es real, als ein Zugang in der DB
+        # als aktiv stand, aber gar keine Unit-Datei existierte.
+        conn.execute("ALTER TABLE tunnel_access_grants ADD COLUMN paused_at TEXT")
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_tunnel_access_grants_slug ON tunnel_access_grants (slug)"
     )
@@ -183,13 +190,243 @@ def _stop_service_reliably(service_name: str) -> bool:
     return False
 
 
+def service_state(slug: str) -> str:
+    """Liefert den tatsaechlichen systemd-Zustand ('active', 'inactive', ...).
+    Leere Ausgabe (z.B. verweigertes sudo) wird als 'unbekannt' gemeldet, nie als
+    'nicht aktiv' - dieselbe Vorsicht wie in _stop_service_reliably()."""
+    result = subprocess.run(
+        ["sudo", "systemctl", "is-active", f"dumbpipe-discordbot-{slug}.service"],
+        capture_output=True, text=True,
+    )
+    return result.stdout.strip() or "unbekannt"
+
+
+def _unit_target(slug: str) -> str | None:
+    """Liest aus der Unit-Datei aus, wohin der Tunnel tatsaechlich weiterleitet.
+    Nicht geraten, sondern aus ExecStart gelesen - so faellt auch auf, wenn eine
+    von Hand veraenderte Unit woanders hinzeigt als erwartet."""
+    unit_file = SYSTEMD_DIR / f"dumbpipe-discordbot-{slug}.service"
+    if not unit_file.exists():
+        return None
+    try:
+        for line in unit_file.read_text().splitlines():
+            if line.startswith("ExecStart=") and "--host" in line:
+                parts = line.split()
+                return parts[parts.index("--host") + 1]
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
 def list_grants() -> list[dict]:
+    """Listet die Zugaenge MIT Abgleich gegen die Wirklichkeit.
+
+    Der DB-Eintrag allein sagt nur, was gewollt ist - nicht, was tatsaechlich
+    laeuft. Beide Richtungen sind real vorgekommen: ein als 'aktiv' gefuehrter
+    Zugang ohne jede Unit-Datei (die Person kam nicht durch), und ein als
+    'widerrufen' gefuehrter Zugang, dessen Tunnel weiterlief (der Widerruf war
+    wirkungslos, siehe Abschnitt 9.2 der Fernzugriff-Anleitung). Deshalb wird hier
+    zusaetzlich geprueft, ob Secret, Unit-Datei und Dienst wirklich existieren, und
+    daraus ein Status abgeleitet, der Abweichungen benennt statt sie zu verbergen.
+    """
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT label, slug, discord_user_id, created_at, revoked_at FROM tunnel_access_grants "
-            "ORDER BY created_at DESC"
+            "SELECT label, slug, discord_user_id, created_at, revoked_at, paused_at "
+            "FROM tunnel_access_grants ORDER BY created_at DESC"
         ).fetchall()
-        return [dict(row) for row in rows]
+
+    # Slugs, zu denen es einen aktuell gueltigen (nicht widerrufenen) Zugang gibt.
+    # Wichtig, weil Dienst- und Dateinamen nur vom Slug abhaengen: Wurde ein Zugang
+    # widerrufen und fuer dieselbe Person neu angelegt, gehoeren Dienst, Unit-Datei
+    # und Secret zum NEUEN Eintrag. Die alten Zeilen sind blosse Historie und
+    # duerfen nicht so aussehen, als liefe ihr Tunnel noch - sonst schlaegt das
+    # Dashboard bei jedem regulaeren Neusetzen falschen Alarm.
+    live_slugs = {r["slug"] for r in rows if not r["revoked_at"]}
+
+    # systemd nur einmal pro Slug fragen statt einmal pro Zeile.
+    state_cache: dict[str, str] = {}
+
+    grants = []
+    for row in rows:
+        g = dict(row)
+        slug = g["slug"]
+        superseded = bool(g["revoked_at"]) and slug in live_slugs
+        g["superseded"] = superseded
+
+        if superseded:
+            # Historische Zeile: Die Dateien auf der Platte gehoeren dem neuen
+            # Eintrag, ueber diesen hier sagen sie nichts aus.
+            g["secret_exists"] = g["unit_exists"] = False
+            g["service_state"] = "n/a"
+            g["target"] = None
+            g["status"] = "ersetzt"
+            grants.append(g)
+            continue
+
+        if slug not in state_cache:
+            state_cache[slug] = service_state(slug)
+        g["secret_exists"] = (CONFIG_DIR / f"env-person-{slug}").exists()
+        g["unit_exists"] = (SYSTEMD_DIR / f"dumbpipe-discordbot-{slug}.service").exists()
+        g["service_state"] = state_cache[slug]
+        g["target"] = _unit_target(slug)
+
+        running = g["service_state"] == "active"
+        if g["revoked_at"]:
+            # Der gefaehrlichste Fall: widerrufen, aber es laeuft noch etwas.
+            g["status"] = "GEFAHR" if running else "widerrufen"
+        elif g["paused_at"]:
+            g["status"] = "FEHLER" if running else "pausiert"
+        elif running:
+            g["status"] = "aktiv"
+        else:
+            g["status"] = "DEFEKT"
+        grants.append(g)
+    return grants
+
+
+def _grant_row(slug: str, require_active: bool = False) -> dict:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT label, slug, discord_user_id, revoked_at, paused_at "
+            "FROM tunnel_access_grants WHERE slug = ? ORDER BY created_at DESC LIMIT 1",
+            (slug,),
+        ).fetchone()
+    if not row:
+        raise TunnelAccessError(f"Kein Zugang mit dem Namen '{slug}' gefunden.")
+    if require_active and row["revoked_at"]:
+        raise TunnelAccessError(
+            f"Zugang '{row['label']}' ist bereits widerrufen - ein widerrufener Zugang "
+            "laesst sich nicht pausieren oder fortsetzen, nur neu anlegen."
+        )
+    return dict(row)
+
+
+def show_ticket(label: str) -> str:
+    """Erzeugt das Ticket eines bestehenden Zugangs erneut aus seinem Secret.
+
+    Das Ticket leitet sich deterministisch aus IROH_SECRET ab, ist also jederzeit
+    reproduzierbar - es wird nirgends gespeichert. Bewusste Abwaegung: Ein Ticket
+    ist ein Bearer-Credential, frueher galt "wird nur einmal angezeigt". Da das
+    Dashboard ausschliesslich auf 127.0.0.1 lauscht und ohnehin das Werkzeug ist,
+    mit dem Zugaenge vergeben werden, ueberwiegt hier der praktische Nutzen:
+    nachvollziehen zu koennen, welches Ticket zu welchem Zugang gehoert, ohne
+    dafuer ein neues ausstellen und verteilen zu muessen.
+    """
+    row = _grant_row(slugify(label))
+    if row["revoked_at"]:
+        raise TunnelAccessError(
+            f"Zugang '{row['label']}' ist widerrufen - sein Ticket ist ungueltig und "
+            "wird deshalb nicht mehr angezeigt."
+        )
+    secret_file = CONFIG_DIR / f"env-person-{row['slug']}"
+    if not secret_file.exists():
+        raise TunnelAccessError(f"Secret-Datei fehlt: {secret_file}")
+
+    secret = ""
+    for line in secret_file.read_text().splitlines():
+        if line.startswith("IROH_SECRET="):
+            secret = line.split("=", 1)[1].strip()
+    if not secret:
+        raise TunnelAccessError(f"Kein IROH_SECRET in {secret_file} gefunden.")
+
+    try:
+        return subprocess.run(
+            [str(DUMBPIPE_BIN), "generate-ticket"],
+            env={**os.environ, "IROH_SECRET": secret},
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    except subprocess.CalledProcessError as e:
+        raise TunnelAccessError(f"Ticket-Erzeugung fehlgeschlagen: {e.stderr}") from e
+
+
+def pause_grant(label: str) -> None:
+    """Haelt den Tunnel an, ohne Secret oder Ticket zu vernichten.
+
+    Unterschied zum Widerruf: Das Ticket bleibt gueltig und funktioniert nach dem
+    Fortsetzen unveraendert weiter - es muss also nichts neu verteilt werden. Fuer
+    einen dauerhaften Entzug ist trotzdem revoke_grant() das richtige Mittel, denn
+    nur dort wird das Secret geloescht und die Login-Session invalidiert.
+    """
+    row = _grant_row(slugify(label), require_active=True)
+    slug, service_name = row["slug"], f"dumbpipe-discordbot-{row['slug']}.service"
+    if row["paused_at"]:
+        raise TunnelAccessError(f"Zugang '{row['label']}' ist bereits pausiert.")
+
+    if not _stop_service_reliably(service_name):
+        raise TunnelAccessError(f"Dienst '{service_name}' liess sich nicht stoppen.")
+    # disable, damit er einen Neustart des Pi nicht ueberlebt - sonst waere die
+    # Pause nach dem naechsten Boot stillschweigend wieder aufgehoben.
+    _run_privileged(["sudo", "systemctl", "disable", service_name], f"Deaktivieren von {service_name}")
+
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE tunnel_access_grants SET paused_at = ? WHERE slug = ? AND revoked_at IS NULL",
+            (_now(), slug),
+        )
+        conn.commit()
+
+
+def resume_grant(label: str) -> None:
+    """Nimmt einen pausierten Zugang wieder in Betrieb - gleiches Ticket wie zuvor."""
+    row = _grant_row(slugify(label), require_active=True)
+    slug, service_name = row["slug"], f"dumbpipe-discordbot-{row['slug']}.service"
+    if not row["paused_at"]:
+        raise TunnelAccessError(f"Zugang '{row['label']}' ist nicht pausiert.")
+    if not (SYSTEMD_DIR / service_name).exists():
+        raise TunnelAccessError(
+            f"Unit-Datei fuer '{row['label']}' fehlt - der Zugang laesst sich nicht "
+            "fortsetzen, bitte neu setzen."
+        )
+
+    _run_privileged(["sudo", "systemctl", "enable", "--now", service_name], f"Starten von {service_name}")
+    time.sleep(1)
+    if service_state(slug) != "active":
+        raise TunnelAccessError(
+            f"Dienst '{service_name}' laeuft nach dem Fortsetzen nicht - bitte pruefen: "
+            f"journalctl -u {service_name}"
+        )
+
+    with _connect() as conn:
+        conn.execute(
+            "UPDATE tunnel_access_grants SET paused_at = NULL WHERE slug = ? AND revoked_at IS NULL",
+            (slug,),
+        )
+        conn.commit()
+
+
+def delete_grant(label: str) -> None:
+    """Entfernt einen Zugang restlos, inklusive seiner Historie in der Datenbank.
+
+    Ist der Zugang noch aktiv, wird zuerst regulaer widerrufen - sonst bliebe ein
+    laufender Tunnel zurueck, den danach kein Eintrag mehr sichtbar macht und den
+    folglich niemand mehr abschalten koennte.
+    """
+    slug = slugify(label)
+    row = _grant_row(slug)
+    if not row["revoked_at"]:
+        revoke_grant(row["label"])
+
+    with _connect() as conn:
+        conn.execute("DELETE FROM tunnel_access_grants WHERE slug = ?", (slug,))
+        conn.commit()
+
+
+def reset_grant(label: str) -> str:
+    """Widerruft den bestehenden Zugang und legt ihn fuer dieselbe Person neu an.
+
+    Ergebnis ist zwingend ein NEUES Ticket: Das alte Secret wird beim Widerruf
+    geloescht, ein neues zufaellig erzeugt. Ein Wiederbeleben des alten Tickets
+    waere ein Widerspruch in sich - dann waere ein Widerruf nur eine Pause.
+    """
+    row = _grant_row(slugify(label))
+    if not row["discord_user_id"]:
+        raise TunnelAccessError(
+            f"Zugang '{row['label']}' hat keine hinterlegte Discord-User-ID und kann "
+            "deshalb nicht automatisch neu gesetzt werden - bitte neu anlegen."
+        )
+    if not row["revoked_at"]:
+        revoke_grant(row["label"])
+    return add_grant(row["label"], row["discord_user_id"])
 
 
 def add_grant(label: str, discord_user_id: str) -> str:

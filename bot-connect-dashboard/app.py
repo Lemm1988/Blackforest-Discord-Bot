@@ -80,7 +80,72 @@ def revoke():
     try:
         core.revoke_grant(label)
         flash(f"Zugang für '{label}' widerrufen. Eine bestehende Login-Session dieser Person "
-              "im Haupt-Backend wurde ebenfalls beendet.", "success")
+              "im Haupt-Backend wurde ebenfalls beendet. Das Ticket ist damit dauerhaft "
+              "ungültig - für erneuten Zugang muss ein neues verteilt werden.", "success")
+    except core.TunnelAccessError as e:
+        flash(str(e), "error")
+    return redirect(url_for("index"))
+
+
+@app.route("/pause", methods=["POST"])
+def pause():
+    """Pausieren statt widerrufen: haelt den Tunnel an, laesst Secret und Ticket
+    aber bestehen. Fuer voruebergehendes Aussetzen - nach dem Fortsetzen
+    funktioniert dasselbe Ticket weiter, es muss nichts neu verteilt werden."""
+    label = request.form.get("label", "")
+    try:
+        core.pause_grant(label)
+        flash(f"Zugang für '{label}' pausiert. Die Verbindung ist sofort unterbrochen, das "
+              "Ticket bleibt gültig und funktioniert nach dem Fortsetzen unverändert.", "success")
+    except core.TunnelAccessError as e:
+        flash(str(e), "error")
+    return redirect(url_for("index"))
+
+
+@app.route("/resume", methods=["POST"])
+def resume():
+    label = request.form.get("label", "")
+    try:
+        core.resume_grant(label)
+        flash(f"Zugang für '{label}' fortgesetzt - das bisherige Ticket gilt unverändert.", "success")
+    except core.TunnelAccessError as e:
+        flash(str(e), "error")
+    return redirect(url_for("index"))
+
+
+@app.route("/reset", methods=["POST"])
+def reset():
+    label = request.form.get("label", "")
+    try:
+        ticket_value = core.reset_grant(label)
+        flash(f"Zugang für '{label}' neu gesetzt. NEUES Ticket:", "success")
+        flash(ticket_value, "ticket")
+    except core.TunnelAccessError as e:
+        flash(str(e), "error")
+    return redirect(url_for("index"))
+
+
+@app.route("/delete", methods=["POST"])
+def delete():
+    """Entfernt den Eintrag restlos inklusive Historie. Ist der Zugang noch aktiv,
+    widerruft core.delete_grant() ihn zuvor regulaer - sonst bliebe ein laufender
+    Tunnel zurueck, den danach kein Eintrag mehr sichtbar macht."""
+    label = request.form.get("label", "")
+    try:
+        core.delete_grant(label)
+        flash(f"Zugang für '{label}' vollständig gelöscht.", "success")
+    except core.TunnelAccessError as e:
+        flash(str(e), "error")
+    return redirect(url_for("index"))
+
+
+@app.route("/ticket", methods=["POST"])
+def ticket():
+    label = request.form.get("label", "")
+    try:
+        value = core.show_ticket(label)
+        flash(f"Ticket für '{label}':", "success")
+        flash(value, "ticket")
     except core.TunnelAccessError as e:
         flash(str(e), "error")
     return redirect(url_for("index"))
