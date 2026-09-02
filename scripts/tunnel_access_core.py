@@ -125,6 +125,25 @@ def slugify(label: str) -> str:
     return slug.strip("-")
 
 
+def _run_privileged(cmd: list[str], what: str) -> subprocess.CompletedProcess:
+    """Fuehrt einen sudo-Aufruf aus und wirft bei Fehlschlag TunnelAccessError.
+
+    Warum das noetig ist: Das Dashboard laeuft als systemd-Dienst, also ohne TTY.
+    Fehlt die passende sudoers-Regel (/etc/sudoers.d/bot-tunnel-access), scheitert
+    JEDER sudo-Aufruf sofort - die Meldung landet auf stderr, stdout bleibt leer.
+    Frueher wurden diese Aufrufe mit capture_output und ohne check ausgefuehrt,
+    ihre Rueckgabewerte also ignoriert. Ein Widerruf loeschte dann Secret und
+    DB-Eintrag, liess den laufenden dumbpipe-Prozess aber am Leben - und der haelt
+    IROH_SECRET im Speicher, bediente das widerrufene Ticket also unbeirrt weiter,
+    waehrend das Dashboard Erfolg meldete.
+    """
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip() or f"Exit-Code {result.returncode}"
+        raise TunnelAccessError(f"{what} fehlgeschlagen: {detail}")
+    return result
+
+
 def _stop_service_reliably(service_name: str) -> bool:
     """`systemctl stop` allein reicht NICHT zuverlaessig aus: dumbpipe stuerzt
     gelegentlich selbststaendig ab (Relay-Verbindungsprobleme, unabhaengig von
@@ -137,12 +156,29 @@ def _stop_service_reliably(service_name: str) -> bool:
     blind zu vertrauen. Gibt True zurueck, wenn der Dienst am Ende zuverlaessig
     inaktiv ist."""
     for _ in range(5):
-        subprocess.run(["sudo", "systemctl", "stop", service_name], capture_output=True)
+        # Wirft, wenn der Aufruf selbst nicht durchgeht (fehlende sudo-Rechte) -
+        # frueher wurde das stillschweigend als Erfolg gewertet.
+        _run_privileged(["sudo", "systemctl", "stop", service_name], f"Stoppen von {service_name}")
         time.sleep(1)
+
+        # is-active liefert bei NICHT laufendem Dienst absichtlich einen
+        # Exit-Code != 0, hier ist also nicht der Rueckgabewert entscheidend,
+        # sondern die Ausgabe. ENTSCHEIDEND: eine LEERE Ausgabe bedeutet, dass der
+        # Befehl gar nicht erst gelaufen ist (z.B. sudo verweigert) - das darf
+        # NICHT als "nicht aktiv" durchgehen. Genau diese Verwechslung war die
+        # Ursache dafuer, dass ein Widerruf Erfolg meldete, ohne den Tunnel zu
+        # beenden. Deshalb: nur eine ausdrueckliche Statusmeldung zaehlt.
         result = subprocess.run(
             ["sudo", "systemctl", "is-active", service_name], capture_output=True, text=True
         )
-        if result.stdout.strip() != "active":
+        status = result.stdout.strip()
+        if not status:
+            detail = (result.stderr or "").strip() or f"Exit-Code {result.returncode}"
+            raise TunnelAccessError(
+                f"Status von {service_name} nicht feststellbar (keine Ausgabe von "
+                f"'systemctl is-active'): {detail}"
+            )
+        if status != "active":
             return True
     return False
 
@@ -251,11 +287,27 @@ WantedBy=multi-user.target
         # Lieber den bereits gestarteten Dienst wieder einreissen und einen klaren
         # Fehler melden, als einen unsichtbaren, dauerhaft laufenden Zugang zu
         # hinterlassen (genau das ist einmal beim Reproduzieren dieses Bugs passiert).
-        _stop_service_reliably(service_name)
-        subprocess.run(["sudo", "systemctl", "disable", service_name], capture_output=True)
-        subprocess.run(["sudo", "rm", "-f", str(unit_file)], capture_output=True)
-        subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True)
+        # Der Rollback darf nicht selbst still scheitern - sonst bliebe genau die
+        # unsichtbare Leiche zurueck, die er verhindern soll. Ein Fehlschlag wird
+        # deshalb eingesammelt und der Meldung angehaengt, statt den urspruenglichen
+        # Fehler zu ueberschreiben oder zu verschlucken.
+        rollback_problem = None
+        try:
+            _stop_service_reliably(service_name)
+            _run_privileged(["sudo", "systemctl", "disable", service_name], "Deaktivieren")
+            _run_privileged(["sudo", "rm", "-f", str(unit_file)], "Entfernen der Unit-Datei")
+            _run_privileged(["sudo", "systemctl", "daemon-reload"], "systemctl daemon-reload")
+        except Exception as cleanup_error:
+            rollback_problem = cleanup_error
         secret_file.unlink(missing_ok=True)
+
+        if rollback_problem is not None:
+            raise TunnelAccessError(
+                f"Datenbank-Eintrag fehlgeschlagen ({e}) UND der Rollback schlug ebenfalls fehl "
+                f"({rollback_problem}). ACHTUNG: Der Dienst '{service_name}' laeuft moeglicherweise "
+                "noch und waere dann ein nicht im Dashboard sichtbarer, offener Zugang - bitte "
+                "sofort manuell pruefen: systemctl status " + service_name
+            ) from e
         raise TunnelAccessError(f"Datenbank-Eintrag fehlgeschlagen, Dienst wieder zurueckgerollt: {e}") from e
 
     return ticket
@@ -296,9 +348,30 @@ def revoke_grant(label: str) -> None:
             "NICHT durchgefuehrt, um keine Reste zu hinterlassen - bitte kurz erneut "
             "versuchen oder den Dienst manuell pruefen (journalctl -u " + service_name + ")."
         )
-    subprocess.run(["sudo", "systemctl", "disable", service_name], capture_output=True)
-    subprocess.run(["sudo", "rm", "-f", str(unit_file)], capture_output=True)
-    subprocess.run(["sudo", "systemctl", "daemon-reload"], capture_output=True)
+    _run_privileged(["sudo", "systemctl", "disable", service_name], f"Deaktivieren von {service_name}")
+    _run_privileged(["sudo", "rm", "-f", str(unit_file)], f"Entfernen von {unit_file}")
+    _run_privileged(["sudo", "systemctl", "daemon-reload"], "systemctl daemon-reload")
+
+    # Abschlusskontrolle, bevor der Zugang in der DB als widerrufen gilt: Erst
+    # wenn Unit-Datei UND laufender Dienst nachweislich weg sind, ist der
+    # Netzwerkzugang wirklich entzogen. Der laufende dumbpipe-Prozess ist der
+    # EINZIGE wirksame Hebel - alle Personen-Tunnel leiten auf dasselbe
+    # localhost:5000, das Backend kann also gar nicht unterscheiden, durch wessen
+    # Tunnel eine Anfrage kam (alles kommt als 127.0.0.1 an).
+    if unit_file.exists():
+        raise TunnelAccessError(
+            f"Unit-Datei {unit_file} existiert nach dem Entfernen weiterhin - Widerruf "
+            "unvollstaendig, Zugang ist moeglicherweise noch offen."
+        )
+    check = subprocess.run(
+        ["sudo", "systemctl", "is-active", service_name], capture_output=True, text=True
+    )
+    if check.stdout.strip() == "active":
+        raise TunnelAccessError(
+            f"Dienst {service_name} laeuft nach dem Widerruf immer noch - Zugang ist "
+            "noch offen, bitte manuell pruefen."
+        )
+
     secret_file.unlink(missing_ok=True)
 
     now = _now()
