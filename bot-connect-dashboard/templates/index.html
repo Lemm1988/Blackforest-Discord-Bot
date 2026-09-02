@@ -74,11 +74,6 @@
         {% elif g.status == 'pausiert' %}
           <span class="revoked">pausiert seit {{ g.paused_at }}</span><br>
           <small>Ticket bleibt gültig</small>
-        {% elif g.status == 'widerrufen' %}
-          <span class="revoked">widerrufen am {{ g.revoked_at }}</span>
-        {% elif g.status == 'ersetzt' %}
-          <span class="revoked">ersetzt am {{ g.revoked_at }}</span><br>
-          <small>durch neueren Zugang desselben Namens</small>
         {% elif g.status == 'GEFAHR' %}
           <span class="danger">GEFAHR: widerrufen, aber Tunnel läuft noch!</span><br>
           <small>Zugang ist trotz Widerruf offen — sofort prüfen</small>
@@ -127,12 +122,13 @@
         <form class="inline" method="post" action="{{ url_for('delete') }}"
               onsubmit="return confirm('Eintrag für {{ g.label }} endgültig löschen? {% if not g.revoked_at %}Der Zugang wird dabei zuerst widerrufen. {% endif %}Die Historie geht verloren.');">
           <input type="hidden" name="label" value="{{ g.label }}">
+          <input type="hidden" name="grant_id" value="{{ g.id }}">
           <button type="submit" class="revoke-btn">Löschen</button>
         </form>
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="5"><em>Noch keine Zugänge.</em></td></tr>
+    <tr><td colspan="5"><em>Zurzeit hat niemand Zugriff.</em></td></tr>
     {% endfor %}
   </tbody>
 </table>
@@ -144,5 +140,50 @@
   gültig; nach dem Fortsetzen funktioniert es unverändert weiter. <strong>Neu setzen</strong>
   widerruft und legt sofort neu an — ergibt zwingend ein neues Ticket.
 </small></p>
+
+{# Historie bewusst eingeklappt und getrennt: Bei vielen Nutzern waere sonst nicht
+   mehr erkennbar, wer tatsaechlich Zugriff hat. Widerrufene Eintraege bleiben aber
+   erhalten (Nachvollziehbarkeit, gleiches Prinzip wie beim Audit-Log). Achtung:
+   Ein widerrufener Zugang, dessen Tunnel noch laeuft, steht NICHT hier, sondern
+   oben als GEFAHR - er beschreibt einen offenen Zugang. #}
+{% if history %}
+<details>
+  <summary><strong>Alte Zugänge ({{ history|length }})</strong> — widerrufen oder ersetzt, kein Zugriff mehr</summary>
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Erstellt am</th><th>Beendet am</th><th>Grund</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for g in history %}
+      <tr>
+        <td>{{ g.label }}</td>
+        <td>{{ g.created_at }}</td>
+        <td>{{ g.revoked_at }}</td>
+        <td>
+          {% if g.status == 'ersetzt' %}
+            <span class="revoked">ersetzt</span> <small>durch neueren Zugang desselben Namens</small>
+          {% else %}
+            <span class="revoked">widerrufen</span>
+          {% endif %}
+        </td>
+        <td>
+          <form class="inline" method="post" action="{{ url_for('delete') }}"
+                onsubmit="return confirm('Eintrag für {{ g.label }} endgültig aus der Historie löschen?');">
+            <input type="hidden" name="label" value="{{ g.label }}">
+            <input type="hidden" name="grant_id" value="{{ g.id }}">
+            <button type="submit" class="revoke-btn">Löschen</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p><small>
+    Diese Zugänge haben keinen Zugriff mehr — Secret und Tunnel sind entfernt, die Tickets sind
+    ungültig. Die Einträge bleiben nur zur Nachvollziehbarkeit stehen und können hier endgültig
+    gelöscht werden.
+  </small></p>
+</details>
+{% endif %}
 </body>
 </html>

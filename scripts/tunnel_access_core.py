@@ -231,7 +231,7 @@ def list_grants() -> list[dict]:
     """
     with _connect() as conn:
         rows = conn.execute(
-            "SELECT label, slug, discord_user_id, created_at, revoked_at, paused_at "
+            "SELECT id, label, slug, discord_user_id, created_at, revoked_at, paused_at "
             "FROM tunnel_access_grants ORDER BY created_at DESC"
         ).fetchall()
 
@@ -394,20 +394,33 @@ def resume_grant(label: str) -> None:
         conn.commit()
 
 
-def delete_grant(label: str) -> None:
-    """Entfernt einen Zugang restlos, inklusive seiner Historie in der Datenbank.
+def delete_grant(grant_id: int) -> None:
+    """Entfernt GENAU EINEN Eintrag anhand seiner Zeilen-ID.
 
-    Ist der Zugang noch aktiv, wird zuerst regulaer widerrufen - sonst bliebe ein
-    laufender Tunnel zurueck, den danach kein Eintrag mehr sichtbar macht und den
-    folglich niemand mehr abschalten koennte.
+    Bewusst ueber die ID und nicht ueber den Namen: Nach einem Widerruf mit
+    anschliessendem Neuanlegen existieren mehrere Zeilen mit demselben Slug. Ein
+    Loeschen "per Name" wuerde die noch aktive Zeile mitreissen - beim Aufraeumen
+    alter Eintraege waere das ein unbeabsichtigter Zugangsentzug.
+
+    Ist der Eintrag noch aktiv (nicht widerrufen), wird zuerst regulaer widerrufen -
+    sonst bliebe ein laufender Tunnel zurueck, den danach kein Eintrag mehr sichtbar
+    macht und den folglich niemand mehr abschalten koennte.
     """
-    slug = slugify(label)
-    row = _grant_row(slug)
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT id, label, slug, revoked_at FROM tunnel_access_grants WHERE id = ?",
+            (grant_id,),
+        ).fetchone()
+    if not row:
+        raise TunnelAccessError(f"Kein Eintrag mit der ID {grant_id} gefunden.")
+
     if not row["revoked_at"]:
+        # revoke_grant() arbeitet ueber den Namen, trifft dabei aber ausdruecklich
+        # nur die nicht-widerrufene Zeile - und genau diese ist es hier.
         revoke_grant(row["label"])
 
     with _connect() as conn:
-        conn.execute("DELETE FROM tunnel_access_grants WHERE slug = ?", (slug,))
+        conn.execute("DELETE FROM tunnel_access_grants WHERE id = ?", (grant_id,))
         conn.commit()
 
 

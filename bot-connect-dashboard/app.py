@@ -47,9 +47,28 @@ def _fetch_members():
         return []
 
 
+# Zustaende, die in die Historie gehoeren. Alles andere bleibt in der Hauptliste -
+# insbesondere GEFAHR (widerrufen, aber Tunnel laeuft noch): Der Eintrag ist zwar
+# formal widerrufen, beschreibt aber einen OFFENEN Zugang und darf sich deshalb
+# nicht in einer eingeklappten Historie verstecken.
+HISTORY_STATES = {"widerrufen", "ersetzt"}
+
+
 @app.route("/")
 def index():
-    return render_template("index.html", grants=core.list_grants(), members=_fetch_members())
+    """Teilt die Zugaenge in "aktuell" und "alte Zugaenge".
+
+    Ohne diese Trennung waechst die Liste mit jedem Widerruf und jedem Neusetzen
+    weiter an - bei vielen Nutzern waere nicht mehr erkennbar, wer tatsaechlich
+    Zugriff hat. Die Historie bleibt erhalten (Nachvollziehbarkeit), steht aber
+    eingeklappt darunter.
+    """
+    grants = core.list_grants()
+    current = [g for g in grants if g["status"] not in HISTORY_STATES]
+    history = [g for g in grants if g["status"] in HISTORY_STATES]
+    return render_template(
+        "index.html", grants=current, history=history, members=_fetch_members()
+    )
 
 
 @app.route("/add", methods=["POST"])
@@ -127,13 +146,23 @@ def reset():
 
 @app.route("/delete", methods=["POST"])
 def delete():
-    """Entfernt den Eintrag restlos inklusive Historie. Ist der Zugang noch aktiv,
-    widerruft core.delete_grant() ihn zuvor regulaer - sonst bliebe ein laufender
-    Tunnel zurueck, den danach kein Eintrag mehr sichtbar macht."""
+    """Entfernt genau einen Eintrag. Ist er noch aktiv, widerruft
+    core.delete_grant() ihn zuvor regulaer - sonst bliebe ein laufender Tunnel
+    zurueck, den danach kein Eintrag mehr sichtbar macht.
+
+    Angesprochen wird ueber die Zeilen-ID, nicht ueber den Namen: Nach Widerruf und
+    Neuanlage gibt es mehrere Zeilen desselben Namens, und ein Loeschen per Name
+    wuerde beim Aufraeumen der Historie den noch aktiven Zugang mitreissen.
+    """
     label = request.form.get("label", "")
     try:
-        core.delete_grant(label)
-        flash(f"Zugang für '{label}' vollständig gelöscht.", "success")
+        grant_id = int(request.form.get("grant_id", ""))
+    except ValueError:
+        flash("Ungültige Eintrags-ID.", "error")
+        return redirect(url_for("index"))
+    try:
+        core.delete_grant(grant_id)
+        flash(f"Eintrag für '{label}' vollständig gelöscht.", "success")
     except core.TunnelAccessError as e:
         flash(str(e), "error")
     return redirect(url_for("index"))
