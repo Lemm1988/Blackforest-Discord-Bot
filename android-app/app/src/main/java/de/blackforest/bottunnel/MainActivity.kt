@@ -66,7 +66,21 @@ class MainActivity : AppCompatActivity() {
         // laenger dauern, ohne dass die App vorschnell aufgibt. Haengt ein Versuch
         // dagegen, greift weiterhin READINESS_TIMEOUT_MS.
         private const val READINESS_ATTEMPTS = 5
-        private const val READINESS_TIMEOUT_MS = 60_000
+
+        // Timeout je EINZELVERSUCH. Bewusst deutlich kuerzer als das frueher hier
+        // stehende Minutenlimit: Ein hoher Einzelwert nuetzt nichts, wenn der Tunnel
+        // gar nicht zustande kommen KANN (etwa weil ein widerrufenes Ticket
+        // eingetragen ist). Dann nimmt dumbpipe die lokale Verbindung zwar an, kommt
+        // aber nicht an die Gegenstelle - die HTTPS-Anfrage haengt bis zum Timeout,
+        // und mit fuenf Versuchen stand die App minutenlang im Ladebildschirm.
+        private const val READINESS_TIMEOUT_MS = 25_000
+
+        // Gesamtbudget ueber ALLE Versuche. Der eigentliche Schutz gegen "haengt
+        // ewig": Ohne diese Grenze multiplizieren sich Einzeltimeouts und Pausen zu
+        // einer Wartezeit, die niemand mehr als "laedt noch" liest. Nach Ablauf
+        // zeigt die App ihre Diagnose - eine sichtbare Erklaerung ist besser als ein
+        // Ladebildschirm, der nichts sagt.
+        private const val READINESS_TOTAL_BUDGET_MS = 70_000L
 
         // Pause ZWISCHEN den Versuchen. Ohne sie war die "Geduld" oben wirkungslos,
         // sobald ein Versuch nicht haengt, sondern SOFORT fehlschlaegt: dumbpipe
@@ -418,22 +432,38 @@ class MainActivity : AppCompatActivity() {
      * (Ticket gewechselt, App verlassen).
      */
     private fun waitForBackendReady(myGeneration: Int): Boolean {
+        val deadline = System.currentTimeMillis() + READINESS_TOTAL_BUDGET_MS
         repeat(READINESS_ATTEMPTS) { attemptIndex ->
             if (myGeneration != connectionGeneration) return false
+
+            // Restbudget begrenzt den Einzelversuch mit: Ein Versuch, der ohnehin
+            // erst nach Ablauf des Gesamtbudgets zurueckkaeme, wird gar nicht mehr
+            // begonnen - sonst haenge die App trotz Budget bis zu einem vollen
+            // Einzeltimeout laenger.
+            val remaining = deadline - System.currentTimeMillis()
+            if (remaining <= 0) {
+                Log.i(TAG, "Bereitschafts-Budget aufgebraucht - gebe auf")
+                return false
+            }
+            val attemptTimeout = minOf(READINESS_TIMEOUT_MS.toLong(), remaining).toInt()
+
             Log.i(
                 TAG,
                 "Bereitschafts-Check Versuch ${attemptIndex + 1}/$READINESS_ATTEMPTS " +
-                    "(bis zu ${READINESS_TIMEOUT_MS / 1000}s Geduld)"
+                    "(bis zu ${attemptTimeout / 1000}s, Restbudget ${remaining / 1000}s)"
             )
-            if (isBackendReadyOnce(READINESS_TIMEOUT_MS)) return true
+            if (isBackendReadyOnce(attemptTimeout)) return true
 
-            // Nur warten, wenn noch ein Versuch folgt. Entscheidend fuer den Fall
-            // "schlaegt sofort fehl" - siehe READINESS_RETRY_DELAY_MS: ohne diese
-            // Pause waren alle Versuche verbraucht, bevor der Tunnel bereit war.
+            // Nur warten, wenn noch ein Versuch folgt UND das Budget es hergibt.
+            // Die Pause selbst ist entscheidend fuer den Fall "schlaegt sofort fehl"
+            // (siehe READINESS_RETRY_DELAY_MS), darf aber das Gesamtbudget nicht
+            // ueberziehen - sonst wartet die App am Ende laenger als angekuendigt.
             if (attemptIndex < READINESS_ATTEMPTS - 1) {
-                Log.i(TAG, "Warte ${READINESS_RETRY_DELAY_MS}ms vor dem naechsten Versuch")
+                val pause = minOf(READINESS_RETRY_DELAY_MS, deadline - System.currentTimeMillis())
+                if (pause <= 0) return false
+                Log.i(TAG, "Warte ${pause}ms vor dem naechsten Versuch")
                 try {
-                    Thread.sleep(READINESS_RETRY_DELAY_MS)
+                    Thread.sleep(pause)
                 } catch (e: InterruptedException) {
                     Thread.currentThread().interrupt()
                     return false
