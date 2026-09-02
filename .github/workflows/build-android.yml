@@ -73,7 +73,9 @@ jobs:
           grep -A5 "\[profile.release\]" Cargo.toml
 
       # ENTFERNT: "Patch dumbpipe's Endpoint-Aufbau - Android-JNI-DNS-Lookup weglassen"
-      # (android-app/patch_dumbpipe_android.py, jetzt ungenutzt)
+      # Das zugehoerige Skript android-app/patch_dumbpipe_android.py wurde mit
+      # entfernt; Begruendung und Analyse stehen in
+      # docs/Fernzugriff-Setup-Anleitung.md, Abschnitt 9.1.
       #
       # Der Patch ersetzte irohs Standard-Resolver durch
       # DnsResolver::with_nameserver("8.8.8.8:53") - laut iroh-Doku "a new DNS

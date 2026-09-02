@@ -5,7 +5,14 @@ Discord-Bot) eingerichtet wurde: SSH per Schlüsselpaar, Iroh-1.0-basierte P2P-T
 `dumbpipe`) für den Zugriff auf die Mycodo-Weboberfläche und das Discord-Bot-Backend über
 mobile Daten, und wie man Claude Code über Termux auf einem Android-Handy installiert.
 
-**Stand: 31.08.2026 — WICHTIGER HINWEIS VORAB.** Abschnitt 3 (Discord-Bot-Backend per
+**Stand: 02.09.2026.** Zwei Nachträge sind für den aktuellen Betrieb wesentlich:
+**Abschnitt 9** löst das lange offene Verbindungsproblem der Bot Connect App (die Ursache
+war eine andere als in Abschnitt 7.2 lange vermutet) und beschreibt einen Sicherheitsfehler,
+durch den ein Widerruf zwar Erfolg meldete, den Tunnel aber weiterlaufen ließ. **Abschnitt 5**
+enthält die nach dem Umzug auf 64-Bit-Debian-13 aktualisierten Pfade (Benutzer `patrick`
+statt `picom`, Projekt unter `/opt/BlackforestBot-v2`).
+
+**WICHTIGER HINWEIS VORAB.** Abschnitt 3 (Discord-Bot-Backend per
 dumbpipe) beschreibt den **historischen** Zustand mit einem einzigen, geteilten Tunnel-Ticket.
 **Dieser geteilte Zugang wurde am 31.08.2026 aus Sicherheitsgründen komplett deaktiviert**
 (siehe Abschnitt 7) — er ließ sich nicht einzeln widerrufen und war damit eine dauerhafte
@@ -131,15 +138,24 @@ until ssh -4 -o ConnectTimeout=5 -o BatchMode=yes picom@192.168.178.30 'exit 0' 
 done
 ```
 
-### 1.6 Vorhandene Berechtigungen von `picom` (zur Kenntnis, nicht Teil dieses Setups)
+### 1.6 Vorhandene Berechtigungen des Benutzers (zur Kenntnis, nicht Teil dieses Setups)
 
-Der Benutzer `picom` hat bereits vor diesem Setup passwortlosen `sudo`-Zugriff auf alles
-(`NOPASSWD: ALL`, siehe `sudo -l`). Das bedeutet: Wer sich per SSH als `picom` einloggen
-kann, hat effektiv vollen Root-Zugriff auf den Pi. Das unterstreicht, warum der private
-SSH-Schlüssel (Abschnitt 1.3) mit derselben Sorgfalt wie ein Root-Passwort behandelt
-werden sollte — und warum das Bot Connect Dashboard (Abschnitt 7.3) bewusst ohne
-zusätzliches Login-System auskommt: wer lokalen/SSH-Zugriff auf den Pi hat, hat ohnehin
-schon dieses Vertrauensniveau.
+**Aktualisiert 02.09.2026 (neues System, Benutzer `patrick`).** Anders als früher bei
+`picom` gibt es **kein** pauschales `NOPASSWD: ALL` mehr. `sudo -l` zeigt:
+
+- `(ALL : ALL) ALL` — voller sudo-Zugriff, aber **mit** Passwortabfrage.
+- eine eng begrenzte `NOPASSWD`-Regel nur für die Tunnel-Verwaltung des Dashboards
+  (`/etc/sudoers.d/bot-tunnel-access`, siehe Abschnitt 9.3).
+
+Zusätzlich gilt systemweit `timestamp_type=global` (aus `/etc/sudoers.d/010_global-tty`):
+Eine einmalige Passworteingabe gilt damit für alle Sitzungen desselben Benutzers, nicht nur
+für das eine Terminal — praktisch beim Arbeiten über mehrere Sitzungen, aber gut zu wissen.
+
+Unverändert gilt: Wer sich per SSH als `patrick` einloggen kann, kann mit dem Passwort
+vollen Root-Zugriff erlangen. Der private SSH-Schlüssel (Abschnitt 1.3) ist deshalb mit
+derselben Sorgfalt zu behandeln wie ein Root-Passwort — und deshalb kommt das Bot Connect
+Dashboard (Abschnitt 7.3) bewusst ohne eigenes Login-System aus: Wer lokalen/SSH-Zugriff
+auf den Pi hat, hat ohnehin schon dieses Vertrauensniveau.
 
 ---
 
@@ -489,24 +505,32 @@ Debian/`proot`-Umgebung, nicht im "nackten" Termux selbst.
 
 ## 5. Zusammenfassung: beteiligte Dateien und Pfade
 
+**Stand 02.09.2026 — nach dem Umzug auf 64-Bit-Debian-13.** Benutzer ist jetzt `patrick`
+(vorher `picom`), das Projekt liegt unter `/opt/BlackforestBot-v2` (vorher
+`~/Desktop/BlackforestBot-v2`). Hart verdrahtete Pfade sind deshalb eine Fehlerquelle:
+`scripts/tunnel_access_core.py` enthielt genau solche und brach beim Umzug **stillschweigend**
+— das Dashboard startete, konnte aber die Datenbank nicht öffnen. Die Pfade werden dort
+inzwischen aus dem Repo-Ort und dem Home des laufenden Benutzers abgeleitet.
+
 | Was | Wo |
 |---|---|
 | SSH Public/Private Key (Handy) | `~/.ssh/id_ed25519[.pub]` (in der Debian/proot-Umgebung) |
-| Autorisierte Keys (Pi) | `/home/picom/.ssh/authorized_keys` |
+| Autorisierte Keys (Pi) | `/home/patrick/.ssh/authorized_keys` |
 | SSH-Server-Konfiguration (Pi) | `/etc/ssh/sshd_config` |
-| Iroh-Secret Mycodo-Tunnel (Pi, persistent) | `/home/picom/.config/dumbpipe/env` (chmod 600) |
-| dumbpipe-Binary (Pi) | `/home/picom/.cargo/bin/dumbpipe` |
+| Iroh-Secret Mycodo-Tunnel (Pi, persistent) | `/home/patrick/.config/dumbpipe/env` (chmod 600) |
+| dumbpipe-Binary (Pi) | `/home/patrick/.cargo/bin/dumbpipe` |
 | dumbpipe-Binary (Handy) | `~/.cargo/bin/dumbpipe` (in der Debian/proot-Umgebung) |
 | systemd-Dienst Mycodo-Tunnel (Pi) | `/etc/systemd/system/dumbpipe-mycodo.service` |
 | IPv6-Fix (Pi) | `/etc/gai.conf` (letzte Zeile) |
 | Mycodo-Zertifikat (selbstsigniert, bis 2033 gültig) | `/opt/Mycodo/mycodo/mycodo_flask/ssl_certs/server.crt` |
 | Verbindungs-Skript Mycodo (Handy) | `/root/connect_mycodo.sh` (in der Debian/proot-Umgebung) |
-| Discord-Bot-Zertifikat (selbstsigniert, bis 2036 gültig) | `~/Desktop/BlackforestBot-v2/backend/ssl/server.crt` |
+| Discord-Bot-Zertifikat (selbstsigniert, bis 2036 gültig) | `/opt/BlackforestBot-v2/backend/ssl/server.crt` |
 | App-Zugänge (Discord-Bot-Tunnel, pro Person) | `~/.config/dumbpipe/env-person-<slug>` + `dumbpipe-discordbot-<slug>.service`, siehe Abschnitt 7 |
-| Verwaltungs-Skript App-Zugänge (CLI) | `~/Desktop/BlackforestBot-v2/scripts/manage_bot_access.sh` |
-| Bot Connect Dashboard (lokales Web-UI für App-Zugänge) | `~/Desktop/BlackforestBot-v2/bot-connect-dashboard/`, nur `127.0.0.1:5050` |
+| **sudoers-Regel fürs Dashboard** (Pi) | `/etc/sudoers.d/bot-tunnel-access` — ohne sie schlägt jeder Widerruf fehl, siehe Abschnitt 9.3 |
+| Verwaltungs-Skript App-Zugänge (CLI) | `/opt/BlackforestBot-v2/scripts/manage_bot_access.sh` |
+| Bot Connect Dashboard (lokales Web-UI für App-Zugänge) | `/opt/BlackforestBot-v2/bot-connect-dashboard/`, nur `127.0.0.1:5050` |
 | Deploy Key fürs GitHub-Repo (Pi, nur Git-Push) | `~/.ssh/github_android_build[.pub]` |
-| Diese Anleitung | `~/Desktop/Fernzugriff-Setup-Anleitung.md` (Pi) + `docs/Fernzugriff-Setup-Anleitung.md` im GitHub-Repo |
+| Diese Anleitung | `docs/Fernzugriff-Setup-Anleitung.md` im GitHub-Repo (= `/opt/BlackforestBot-v2/docs/`) |
 
 ---
 
@@ -559,16 +583,15 @@ Dienst, keine Dauer-Benachrichtigung.
 
 Vollständige Details, Installation, Architektur: `android-app/README.md` im Repo.
 
-**Bekanntes, noch nicht vollständig gelöstes Problem (Stand 31.08.2026):** Manche
-Verbindungsversuche enden mit `ERR_TIMED_OUT` in der App-WebView. Serverseitig ließ sich
-keine erfolgreiche eingehende Verbindung während der Testfenster nachweisen — vermutlich
-eine Kombination aus den in Abschnitt 2.1 beschriebenen Relay-Instabilitäten und
-grundsätzlich langsamerem/schwierigerem NAT-Hole-Punching über echte
-Mobilfunk-/Internet-Strecken (im Unterschied zu Tests, bei denen Client und Server im
-selben Netz liefen). Die App wartet inzwischen aktiv (bis zu 45s) auf einen einsatzbereiten
-Tunnel statt nur kurz zu warten, und protokolliert die `dumbpipe`-Ausgabe für bessere
-Diagnose — das grundlegende Netzwerk-/Relay-Problem selbst ist damit aber nicht
-zwangsläufig behoben. Wird weiter untersucht.
+**Das lange offene Verbindungsproblem der App ist am 02.09.2026 gelöst — die Ursachen
+waren andere als hier lange vermutet. Vollständige Analyse in Abschnitt 9.**
+
+Der bis dahin hier stehende Verdacht (Relay-Instabilität, schwieriges NAT-Hole-Punching
+über Mobilfunk) hat sich als **falsch** herausgestellt. Beide Ursachen lagen woanders:
+eine über die Lockfile festgenagelte iroh-Version, die den Android-JNI-Panic im
+Release-Build nicht abfing, und eine Wartelogik in der App, die aufgab, bevor der Tunnel
+überhaupt bereit sein konnte. Das Netzwerk selbst war zu keinem Zeitpunkt das Problem —
+nachgewiesen mit vollem iroh-Debug-Log auf beiden Seiten.
 
 ### 7.3 Bot Connect Dashboard (lokales Verwaltungs-Tool)
 
@@ -673,3 +696,191 @@ auf dem Pi autorisiert, Account `Lemm1988`).
 Repo: `github.com/Lemm1988/Blackforest-Discord-Bot` (privat). Enthält den kompletten
 Projektcode (`bot/`, `backend/`, `android-app/`, `bot-connect-dashboard/`, `scripts/`)
 sowie diese Dokumentation unter `docs/`.
+
+---
+
+## 9. Nachtrag (02.09.2026): App-Verbindungsproblem gelöst + Widerruf war wirkungslos
+
+Dieser Abschnitt entstand nach dem Umzug auf ein frisches 64-Bit-Debian-13 (trixie) und
+löst zwei Probleme, die vorher als ungeklärt bzw. als funktionierend galten. Beide waren
+schwer zu finden, weil sie **stillschweigend** fehlschlugen — kein Absturz, keine
+Fehlermeldung, nur ausbleibende Wirkung.
+
+### 9.1 Die Bot Connect App kam nie durch — zwei unabhängige Ursachen
+
+Symptom: Der Tunnel-Prozess der App lief (`Läuft noch: true`), Port 8500 war lokal
+erreichbar, aber auf dem Pi kam nie eine Verbindung an. Die App zeigte nur die
+Diagnose-Ansicht.
+
+Die vorherige Vermutung (Relay/NAT, siehe alter Text in 7.2) war falsch. Entscheidend für
+die Aufklärung war, iroh selbst zum Reden zu bringen: `RUST_LOG` an den Subprozess
+durchreichen (die App setzte vorher **keine** Umgebungsvariablen, deshalb gab dumbpipe
+außer `using secret key …` nie etwas aus) und parallel auf dem Pi einen zweiten Listener
+mit vollem Debug-Log laufen lassen. Erst damit waren beide Seiten gleichzeitig sichtbar.
+
+**Ursache 1 — die Lockfile nagelte iroh auf eine Version ohne den Android-Fix.**
+
+dumbpipe liefert eine eigene `Cargo.lock` mit, die `iroh`/`iroh-dns` auf **1.0.0**
+festlegt, und `cargo build` respektiert Lockfiles. Jede APK wurde also gegen iroh 1.0.0
+gebaut. In `iroh-dns` 1.0.0 wird der Android-JNI-DNS-Panic **nur in Debug-Builds**
+abgefangen:
+
+```rust
+#[cfg(debug_assertions)]      { ...catch_unwind... }
+#[cfg(not(debug_assertions))] read_system_conf()?      // Release: Panic geht durch
+```
+
+Auf Android liest `read_system_conf()` die DNS-Server per JNI aus `LinkProperties` — was
+ein als Subprozess gestartetes Binary ohne JVM-Kontext nie kann. Im Release-Build (= die
+APK) schlug der Panic deshalb durch; das ist der beobachtete Exit-Code 101.
+
+Ab **iroh-dns 1.0.2** (Upstream-PR `n0-computer/iroh#4371` vom 25.06.2026, in die
+1.0er-Reihe zurückportiert) ist das `catch_unwind` unbedingt aktiv und fällt auf
+Google-DNS über UDP **und** TCP zurück. Der Workflow hebt die Version deshalb jetzt
+explizit an:
+
+```yaml
+- name: iroh aktualisieren (Android-DNS-Fallback im Release-Build)
+  working-directory: dumbpipe-src
+  run: cargo update -p iroh -p iroh-dns
+```
+
+Aufschlussreich für die Fehlersuche war, dass ein lokal mit `cargo install dumbpipe`
+gebautes Binary auf demselben Handy immer funktionierte: `cargo install` **ignoriert** die
+Lockfile und zog deshalb eine gefixte iroh-Version. Derselbe Quellcode, andere
+Abhängigkeitsversion, komplett anderes Verhalten.
+
+Der frühere Workaround (`android-app/patch_dumbpipe_android.py`, inzwischen aus dem Repo
+gelöscht — ersetzte irohs Resolver durch
+`DnsResolver::with_nameserver("8.8.8.8:53")`) wurde **entfernt**. Er verhinderte zwar den
+Panic, tauschte aber irohs getesteten Fallback (`ResolverConfig::udp_and_tcp(&GOOGLE)`,
+mehrere Server, UDP und TCP) gegen einen einzelnen UDP-Server ohne Ausweichpfad. Der
+`panic = "abort"` → `"unwind"`-Patch **bleibt** dagegen zwingend nötig: irohs
+`catch_unwind` kann ohne Unwinding grundsätzlich nicht greifen.
+
+**Ursache 2 — die App gab auf, bevor der Tunnel bereit sein konnte.**
+
+`waitForBackendReady()` führte seine Versuche ohne jede Pause hintereinander aus:
+
+```kotlin
+repeat(READINESS_ATTEMPTS) {                 // 3
+    if (isBackendReadyOnce(60_000)) return true
+}                                            // keine Pause dazwischen
+```
+
+Die 60 Sekunden Geduld greifen nur, wenn ein Versuch **hängt**. Schlägt er sofort fehl,
+sind alle Versuche binnen Millisekunden verbraucht. Und genau das passiert direkt nach dem
+Start — gemessen im WLAN:
+
+```
+08:33:49.070  tcp listening on 127.0.0.1:8500     <- Port sofort da
+08:33:52.238  relay connected, home_relay=true    <- erst jetzt einsatzbereit
+```
+
+dumbpipe nimmt die lokale TCP-Verbindung also schon an, kann die Gegenstelle aber noch
+nicht wählen; der Dial scheitert unmittelbar. Die App verbrannte ihre Versuche in diesem
+~3-Sekunden-Fenster und zeigte die Diagnose, obwohl Sekunden später alles funktioniert
+hätte. Behoben durch eine Pause **zwischen** den Versuchen (`READINESS_RETRY_DELAY_MS`,
+3s) und 5 statt 3 Versuche, zusammen also rund 12s Anlaufzeit.
+
+Das erklärt auch eine lange irreführende Beobachtung: Solange parallel ein
+Termux-`connect_mycodo.sh` lief, funktionierte die App. Nicht weil sie dessen Tunnel
+mitbenutzte, sondern weil dieser bereits aufgebaut war — der allererste Bereitschafts-Check
+ging dann sofort durch, und das Startfenster wurde nie getroffen.
+
+### 9.2 Widerruf meldete Erfolg, ohne den Tunnel zu beenden
+
+**Das war die gravierendere Lücke:** Ein im Dashboard widerrufener Zugang blieb voll
+nutzbar. Die App verband sich mit dem alten Ticket weiter bis zum Bot-Backend, und ein
+Login mit Discord-Daten war unverändert möglich.
+
+Ursache war ein **Fail-Open** in `_stop_service_reliably()`:
+
+```python
+result = subprocess.run(["sudo", "systemctl", "is-active", service_name], capture_output=True, text=True)
+if result.stdout.strip() != "active":
+    return True          # "Dienst ist zuverlässig gestoppt"
+```
+
+Das Dashboard läuft als systemd-Dienst, also **ohne TTY**. Ohne passende sudoers-Regel
+scheitert dort jeder `sudo`-Aufruf sofort; die Meldung geht nach stderr, `stdout` bleibt
+**leer**. Leer ist nicht `"active"` — also wurde ein verweigertes sudo als „Dienst ist
+gestoppt" gelesen. Die Folgeschritte (`disable`, `rm`, `daemon-reload`) liefen mit
+`capture_output` und ohne `check`, scheiterten also ebenfalls stumm.
+
+Was dadurch tatsächlich passierte:
+
+| Schritt | Mechanismus | Ergebnis |
+|---|---|---|
+| `systemctl stop` | sudo | scheitert stumm |
+| `is-active`-Verifikation | sudo | scheitert → wird als „nicht aktiv" gelesen |
+| `disable`, `rm`, `daemon-reload` | sudo | scheitern stumm |
+| Secret löschen | reines Python, eigene Datei | klappt |
+| DB + Session-Invalidierung | SQLite | klappt |
+
+Der laufende `dumbpipe`-Prozess hält `IROH_SECRET` seit dem Start im Speicher — das
+Löschen der Secret-Datei wirkt erst beim **nächsten** Start. Er bediente das widerrufene
+Ticket also unbeirrt weiter, während das Dashboard Erfolg meldete.
+
+**Warum der Prozess der einzige wirksame Hebel ist:** Alle Personen-Tunnel leiten auf
+dasselbe `localhost:5000`. Für nginx und das Backend sehen alle Anfragen identisch aus, sie
+kommen als `127.0.0.1` an — das Backend *kann* gar nicht unterscheiden, durch wessen Tunnel
+eine Anfrage kam. Die Session-Invalidierung (7.4) ist die zweite Schicht und greift nur bei
+bereits eingeloggten Sitzungen; sie hatte korrekt funktioniert. Der Netzwerkzugang selbst
+hängt ausschließlich am laufenden Prozess, weshalb ein stiller Fehlschlag dort so schwer
+wiegt.
+
+**Behoben in `scripts/tunnel_access_core.py`:**
+
+- `_run_privileged()` wirft bei jedem fehlgeschlagenen sudo-Aufruf `TunnelAccessError` und
+  gibt stderr weiter, statt ihn zu verwerfen.
+- `_stop_service_reliably()` wertet eine **leere** `is-active`-Ausgabe als „Status
+  unbekannt" und wirft. (`is-active` liefert bei inaktivem Dienst absichtlich einen
+  Exit-Code != 0 — entscheidend ist deshalb die Ausgabe, aber sie muss existieren.)
+- `revoke_grant()` prüft `disable`/`rm`/`daemon-reload` und verifiziert anschließend, dass
+  Unit-Datei **und** Prozess wirklich weg sind, bevor der Zugang in der DB als widerrufen
+  gilt.
+- Der Rollback-Pfad in `add_grant()` verschluckt keine Fehler mehr — ein Fehlschlag dort
+  hinterließe sonst genau die unsichtbare Leiche, die er verhindern soll.
+
+### 9.3 Nötige sudoers-Regel für das Dashboard
+
+Der Fix aus 9.2 wirkt nur, wenn das Dashboard die Befehle auch ausführen **darf** — sonst
+schlägt der Widerruf jetzt zwar sichtbar fehl, funktioniert aber nie. Bewusst **kein**
+pauschales `NOPASSWD: ALL`, sondern nur diese Operationen und nur auf
+`dumbpipe-discordbot-*`-Units, in `/etc/sudoers.d/bot-tunnel-access`:
+
+```
+Cmnd_Alias BOTTUNNEL = /usr/bin/systemctl stop dumbpipe-discordbot-*.service, \
+                       /usr/bin/systemctl start dumbpipe-discordbot-*.service, \
+                       /usr/bin/systemctl enable --now dumbpipe-discordbot-*.service, \
+                       /usr/bin/systemctl disable dumbpipe-discordbot-*.service, \
+                       /usr/bin/systemctl is-active dumbpipe-discordbot-*.service, \
+                       /usr/bin/systemctl daemon-reload, \
+                       /usr/bin/tee /etc/systemd/system/dumbpipe-discordbot-*.service, \
+                       /usr/bin/rm -f /etc/systemd/system/dumbpipe-discordbot-*.service
+
+patrick ALL=(root) NOPASSWD: BOTTUNNEL
+```
+
+Der Platzhalter `*` matcht in sudoers **keine** Schrägstriche, ein Ausbruch aus
+`/etc/systemd/system/` ist damit ausgeschlossen. Datei mit `chmod 440` anlegen und **vor**
+dem Installieren mit `visudo -cf <datei>` prüfen — eine fehlerhafte sudoers-Datei kann
+`sudo` systemweit unbrauchbar machen.
+
+Geprüft mit geleertem sudo-Zwischenspeicher (`sudo -k`), also genau der Lage des
+Dashboard-Dienstes: Die Tunnel-Befehle laufen, allgemeines `sudo` und z.B.
+`systemctl stop nginx` werden verweigert.
+
+### 9.4 Verhalten nach dem Fix (verifiziert)
+
+- Zugang anlegen → Dienst `active`, Ticket wird einmalig angezeigt.
+- Widerrufen → Dienst `inactive`, Unit-Datei und Secret entfernt, **die App verliert die
+  Verbindung sofort**; ein erneuter Verbindungsversuch mit dem alten Ticket findet keine
+  Gegenstelle mehr (`HTTP 000`).
+- Bei verweigertem sudo → sichtbarer Fehler statt stillem „Erfolg".
+
+**Wichtig für die Praxis:** Eine Reaktivierung über das Dashboard erzeugt ein **neues**
+Secret und damit ein **neues Ticket**. Das alte funktioniert nie wieder — sonst wäre ein
+Widerruf nur eine Pause. Nach jedem Widerruf muss der betroffenen Person also ein neu
+erzeugtes Ticket zugestellt werden.
