@@ -549,12 +549,15 @@ wäre sonst `undefined`).
 
 ---
 
-## 16. Offene Punkte (Stand 31.08.2026)
+## 16. Offene Punkte (Stand 02.09.2026)
 
-- **`ERR_TIMED_OUT` in der Android-App:** Trotz aktivem Warten (Abschnitt 10) noch nicht
-  vollständig gelöst gemeldet — vermutlich Relay-/NAT-Instabilität auf echten
-  Mobilfunk-/Internet-Strecken (siehe `Fernzugriff-Setup-Anleitung.md` Abschnitt 7.2/7.5).
-  Wird weiter untersucht, u.a. mit den jetzt verfügbaren `dumbpipe`-Subprozess-Logs.
+- ~~**`ERR_TIMED_OUT` in der Android-App**~~ — **am 02.09.2026 gelöst.** Die hier
+  vermutete Relay-/NAT-Instabilität war NICHT die Ursache. Es waren zwei unabhängige
+  Fehler: dumbpipes mitgelieferte `Cargo.lock` nagelte iroh auf eine Version fest, die
+  den Android-JNI-Panic nur in Debug-Builds abfängt, und die Bereitschaftsprüfung der
+  App führte ihre Versuche ohne Pause hintereinander aus — sie gab damit Millisekunden
+  nach dem Start auf, rund 3 Sekunden bevor der Tunnel überhaupt bereit sein konnte.
+  Vollständige Analyse in `Fernzugriff-Setup-Anleitung.md`, Abschnitt 9.1.
 - **Echter Online/Idle/DND-Status** in der Überwachungs-Übersicht: aktuell Näherung über
   Nachrichtenaktivität statt echtem Discord-Presence-Status (bräuchte den privilegierten
   Presence-Intent, manuell im Discord Developer Portal freizuschalten).
