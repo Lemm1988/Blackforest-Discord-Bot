@@ -53,7 +53,7 @@
         <div class="table-responsive">
             <table class="table table-sm table-striped align-middle mb-0">
                 <thead>
-                    <tr><th>Nutzer</th><th>Berechtigungen</th></tr>
+                    <tr><th>Nutzer</th><th>Berechtigungen</th><th>Discord-Rollen</th><th>Stand</th></tr>
                 </thead>
                 <tbody>
                     {% for u in users %}
@@ -88,9 +88,27 @@
                                 {% endfor %}
                             </div>
                         </td>
+                        <td class="small">
+                            {% if not u.auf_dem_server %}
+                            <span class="text-muted">nicht mehr auf dem Server</span>
+                            {% elif u.rollen %}
+                            {{ u.rollen | join(", ") }}
+                            {% else %}
+                            <span class="text-muted">keine</span>
+                            {% endif %}
+                        </td>
+                        <td class="small">
+                            {% if not zuordnung_aktiv %}
+                            <span class="text-muted" title="Noch keine Rollen-Zuordnung eingerichtet">—</span>
+                            {% elif u.passt %}
+                            <span class="text-success">✅ passt</span>
+                            {% else %}
+                            <span class="text-warning">⚠️ {{ u.abgleich }}</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="2" class="text-muted">Noch keine Berechtigungen vergeben.</td></tr>
+                    <tr><td colspan="4" class="text-muted">Noch keine Berechtigungen vergeben.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -114,4 +132,29 @@ function confirmIfAdmin() {
     return true;
 }
 </script>
+{% if rollen_ohne_recht %}
+<div class="card mt-4">
+    <div class="card-header"><h5 class="h6 mb-0">Rolle ohne passende Berechtigung</h5></div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Diese Mitglieder tragen eine Rolle, die laut Zuordnung zu einer Berechtigung gehört —
+            haben die Berechtigung im Backend aber nicht. Das kann völlig in Ordnung sein: Die
+            Rolle kann aus anderen Gründen vergeben worden sein. Die Übersicht weist nur darauf hin.
+        </p>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped mb-0">
+                <thead><tr><th>Nutzer</th><th>Betroffene Rollen</th></tr></thead>
+                <tbody>
+                    {% for u in rollen_ohne_recht %}
+                    <tr>
+                        <td class="text-nowrap">{{ u.name }}</td>
+                        <td class="small">{{ u.rollen | join(", ") }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

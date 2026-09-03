@@ -5,12 +5,12 @@ hat einen schwer deutbaren Ausfall verursacht (Kick, Ban und Timeout schlugen
 fehl, obwohl der Bot ADMINISTRATOR hatte), und soll deshalb einzeln testbar sein
 - ohne dass dafuer die gesamte Anwendung geladen werden muss.
 
-Wichtig zur Formulierung der Meldungen: Auf diesem Server steht die Bot-Rolle
-ABSICHTLICH unter Moderator und Manager (Entscheidung Patrick, 03.09.2026) -
-damit das Moderationsteam nicht ueber den Bot entfernt werden kann. Ein
-fehlgeschlagener Kick gegen ein Teammitglied ist deshalb das gewuenschte
-Verhalten und kein Konfigurationsfehler. Die Meldung erklaert das entsprechend
-und raet NICHT mehr dazu, die Bot-Rolle hochzuziehen.
+Wichtig zur Formulierung der Meldungen: Welche Rollen ueber der Bot-Rolle stehen,
+ist eine bewusste Entscheidung und kein Konfigurationsfehler (Stand 03.09.2026:
+Manager steht darueber, Moderator darunter). Ein fehlgeschlagener Kick gegen eine
+geschuetzte Person ist deshalb das gewuenschte Verhalten. Die Meldung erklaert
+das und raet NICHT dazu, die Bot-Rolle hochzuziehen - jede Erhoehung vergroessert
+den Kreis derer, die der Bot entfernen kann.
 """
 from __future__ import annotations
 
@@ -49,9 +49,8 @@ def moderation_block_reason(
             f"Bot-Rolle ({bot_role_name}, Position {bot_role_position}). Discords "
             f"Rollenhierarchie verhindert die Aktion unabhängig von allen Berechtigungen — "
             f"auch Administrator hebt sie nicht auf. "
-            f"Auf diesem Server ist das so gewollt: Das Moderationsteam steht bewusst über "
-            f"dem Bot und kann deshalb nicht über ihn entfernt werden. Wenn wirklich gegen "
-            f"diese Person vorgegangen werden soll, muss ein Administrator das direkt in "
-            f"Discord tun."
+            f"Das ist so gewollt: Wer über der Bot-Rolle steht, ist bewusst vor Aktionen "
+            f"des Bots geschützt. Wenn wirklich gegen diese Person vorgegangen werden soll, "
+            f"muss ein Administrator das direkt in Discord tun."
         )
     return None

@@ -28,7 +28,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 13. Umgesetzte Sicherheitsmaßnahmen
 14. Unterschiede zum alten Bot
 15. Den Bot erweitern
-16. Testsuite (`tests/`, 454 Tests)
+16. Testsuite (`tests/`, 474 Tests)
 17. Offene Punkte (Stand 03.09.2026)
 
 ---
@@ -235,7 +235,7 @@ genau dieses Flag oder `is_admin`. `require_any_permission(...)` = mindestens ei
 | `/server-setup` | `manage_badword_filter` | Willkommensnachricht + Rollen-Reaktion (vorher fälschlich unter Automod) |
 | `/server-setup/welcome_settings`, `/role_settings` | `manage_badword_filter` | Speichern |
 
-### Admin-Werkzeuge / Benutzerverwaltung / App-Zugänge
+### Admin-Werkzeuge / Benutzerverwaltung / Rollen-Zuordnung / App-Zugänge
 
 | Route | Berechtigung | Zweck |
 |---|---|---|
@@ -642,7 +642,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 16. Testsuite (`tests/`, 454 Tests)
+## 16. Testsuite (`tests/`, 474 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -672,6 +672,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | Datei | Tests | Sichert ab |
 |---|---|---|
 | `test_discord_limits.py` | 76 | Alle acht Embed-Grenzen gegen die offizielle Dokumentation, jeweils genau am Limit erlaubt und ein Zeichen darüber abgelehnt; die 6000-Zeichen-Gesamtsumme; Farbwerte; Zeitzonenbehandlung |
+| `test_rollenabgleich.py` | 15 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten |
 | `test_nutzertexte.py` | 94 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
 | `test_csrf_coverage.py` | 71 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
@@ -704,56 +705,33 @@ wiederhergestellt.
 
 ---
 
-### Rollenhierarchie: die Bot-Rolle steht absichtlich unten
+### Rollenhierarchie
 
-Die Rolle des Bots („Blackforest´s Helper", Position 4) steht **unter** Moderator (5) und
-Manager (6). Der Bot kann Träger dieser Rollen daher nicht kicken, bannen oder
-stummschalten — Discords Rollenhierarchie ist eine eigene Schranke, die das
-Administrator-Recht nicht aufhebt.
+Stand 03.09.2026, über die Discord-API nachgeprüft:
 
-**Das ist kein Konfigurationsfehler, sondern eine bewusste Sicherheitsgrenze**
-(Entscheidung Patrick, 03.09.2026): Das Moderationsteam soll nicht durch den Bot entfernt
-werden können — auch nicht durch jemanden, der sich Zugang zum Backend verschafft. Gegen
-Moderatoren vorzugehen bleibt Sache eines Menschen mit Administratorrechten.
+| Rolle | Position | Vom Bot verwaltbar |
+|---|---|---|
+| Manager | 7 | **nein** — steht über dem Bot |
+| Blackforest´s Helper (Bot) | 6 | — |
+| Moderator | 5 | ja |
+| Supporter, Ideenschmied, Member, Server Booster | 4–1 | ja |
 
-Schlägt eine Moderationsaktion gegen ein Teammitglied fehl, ist das also das gewünschte
-Verhalten. Die Bot-Rolle darf **nicht** nach oben gezogen werden.
+Discord erlaubt einem Bot nur, Rollen **unterhalb** seiner eigenen höchsten Rolle zu
+vergeben, zu entziehen und deren Träger zu kicken, zu bannen oder stummzuschalten. Das
+Administrator-Recht hebt das nicht auf — die Hierarchie ist eine eigene Schranke.
 
----
+**Die Anordnung hat sich am 03.09.2026 geändert.** Vorher stand der Bot unter Moderator,
+damit das Moderationsteam vor ihm geschützt war. Patrick hat ihn darüber gezogen, weil der
+Bot Moderator-Rollen automatisch vergeben können soll (siehe
+`~/Desktop/pläne/11-rollenvergabe.md`). Beides gleichzeitig geht nicht: Ein Bot, der eine
+Rolle vergeben kann, kann sie auch entziehen und ihre Träger moderieren.
 
-### Modultrennung (Grundsatz seit 03.09.2026)
+**Bewusst in Kauf genommen:** Moderatoren sind nicht mehr vor dem Bot geschützt.
+Geschützt bleiben ausschließlich **Manager** und der Server-Eigentümer.
 
-Patrick verfolgt das Ziel, einzelne Funktionsbereiche später als kostenpflichtige Module
-anzubieten. Jedes Modul muss sich deshalb **einzeln installieren lassen**, und für jede
-Änderung gilt: Erst klären, zu welchem Modul eine Funktion gehört, dann dort ablegen.
-
-**Achievements sind entsprechend aufgeteilt.** Vorher standen alle acht samt ihren
-Auslösebedingungen zusammen in `database.py`, in einer if/elif-Kette. Wer das Quiz-Modul
-entfernt hätte, hätte dort sechs tote Definitionen zurückgelassen und eine Bedingung, die
-auf eine Quiz-Statistik zugreift, die es nicht mehr gibt.
-
-| Datei | Rolle |
-|---|---|
-| `bot/achievements.py` | Nur die Mechanik — Registratur, Datenklasse, Kandidatensuche. Kennt **keinen** Achievement-Namen. |
-| `bot/achievements_quiz.py` | Die sechs Quiz-Achievements (richtige Antworten, Uhrzeiten, erste eingereichte Frage). |
-| `bot/achievements_xp_level.py` | Die zwei Level-Achievements. |
-| `bot/database.py` | Verdrahtung mit der Datenbank und XP-Belohnung — ohne Kenntnis einzelner Achievements. |
-
-Zwei Entwurfsentscheidungen dabei:
-
-**Die Bedingungen sind reine Funktionen** über ein Kontext-Dictionary, ohne
-Datenbankzugriff. Vorher zählte die Quiz-Bedingung als Nebenwirkung einen Zähler hoch —
-eine Prüfung veränderte also Daten, was beim Lesen niemand erwartet. Jetzt besorgt
-`check_and_unlock_achievements()` die nötigen Zahlen und gibt sie mit.
-
-**`achievements.lade_module("quiz", "xp_level")`** in `init_db()` macht an einer Stelle
-sichtbar, welche Module aktiv sind. Sobald Module tatsächlich einzeln verkauft werden,
-kommt diese Liste aus der Konfiguration. Achievements eines entfernten Moduls bleiben als
-Datenzeile stehen — wer sie freigeschaltet hat, verliert sie nicht.
-
-Abgesichert durch `tests/test_achievements_module.py` (43 Tests), darunter eine Prüfung,
-dass `database.py` keinen Achievement-Namen mehr nennt — auch nicht im Kommentar, denn ein
-solcher Kommentar wäre ein Zeichen für veraltete Dokumentation.
+Manager über dem Bot zu lassen ist der verbliebene Schutz. Jede weitere Erhöhung der
+Bot-Rolle vergrößert den Kreis derer, die der Bot entfernen kann — Vorschläge dazu sollten
+diesen Zusammenhang immer mitnennen.
 
 ---
 

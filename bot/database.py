@@ -36,6 +36,20 @@ CREATE TABLE IF NOT EXISTS answered_questions (
     PRIMARY KEY (user_id, question_id)
 );
 
+-- Zuordnung Backend-Recht -> Discord-Rolle (03.09.2026). Damit spiegelt der Bot
+-- vergebene Rechte auf dem Server wider. Bewusst eine eigene Tabelle statt eines
+-- Settings-Eintrags: Es sind mehrere Zeilen mit Beziehung zueinander, und der
+-- PRIMARY KEY verhindert strukturell, dass ein Recht zwei Rollen zugeordnet ist.
+--
+-- Umgekehrt DARF eine Rolle mehreren Rechten zugeordnet sein (z.B. zwei
+-- Moderationsrechte, die beide die Moderator-Rolle bedeuten) - deshalb keine
+-- UNIQUE-Bedingung auf role_id.
+CREATE TABLE IF NOT EXISTS permission_roles (
+    permission_key TEXT PRIMARY KEY,
+    role_id TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Konfigurierbare Bot-Einstellungen (Kanal-IDs etc.), später über Backend änderbar.
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -786,6 +800,38 @@ def get_user_permissions(discord_user_id):
             (str(discord_user_id),),
         ).fetchall()
         return [r["permission_key"] for r in rows]
+
+
+def get_permission_role_map() -> dict:
+    """{Backend-Recht: Discord-Rollen-ID}. Leer, solange nichts zugeordnet ist -
+    dann macht der Abgleich schlicht nichts."""
+    with get_connection() as conn:
+        return {
+            row["permission_key"]: row["role_id"]
+            for row in conn.execute("SELECT permission_key, role_id FROM permission_roles")
+        }
+
+
+def set_permission_role(permission_key: str, role_id: str) -> None:
+    """Ordnet einem Recht eine Rolle zu. Leere role_id hebt die Zuordnung auf.
+
+    permission_key wird gegen ALL_PERMISSIONS geprueft: Ein Tippfehler wuerde
+    sonst eine Zeile anlegen, die nie greift, und niemandem faellt auf warum.
+    """
+    if permission_key not in ALL_PERMISSIONS:
+        raise ValueError(f"Unbekannte Berechtigung: {permission_key}")
+    role_id = (role_id or "").strip()
+    with get_connection() as conn:
+        if not role_id:
+            conn.execute("DELETE FROM permission_roles WHERE permission_key = ?", (permission_key,))
+        else:
+            conn.execute(
+                "INSERT INTO permission_roles (permission_key, role_id) VALUES (?, ?) "
+                "ON CONFLICT(permission_key) DO UPDATE SET role_id = excluded.role_id, "
+                "updated_at = datetime('now')",
+                (permission_key, role_id),
+            )
+        conn.commit()
 
 
 def get_all_permissioned_users():

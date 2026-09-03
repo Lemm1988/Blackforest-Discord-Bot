@@ -21,6 +21,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import config
 import database
 import mood
+import rollenabgleich
 import scheduling
 from . import oauth
 from .moderation_rules import moderation_block_reason
@@ -1267,6 +1268,71 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     # --- Benutzerverwaltung (NUR is_admin - es gibt bewusst kein eigenes
     # "manage_users"-Flag, siehe database.ALL_PERMISSIONS) ---
 
+    def _discord_rollen():
+        """Alle Rollen des Servers, plus die Angabe, welche der Bot verwalten kann.
+
+        Discord erlaubt einem Bot nur, Rollen UNTERHALB seiner eigenen hoechsten
+        Rolle zu vergeben und zu entziehen. Rollen darueber werden trotzdem
+        angezeigt, aber als nicht auswaehlbar markiert - sonst stellt man eine
+        Zuordnung ein, die stillschweigend nie greift.
+        """
+        async def _holen():
+            if not bot.guilds:
+                return [], set()
+            guild = bot.guilds[0]
+            eigene_position = guild.me.top_role.position
+            rollen = [
+                {
+                    "id": str(r.id),
+                    "name": r.name,
+                    "position": r.position,
+                    "verwaltbar": r.position < eigene_position and not r.managed,
+                }
+                for r in sorted(guild.roles, key=lambda r: -r.position)
+                if r.name != "@everyone"
+            ]
+            verwaltbar = {r["id"] for r in rollen if r["verwaltbar"]}
+            return rollen, verwaltbar
+
+        return run_on_bot(_holen())
+
+    @app.route("/roles-mapping")
+    @require_permission("is_admin")
+    def roles_mapping_page():
+        rollen, _ = _discord_rollen()
+        return render_template(
+            "roles_mapping.html",
+            rollen=rollen,
+            zuordnung=database.get_permission_role_map(),
+            all_permissions=database.ALL_PERMISSIONS,
+            permission_labels=config.PERMISSION_LABELS,
+        )
+
+    @app.route("/roles-mapping/save", methods=["POST"])
+    @require_permission("is_admin")
+    def roles_mapping_save():
+        _, verwaltbar = _discord_rollen()
+        alt = database.get_permission_role_map()
+        geaendert = {}
+        for key in database.ALL_PERMISSIONS:
+            neu_wert = (request.form.get(f"role_{key}") or "").strip()
+            # Nur Rollen zulassen, die der Bot auch verwalten kann. Ein
+            # manipulierter Aufruf soll keine Zuordnung anlegen koennen, die
+            # spaeter beim Vergeben an Discord scheitert.
+            if neu_wert and neu_wert not in verwaltbar:
+                flash("Diese Rolle steht über der Bot-Rolle und kann nicht zugeordnet werden.", "error")
+                return redirect(url_for("roles_mapping_page"))
+            if alt.get(key, "") != neu_wert:
+                database.set_permission_role(key, neu_wert)
+                geaendert[key] = neu_wert or "(keine)"
+        if geaendert:
+            database.log_audit(
+                session["discord_user_id"], "permission_roles_change",
+                detail="; ".join(f"{k} -> {v}" for k, v in geaendert.items()),
+            )
+            flash("Rollen-Zuordnung gespeichert.", "success")
+        return redirect(url_for("roles_mapping_page"))
+
     @app.route("/users")
     @require_permission("is_admin")
     def users_page():
@@ -1276,14 +1342,61 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             guild = bot.guilds[0]
             return {str(m.id): str(m) for m in guild.members}
 
+        async def _rollen_je_mitglied():
+            """Welche Rollen traegt wer - fuer den Abgleich mit den Backend-Rechten."""
+            if not bot.guilds:
+                return {}
+            guild = bot.guilds[0]
+            return {
+                str(m.id): {str(r.id) for r in m.roles if r.name != "@everyone"}
+                for m in guild.members
+            }
+
         member_names = run_on_bot(_get_member_names())
+        mitglieder_rollen = run_on_bot(_rollen_je_mitglied())
+        rollen, verwaltbare = _discord_rollen()
+        rollennamen = {r["id"]: r["name"] for r in rollen}
+        zuordnung = database.get_permission_role_map()
 
         users = database.get_all_permissioned_users()
         for u in users:
-            u["name"] = member_names.get(u["discord_user_id"], u["discord_user_id"])
+            uid = u["discord_user_id"]
+            u["name"] = member_names.get(uid, uid)
+            u["auf_dem_server"] = uid in mitglieder_rollen
+            eigene_rollen = mitglieder_rollen.get(uid, set())
+            u["rollen"] = sorted(
+                (rollennamen.get(r, r) for r in eigene_rollen), key=str.lower
+            )
+            ergebnis = rollenabgleich.abgleichen(
+                rechte={p["key"] for p in u["permissions"]},
+                rollen=eigene_rollen,
+                zuordnung=zuordnung,
+                verwaltbare_rollen=verwaltbare,
+            )
+            u["passt"] = ergebnis.passt
+            u["abgleich"] = rollenabgleich.zusammenfassung(ergebnis, rollennamen)
+
+        # Leute MIT zugeordneter Rolle, aber OHNE Backend-Rechte tauchen in
+        # get_all_permissioned_users() gar nicht auf - sie haben ja keinen
+        # Eintrag. Genau das ist aber ein Fall, den man sehen will.
+        bekannte = {u["discord_user_id"] for u in users}
+        zugeordnete_rollen = set(zuordnung.values())
+        rollen_ohne_recht = []
+        for uid, eigene in sorted(mitglieder_rollen.items()):
+            if uid in bekannte:
+                continue
+            treffer = eigene & zugeordnete_rollen
+            if treffer:
+                rollen_ohne_recht.append({
+                    "discord_user_id": uid,
+                    "name": member_names.get(uid, uid),
+                    "rollen": sorted((rollennamen.get(r, r) for r in treffer), key=str.lower),
+                })
 
         return render_template(
             "users.html",
+            zuordnung_aktiv=bool(zuordnung),
+            rollen_ohne_recht=rollen_ohne_recht,
             users=users,
             all_permissions=database.ALL_PERMISSIONS,
             permission_labels=config.PERMISSION_LABELS,
@@ -1915,7 +2028,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         try:
             run_on_bot(_kick())
         except discord.Forbidden:
-            flash("Discord hat den Kick abgelehnt. Die Person trägt eine Rolle, die nicht unter der Bot-Rolle liegt — auf diesem Server ist das Moderationsteam bewusst vor Aktionen des Bots geschützt. Berechtigungen ändern daran nichts, auch Administrator nicht. Gegen diese Person kann nur ein Administrator direkt in Discord vorgehen.", "error")
+            flash("Discord hat den Kick abgelehnt. Die Person trägt eine Rolle, die nicht unter der Bot-Rolle liegt. Wer über der Bot-Rolle steht, ist bewusst vor Aktionen des Bots geschützt. Berechtigungen ändern daran nichts, auch Administrator nicht. Gegen diese Person kann nur ein Administrator direkt in Discord vorgehen.", "error")
         except Exception as exc:
             log.exception("Kick fehlgeschlagen (user_id=%s)", user_id)
             flash(f"Kick fehlgeschlagen: {exc}", "error")
@@ -1956,7 +2069,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         try:
             run_on_bot(_ban())
         except discord.Forbidden:
-            flash("Discord hat den Bann abgelehnt. Die Person trägt eine Rolle, die nicht unter der Bot-Rolle liegt — auf diesem Server ist das Moderationsteam bewusst vor Aktionen des Bots geschützt. Berechtigungen ändern daran nichts, auch Administrator nicht. Gegen diese Person kann nur ein Administrator direkt in Discord vorgehen.", "error")
+            flash("Discord hat den Bann abgelehnt. Die Person trägt eine Rolle, die nicht unter der Bot-Rolle liegt. Wer über der Bot-Rolle steht, ist bewusst vor Aktionen des Bots geschützt. Berechtigungen ändern daran nichts, auch Administrator nicht. Gegen diese Person kann nur ein Administrator direkt in Discord vorgehen.", "error")
         except Exception as exc:
             log.exception("Ban fehlgeschlagen (user_id=%s)", user_id)
             flash(f"Ban fehlgeschlagen: {exc}", "error")
@@ -2032,7 +2145,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         try:
             run_on_bot(_timeout())
         except discord.Forbidden:
-            flash("Discord hat den Timeout abgelehnt. Die Person trägt eine Rolle, die nicht unter der Bot-Rolle liegt — auf diesem Server ist das Moderationsteam bewusst vor Aktionen des Bots geschützt. Berechtigungen ändern daran nichts, auch Administrator nicht. Gegen diese Person kann nur ein Administrator direkt in Discord vorgehen.", "error")
+            flash("Discord hat den Timeout abgelehnt. Die Person trägt eine Rolle, die nicht unter der Bot-Rolle liegt. Wer über der Bot-Rolle steht, ist bewusst vor Aktionen des Bots geschützt. Berechtigungen ändern daran nichts, auch Administrator nicht. Gegen diese Person kann nur ein Administrator direkt in Discord vorgehen.", "error")
         except Exception as exc:
             log.exception("Timeout fehlgeschlagen (user_id=%s)", user_id)
             flash(f"Timeout fehlgeschlagen: {exc}", "error")

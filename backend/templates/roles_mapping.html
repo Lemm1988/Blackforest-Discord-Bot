@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Rollen-Zuordnung - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">Rollen-Zuordnung</h3>
+<p class="text-muted">
+    Lege fest, welche Discord-Rolle zu welcher Backend-Berechtigung gehört. Der Bot kann
+    damit auf dem Server sichtbar machen, wer welche Aufgabe hat.
+</p>
+
+<div class="alert alert-secondary small">
+    Der Bot kann nur Rollen vergeben, die <strong>unter seiner eigenen Rolle</strong> stehen.
+    Rollen darüber sind in der Auswahl gesperrt — sie lassen sich nur direkt in Discord vergeben.
+    Wenn du eine gesperrte Rolle brauchst, zieh die Bot-Rolle in den Servereinstellungen
+    darüber. Bedenke dabei: Der Bot kann dann auch die Träger dieser Rolle kicken und bannen.
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Zuordnung</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('roles_mapping_save') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-3">
+                    <thead><tr><th>Berechtigung</th><th>Discord-Rolle</th></tr></thead>
+                    <tbody>
+                        {% for key in all_permissions %}
+                        <tr>
+                            <td class="text-nowrap">{{ permission_labels.get(key, key) }}
+                                <div class="form-text"><code>{{ key }}</code></div>
+                            </td>
+                            <td>
+                                <select name="role_{{ key }}" class="form-select form-select-sm">
+                                    <option value="">— keine Rolle —</option>
+                                    {% for r in rollen %}
+                                    <option value="{{ r.id }}"
+                                            {% if not r.verwaltbar %}disabled{% endif %}
+                                            {% if zuordnung.get(key) == r.id %}selected{% endif %}>
+                                        {{ r.name }}{% if not r.verwaltbar %} — steht über dem Bot{% endif %}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <button type="submit" class="btn btn-primary">Speichern</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h5 class="h6 mb-0">Rollen auf dem Server</h5></div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm mb-0">
+                <thead><tr><th>Rolle</th><th>Rangfolge</th><th>Vom Bot vergebbar</th></tr></thead>
+                <tbody>
+                    {% for r in rollen %}
+                    <tr>
+                        <td>{{ r.name }}</td>
+                        <td class="text-muted">{{ r.position }}</td>
+                        <td>{% if r.verwaltbar %}<span class="text-success">ja</span>
+                            {% else %}<span class="text-muted">nein</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
