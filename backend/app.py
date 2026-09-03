@@ -56,6 +56,22 @@ EMBED_LIMITS = {
 # den Rechten oder der Rollenhierarchie statt beim Begruendungstext.
 AUDIT_REASON_MAX = 512
 
+# Discord kann beim Bann die Nachrichten der letzten bis zu 7 Tage mitloeschen
+# (delete_message_seconds, 0 bis 604800). Bewusst eine feste Auswahl statt eines
+# freien Zahlenfelds: Der Wert wird gegen genau diese Liste geprueft, sonst
+# koennte ein manipulierter Aufruf etwas Ungueltiges schicken und Discord
+# antwortete wieder mit einer nichtssagenden Ablehnung.
+#
+# Die Voreinstellung ist und bleibt 0 - "nichts loeschen". Das ist die EINZIGE
+# Aenderung in diesem Projekt mit nicht umkehrbarer Wirkung: Geloeschte
+# Nachrichten sind weg, auch die von anderen Leuten in der Unterhaltung.
+BAN_LOESCHZEITRAEUME = {
+    "0": ("Keine löschen", 0),
+    "3600": ("Letzte Stunde", 3600),
+    "86400": ("Letzte 24 Stunden", 86400),
+    "604800": ("Letzte 7 Tage", 604800),
+}
+
 
 def _kuerze_audit_grund(text: str) -> tuple[str, bool]:
     """Kuerzt den Grund so, dass er URL-kodiert unter Discords Grenze bleibt.
@@ -108,6 +124,42 @@ def _parse_embed_color(value):
     return color
 
 
+# Discord akzeptiert in Embed-Feldern nur diese Schemata. Alles andere wird mit
+# "Invalid Form Body" abgelehnt - und zwar ERST in der Antwort auf das Senden,
+# ohne zu sagen, WELCHES der sechs Adressfelder gemeint war. Bei einem Embed mit
+# Bild, Banner, Autorensymbol und Footersymbol darf man dann raten.
+ERLAUBTE_URL_SCHEMATA = ("http://", "https://", "attachment://")
+
+
+def _pruefe_url(wert: str, feldname: str) -> str | None:
+    """Prueft eine Adresse und nennt im Fehlerfall das betroffene Feld.
+
+    Leer ist in Ordnung - die Felder sind alle freiwillig.
+
+    BEWUSST nur eine Formatpruefung: Ob die Adresse erreichbar ist oder
+    wirklich ein Bild liefert, wird nicht geprueft. Das hiesse, beim Absenden
+    eine fremde Adresse abzurufen - das kostet Zeit, kann haengen, und der
+    Server wuerde damit auf Zuruf beliebige Adressen kontaktieren.
+    """
+    wert = (wert or "").strip()
+    if not wert:
+        return None
+    if wert.lower().startswith(ERLAUBTE_URL_SCHEMATA):
+        return wert
+
+    # Der mit Abstand haeufigste Fall: Adresse aus der Adresszeile kopiert, ohne
+    # das Schema. Sieht fuer Menschen wie eine Adresse aus, fuer Discord nicht.
+    if "." in wert.split("/")[0] and "://" not in wert:
+        raise ValueError(
+            f"{feldname}: „{wert[:60]}\u201c ist keine vollständige Adresse. "
+            f"Fehlt vielleicht https:// am Anfang?"
+        )
+    raise ValueError(
+        f"{feldname}: Discord akzeptiert hier nur Adressen, die mit http://, "
+        f"https:// oder attachment:// beginnen."
+    )
+
+
 def _build_embed_from_payload(data: dict) -> discord.Embed:
     """Baut ein discord.Embed aus dem JSON-Payload der Embed-Builder-Seiten
     (create_embed.html sowie der Embed-Modus von send_dm.html - gemeinsames
@@ -131,14 +183,21 @@ def _build_embed_from_payload(data: dict) -> discord.Embed:
         raise ValueError(f"Titel darf maximal {EMBED_LIMITS['title']} Zeichen haben.")
     if len(description) > EMBED_LIMITS["description"]:
         raise ValueError(f"Beschreibung darf maximal {EMBED_LIMITS['description']} Zeichen haben.")
-    if len(fields) > EMBED_LIMITS["fields_max"]:
+    # Erst filtern, dann zaehlen: Das Formular schickt angelegte, aber nicht
+    # ausgefuellte Feldzeilen mit. Wer 26 Zeilen anlegt und drei leer laesst, hat
+    # 23 echte Felder - und bekam vorher trotzdem die Meldung, es seien zu viele.
+    gefuellte_felder = [
+        f for f in fields
+        if str(f.get("name") or "").strip() and str(f.get("value") or "").strip()
+    ]
+    if len(gefuellte_felder) > EMBED_LIMITS["fields_max"]:
         raise ValueError(f"Maximal {EMBED_LIMITS['fields_max']} Felder pro Embed erlaubt.")
 
     embed = discord.Embed(
         title=title or None,
         description=description or None,
         color=_parse_embed_color(data.get("color")),
-        url=str(data.get("url") or "").strip() or None,
+        url=_pruefe_url(str(data.get("url") or ""), "Titel-Link"),
     )
 
     if author_name:
@@ -146,8 +205,8 @@ def _build_embed_from_payload(data: dict) -> discord.Embed:
             raise ValueError(f"Autor-Name darf maximal {EMBED_LIMITS['author_name']} Zeichen haben.")
         embed.set_author(
             name=author_name,
-            url=str(data.get("author_url") or "").strip() or None,
-            icon_url=str(data.get("author_icon") or "").strip() or None,
+            url=_pruefe_url(str(data.get("author_url") or ""), "Autoren-Link"),
+            icon_url=_pruefe_url(str(data.get("author_icon") or ""), "Autoren-Symbol"),
         )
 
     for field in fields:
@@ -162,13 +221,16 @@ def _build_embed_from_payload(data: dict) -> discord.Embed:
         embed.add_field(name=name, value=value, inline=bool(field.get("inline", False)))
 
     if thumbnail:
-        embed.set_thumbnail(url=thumbnail)
+        embed.set_thumbnail(url=_pruefe_url(thumbnail, "Vorschaubild"))
     if banner:
-        embed.set_image(url=banner)
+        embed.set_image(url=_pruefe_url(banner, "Banner"))
     if footer_text:
         if len(footer_text) > EMBED_LIMITS["footer_text"]:
             raise ValueError(f"Footer darf maximal {EMBED_LIMITS['footer_text']} Zeichen haben.")
-        embed.set_footer(text=footer_text, icon_url=str(data.get("footer_icon") or "").strip() or None)
+        embed.set_footer(
+            text=footer_text,
+            icon_url=_pruefe_url(str(data.get("footer_icon") or ""), "Footer-Symbol"),
+        )
 
     if data.get("timestamp"):
         embed.timestamp = datetime.now(timezone.utc)
@@ -1776,6 +1838,11 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
 
         return render_template("members.html", members=members)
 
+    # Fuer das Bann-Formular auf der Mitgliederseite.
+    @app.context_processor
+    def inject_ban_zeitraeume():
+        return {"ban_loeschzeitraeume": BAN_LOESCHZEITRAEUME}
+
     @app.route("/members/<user_id>")
     @require_permission("moderate_members")
     def member_detail(user_id):
@@ -1874,9 +1941,17 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
                 "warning",
             )
 
+        # Gegen die feste Liste pruefen, nicht uebernehmen. Unbekannter Wert ->
+        # 0, also der sicherste Fall.
+        loeschen_key = (request.form.get("delete_messages") or "0").strip()
+        _, loesch_sekunden = BAN_LOESCHZEITRAEUME.get(loeschen_key, BAN_LOESCHZEITRAEUME["0"])
+
         async def _ban():
             guild = bot.guilds[0]
-            await guild.ban(discord.Object(id=int(user_id)), reason=reason, delete_message_seconds=0)
+            await guild.ban(
+                discord.Object(id=int(user_id)), reason=reason,
+                delete_message_seconds=loesch_sekunden,
+            )
 
         try:
             run_on_bot(_ban())
@@ -1886,8 +1961,18 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             log.exception("Ban fehlgeschlagen (user_id=%s)", user_id)
             flash(f"Ban fehlgeschlagen: {exc}", "error")
         else:
-            database.log_audit(session["discord_user_id"], "member_ban", target_id=user_id, detail=f"Grund: {reason_voll}")
-            flash("Nutzer wurde gebannt.", "success")
+            loesch_label = BAN_LOESCHZEITRAEUME.get(loeschen_key, BAN_LOESCHZEITRAEUME["0"])[0]
+            # Der geloeschte Zeitraum gehoert ins Audit-Log: Er ist nicht
+            # rueckgaengig zu machen, also muss spaeter nachvollziehbar sein,
+            # was verschwunden ist.
+            database.log_audit(
+                session["discord_user_id"], "member_ban", target_id=user_id,
+                detail=f"Grund: {reason_voll} | Nachrichten gelöscht: {loesch_label}",
+            )
+            if loesch_sekunden:
+                flash(f"Nutzer wurde gebannt. Nachrichten gelöscht: {loesch_label.lower()}.", "success")
+            else:
+                flash("Nutzer wurde gebannt.", "success")
         return redirect(url_for("members_overview"))
 
     @app.route("/members/<user_id>/unban", methods=["POST"])

@@ -117,19 +117,6 @@ class Admin(commands.Cog):
         database.revoke_user_permission(user.id, permission, actor_id=ctx.author.id)
         await ctx.send(f"🚫 {user.mention} hat die Berechtigung **{permission}** nicht mehr.")
 
-    @commands.hybrid_command(name="my_access", description="Zeigt, welche Rechte du im Backend hast",
-        extras={"hilfe": "Zeigt deine Berechtigungen für die Weboberfläche des Bots. Die meisten Mitglieder haben hier nichts stehen — das ist normal und schränkt dich auf dem Server in keiner Weise ein."},)
-    async def my_access(self, ctx: commands.Context):
-        perms = database.get_user_permissions(ctx.author.id)
-        if perms:
-            await ctx.send(f"Deine Backend-Berechtigungen: **{', '.join(perms)}**")
-        else:
-            await ctx.send(
-                "Du hast aktuell keine besonderen Backend-Berechtigungen. "
-                "Als Server-Mitglied kannst du trotzdem Fragen einreichen und das Leaderboard ansehen. "
-                "Ein Admin kann dir per `/grant_access` weitere Rechte geben."
-            )
-
     @commands.hybrid_command(name="dm", description="Schickt einem Mitglied eine Nachricht in meinem Namen",
         extras={"hilfe": "Ich schicke der angegebenen Person eine Direktnachricht. Für den Empfänger sieht es so aus, als käme sie von mir — dein Name steht nicht dabei, der Vorgang wird aber im Audit-Log festgehalten.\nHat die Person ihre DMs zu, sage ich dir das.", "recht": "send_dm"},)
     @app_commands.describe(user="Der Discord-Nutzer", nachricht="Der Nachrichtentext")

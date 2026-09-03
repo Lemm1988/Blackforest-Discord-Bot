@@ -43,7 +43,8 @@ DOKUMENTIERT = {
 
 @pytest.fixture(scope="module")
 def app_code():
-    return load_from_app("EMBED_LIMITS", "_parse_embed_color", "_build_embed_from_payload")
+    return load_from_app("EMBED_LIMITS", "ERLAUBTE_URL_SCHEMATA", "_parse_embed_color",
+                         "_pruefe_url", "_build_embed_from_payload")
 
 
 @pytest.fixture
@@ -209,9 +210,17 @@ def test_voellig_leeres_embed_wird_abgelehnt(bauen):
         bauen({})
 
 
-@pytest.mark.parametrize("feld", ["title", "description", "thumbnail", "banner", "author_name"])
-def test_ein_einziges_ausgefuelltes_feld_genuegt(bauen, feld):
-    bauen({feld: "x"})
+@pytest.mark.parametrize("feld, wert", [
+    ("title", "x"),
+    ("description", "x"),
+    ("author_name", "x"),
+    # Bildfelder brauchen seit Plan 03 eine gueltige Adresse - ein Platzhalter
+    # wie "x" wuerde (zu Recht) als kaputte URL abgelehnt.
+    ("thumbnail", "https://example.invalid/bild.png"),
+    ("banner", "https://example.invalid/banner.png"),
+])
+def test_ein_einziges_ausgefuelltes_feld_genuegt(bauen, feld, wert):
+    bauen({feld: wert})
 
 
 def test_nur_leerraum_zaehlt_nicht_als_inhalt(bauen):
@@ -320,3 +329,101 @@ def test_frontend_und_backend_stimmen_ueberein(app_code, js_name, py_name):
         f"{py_name}={app_code['EMBED_LIMITS'][py_name]}. Das Formular wuerde etwas "
         "erlauben, das der Server ablehnt (oder umgekehrt zu frueh bremsen)."
     )
+
+
+# --------------------------------------------------------------------------
+# Adressfelder (Plan 03, umgesetzt 03.09.2026)
+#
+# Discord akzeptiert in Embed-Feldern nur http, https und attachment. Alles
+# andere quittiert es mit "Invalid Form Body" - und zwar erst in der Antwort
+# auf das Senden, ohne zu sagen, WELCHES der sechs Adressfelder gemeint war.
+# Der Moderator hat sein Embed dann fertig gebaut, auf Senden geklickt und darf
+# raten.
+# --------------------------------------------------------------------------
+
+@pytest.fixture
+def pruefe(app_code):
+    return app_code["_pruefe_url"]
+
+
+@pytest.mark.parametrize("adresse", [
+    "https://example.invalid/bild.png",
+    "http://example.invalid/bild.png",
+    "attachment://datei.png",
+    "HTTPS://EXAMPLE.INVALID/GROSS.PNG",
+])
+def test_gueltige_adressen_gehen_durch(pruefe, adresse):
+    """attachment:// muss unbedingt erlaubt bleiben - das ist Discords eigenes
+    Schema für mitgesendete Dateien."""
+    assert pruefe(adresse, "Banner") == adresse
+
+
+@pytest.mark.parametrize("leer", ["", "   ", None])
+def test_leere_adresse_ist_in_ordnung(pruefe, leer):
+    """Alle sechs Adressfelder sind freiwillig."""
+    assert pruefe(leer, "Banner") is None
+
+
+def test_fehlendes_schema_bekommt_einen_brauchbaren_hinweis(pruefe):
+    """Der mit Abstand häufigste Fall: Adresse aus der Adresszeile kopiert. Für
+    Menschen sieht das wie eine Adresse aus, für Discord nicht."""
+    with pytest.raises(ValueError) as fehler:
+        pruefe("www.example.invalid/bild.png", "Banner")
+    text = str(fehler.value)
+    assert "https://" in text, "Der Hinweis muss sagen, was fehlt."
+    assert "Banner" in text, "Der Hinweis muss das betroffene Feld nennen."
+
+
+@pytest.mark.parametrize("boese", [
+    "javascript:alert(1)",
+    "data:text/html;base64,PHNjcmlwdD4=",
+    "file:///etc/passwd",
+    "ftp://example.invalid/bild.png",
+])
+def test_andere_schemata_werden_abgelehnt(pruefe, boese):
+    with pytest.raises(ValueError, match="http"):
+        pruefe(boese, "Vorschaubild")
+
+
+@pytest.mark.parametrize("feld, label", [
+    ("url", "Titel-Link"),
+    ("author_url", "Autoren-Link"),
+    ("author_icon", "Autoren-Symbol"),
+    ("thumbnail", "Vorschaubild"),
+    ("banner", "Banner"),
+    ("footer_icon", "Footer-Symbol"),
+])
+def test_jedes_adressfeld_nennt_sich_beim_namen(bauen, feld, label):
+    """Der eigentliche Gewinn gegenüber Discords eigener Fehlermeldung: Bei
+    einem Embed mit vier Bildern weiß man sonst nicht, welches gemeint ist."""
+    nutzlast = {"title": "T", "author_name": "A", "footer": "F", feld: "kaputt.example/x"}
+    with pytest.raises(ValueError) as fehler:
+        bauen(nutzlast)
+    assert label in str(fehler.value)
+
+
+def test_lange_adresse_wird_in_der_meldung_gekuerzt(pruefe):
+    """Eine 2000 Zeichen lange Adresse würde die Fehlermeldung unlesbar machen."""
+    with pytest.raises(ValueError) as fehler:
+        pruefe("example.invalid/" + "x" * 2000, "Banner")
+    assert len(str(fehler.value)) < 300
+
+
+# --------------------------------------------------------------------------
+# Feldzahl erst nach dem Filtern (Nebenbefund aus Plan 03)
+# --------------------------------------------------------------------------
+
+def test_leere_feldzeilen_zaehlen_nicht_gegen_das_limit(bauen):
+    """Das Formular schickt angelegte, aber nicht ausgefüllte Feldzeilen mit.
+    Wer 26 Zeilen anlegt und drei leer lässt, hat 23 echte Felder - und bekam
+    vorher trotzdem die Meldung, es seien zu viele."""
+    felder = [{"name": f"F{i}", "value": "v"} for i in range(23)]
+    felder += [{"name": "", "value": ""}, {"name": "  ", "value": "x"}, {"name": "y", "value": ""}]
+    embed = bauen({"title": "T", "fields": felder})
+    assert len(embed.fields) == 23
+
+
+def test_26_echte_felder_werden_weiterhin_abgelehnt(bauen):
+    """Gegenprobe: Die Grenze selbst darf durch die Filterung nicht aufweichen."""
+    with pytest.raises(ValueError, match="25"):
+        bauen({"fields": [{"name": f"F{i}", "value": "v"} for i in range(26)]})

@@ -22,7 +22,7 @@ import hilfe
 
 
 class Hilfe(commands.Cog):
-    MODUL_LABEL = "❓ Hilfe"
+    MODUL_LABEL = "❓ Hilfe & Zugang"
     # Bewusst ganz hinten: Wer das hier liest, hat /help schon gefunden.
     MODUL_REIHENFOLGE = 10
 
@@ -114,6 +114,28 @@ class Hilfe(commands.Cog):
         )
         await ctx.send(embed=embed, ephemeral=True)
 
+
+    # my_access lag bis zum 03.09.2026 in cogs/admin.py. Dort war er
+    # fehlplatziert: Er ist fuer JEDEN offen, sorgte in der Hilfe aber dafuer,
+    # dass normalen Mitgliedern ein Block "🔧 Administration" mit genau diesem
+    # einen Eintrag angezeigt wurde - was so aussah, als haetten sie
+    # Verwaltungsrechte.
+    #
+    # Hier passt er: /help zeigt, WAS man benutzen kann, /my_access zeigt,
+    # WELCHE Rechte man hat. Beides beantwortet dieselbe Frage aus zwei
+    # Richtungen, und beides ist Selbstauskunft ohne besondere Berechtigung.
+    @commands.hybrid_command(name="my_access", description="Zeigt, welche Rechte du im Backend hast",
+        extras={"hilfe": "Zeigt deine Berechtigungen für die Weboberfläche des Bots. Die meisten Mitglieder haben hier nichts stehen — das ist normal und schränkt dich auf dem Server in keiner Weise ein."},)
+    async def my_access(self, ctx: commands.Context):
+        perms = database.get_user_permissions(ctx.author.id)
+        if perms:
+            await ctx.send(f"Deine Backend-Berechtigungen: **{', '.join(perms)}**")
+        else:
+            await ctx.send(
+                "Du hast aktuell keine besonderen Backend-Berechtigungen. "
+                "Als Server-Mitglied kannst du trotzdem Fragen einreichen und das Leaderboard ansehen. "
+                "Ein Admin kann dir per `/grant_access` weitere Rechte geben."
+            )
 
     # ------------------------------------------------------------------
     # Uebergangshilfe fuer alte Gewohnheiten

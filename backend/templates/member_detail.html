@@ -97,10 +97,22 @@
             </div>
             <div class="col-12 col-md-4">
                 <h6 class="small text-muted">Ban / Unban</h6>
+                {# Die Rueckfrage nennt den gewaehlten Loeschzeitraum ausdruecklich:
+                   Das Loeschen ist nicht rueckgaengig zu machen und betrifft auch
+                   Nachrichten anderer Leute in der Unterhaltung. Niemand soll da
+                   aus Versehen hineinrutschen. #}
                 <form method="POST" action="{{ url_for('member_ban', user_id=member.id) }}" class="mb-2"
-                      onsubmit="return confirm('{{ member.display_name }} wirklich bannen?');">
+                      onsubmit="return confirm('{{ member.display_name }} wirklich bannen?\n\nNachrichten löschen: '
+                                + this.delete_messages.options[this.delete_messages.selectedIndex].text
+                                + '\n\nGelöschte Nachrichten lassen sich nicht wiederherstellen.');">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="text" name="reason" class="form-control form-control-sm mb-2" placeholder="Grund">
+                    <label for="delete_messages" class="form-label small text-muted mb-1">Nachrichten löschen</label>
+                    <select name="delete_messages" id="delete_messages" class="form-select form-select-sm mb-2">
+                        {% for wert, (label, _sek) in ban_loeschzeitraeume.items() %}
+                        <option value="{{ wert }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
                     <button type="submit" class="btn btn-danger btn-sm w-100">🔨 Ban</button>
                 </form>
                 <form method="POST" action="{{ url_for('member_unban', user_id=member.id) }}"

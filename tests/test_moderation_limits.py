@@ -218,3 +218,85 @@ def test_genau_an_der_grenze_wird_nicht_angefasst(kuerzen):
 
 def test_ein_zeichen_darueber_wird_gekuerzt(kuerzen):
     assert kuerzen["_kuerze_audit_grund"]("a" * 513)[1] is True
+
+
+# --------------------------------------------------------------------------
+# Nachrichten beim Bann löschen (Plan 05, umgesetzt 03.09.2026)
+#
+# Discord erlaubt beim Bann delete_message_seconds von 0 bis 604800 (7 Tage).
+# Das ist die EINZIGE Änderung in diesem Projekt mit nicht umkehrbarer Wirkung:
+# Gelöschte Nachrichten sind weg, auch die von anderen Leuten in der
+# Unterhaltung. Entsprechend konservativ ist alles hier abgesichert.
+# --------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def zeitraeume():
+    from discord_source import load_from_app
+    return load_from_app("BAN_LOESCHZEITRAEUME")["BAN_LOESCHZEITRAEUME"]
+
+
+def test_null_ist_dabei_und_bedeutet_nichts_loeschen(zeitraeume):
+    assert zeitraeume["0"][1] == 0
+
+
+def test_erste_auswahl_ist_nichts_loeschen(zeitraeume):
+    """Die Reihenfolge im Dictionary bestimmt die Reihenfolge im Auswahlfeld -
+    und damit die Vorauswahl. Sie muss der harmlose Fall sein."""
+    assert next(iter(zeitraeume)) == "0"
+
+
+def test_keine_auswahl_ueberschreitet_discords_grenze(zeitraeume):
+    """604800 Sekunden = 7 Tage. Alles darüber lehnt Discord ab."""
+    for schluessel, (label, sekunden) in zeitraeume.items():
+        assert 0 <= sekunden <= 604800, f"{label} liegt außerhalb von Discords Bereich."
+
+
+def test_schluessel_und_wert_passen_zusammen(zeitraeume):
+    """Der Schlüssel landet im Formular, der Wert geht an Discord. Laufen sie
+    auseinander, löscht der Bot einen anderen Zeitraum als angezeigt - und das
+    ist nicht rückgängig zu machen."""
+    for schluessel, (label, sekunden) in zeitraeume.items():
+        assert int(schluessel) == sekunden, (
+            f"Auswahl {label!r}: Formularwert {schluessel} != {sekunden} Sekunden."
+        )
+
+
+def test_sieben_tage_sind_604800_sekunden():
+    assert 7 * 24 * 60 * 60 == 604800
+
+
+def test_route_prueft_gegen_die_liste_statt_zu_uebernehmen():
+    """Ein manipulierter Aufruf darf keinen beliebigen Zeitraum setzen können.
+    Ohne Prüfung ginge auch ein Wert, den Discord ablehnt - oder schlimmer,
+    einer der mehr löscht als angezeigt."""
+    quelle = APP_PY.read_text()
+    fn = _funktion(quelle, "member_ban")
+    text = ast.get_source_segment(quelle, fn) or ""
+    assert "BAN_LOESCHZEITRAEUME.get(" in text, (
+        "member_ban() prüft den Löschzeitraum nicht gegen die feste Liste."
+    )
+    assert 'BAN_LOESCHZEITRAEUME["0"]' in text, (
+        "Bei unbekanntem Wert muss auf 0 zurückgefallen werden, nicht auf einen "
+        "beliebigen Standard."
+    )
+
+
+def test_geloeschter_zeitraum_landet_im_audit_log():
+    """Nicht rückgängig zu machen heißt: Es muss später nachvollziehbar sein,
+    was verschwunden ist."""
+    quelle = APP_PY.read_text()
+    text = ast.get_source_segment(quelle, _funktion(quelle, "member_ban")) or ""
+    assert "Nachrichten gelöscht" in text
+
+
+def test_rueckfrage_nennt_den_zeitraum():
+    """Der Bestätigungsdialog muss sagen, was gelöscht wird - sonst klickt
+    jemand 'ok' und ist überrascht."""
+    detail = (REPO / "backend" / "templates" / "member_detail.html").read_text()
+    block = detail[detail.index("member_ban"):]
+    block = block[:block.index("</form>")]
+    assert "delete_messages" in block, "Das Auswahlfeld fehlt im Bann-Formular."
+    assert "onsubmit" in block and "confirm" in block
+    assert "nicht wiederherstellen" in block, (
+        "Die Rückfrage warnt nicht davor, dass das Löschen endgültig ist."
+    )
