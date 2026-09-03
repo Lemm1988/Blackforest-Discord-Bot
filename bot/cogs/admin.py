@@ -41,11 +41,22 @@ import database
 # pro Befehl und Rolle.
 
 
+# Die Pruefungen ANTWORTEN NICHT SELBST, sondern loesen eine CheckFailure mit
+# der Begruendung aus. Die zentrale Fehlerbehandlung in main.py zeigt sie dann
+# an - und zwar nur fuer den Aufrufer sichtbar (Vorgabe Patrick, 03.09.2026).
+#
+# Vorher schickten sie die Meldung selbst per ctx.send(). Als reiner
+# Chat-Befehl ging das gut, bei Slash-Befehlen waere es ein Fehler geworden:
+# Discord erlaubt auf eine Anfrage GENAU EINE Antwort. Erst haette die Pruefung
+# geantwortet, dann die Fehlerbehandlung - das ergibt "Interaction has already
+# been responded to", und der Nutzer sieht im Zweifel "Die Anwendung reagiert
+# nicht". Ausserdem stand die Absage vorher oeffentlich im Kanal.
+
+
 def is_admin():
     async def predicate(ctx: commands.Context) -> bool:
         if not database.has_permission(ctx.author.id, "is_admin"):
-            await ctx.send("⛔ Dieser Befehl ist nur für Admins.")
-            return False
+            raise commands.CheckFailure("⛔ Dieser Befehl ist nur für Admins.")
         return True
     return commands.check(predicate)
 
@@ -53,8 +64,9 @@ def is_admin():
 def has_permission_check(key: str):
     async def predicate(ctx: commands.Context) -> bool:
         if not database.has_permission(ctx.author.id, key):
-            await ctx.send(f"⛔ Dir fehlt die Berechtigung **{key}** für diesen Befehl.")
-            return False
+            raise commands.CheckFailure(
+                f"⛔ Dir fehlt die Berechtigung **{key}** für diesen Befehl."
+            )
         return True
     return commands.check(predicate)
 

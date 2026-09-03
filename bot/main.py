@@ -7,6 +7,7 @@ Coroutinen auf ihr zu planen (asyncio.run_coroutine_threadsafe).
 import hashlib
 import sys
 import threading
+import traceback
 from pathlib import Path
 
 import discord
@@ -16,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))  # damit "backend" importi
 
 import config
 import database
+import fehler
 from backend.app import create_app
 from backend.internal_app import create_internal_app
 
@@ -97,6 +99,80 @@ async def on_ready():
         start_flask_thread()
         start_internal_members_thread()
         _flask_started = True
+
+
+@bot.event
+async def on_command_error(ctx: commands.Context, error: Exception):
+    """Zentrale Fehlerbehandlung fuer Befehle - Chat wie Slash.
+
+    Bis zum 03.09.2026 gab es sie nicht. Wer sich vertippte oder ein Argument
+    vergass, bekam GAR KEINE Antwort: discord.py schrieb die Meldung auf stderr,
+    und die war ihrerseits unsichtbar, weil dem Dienst PYTHONUNBUFFERED fehlte.
+    Der Bot wirkte dadurch kaputt oder so, als ignoriere er den Nutzer.
+
+    Alle Meldungen gehen NUR an den Aufrufer (ephemeral bzw. bei Chat-Befehlen
+    als Antwort mit Erwaehnung). Eine Absage wie "dir fehlt die Berechtigung"
+    muss nicht oeffentlich im Kanal stehen - Vorgabe Patrick, 03.09.2026.
+    """
+    # HybridCommandError verpackt den eigentlichen Fehler eine Ebene tiefer,
+    # wenn ein Hybrid-Befehl als Slash-Befehl aufgerufen wurde.
+    error = getattr(error, "original", error)
+
+    befehl = ctx.command.qualified_name if ctx.command else ""
+    signatur = ctx.command.signature if ctx.command else ""
+    hinweis = fehler.verwendung(befehl, signatur) if befehl else ""
+
+    if isinstance(error, commands.CommandNotFound):
+        art, kontext = "unbekannter_befehl", {}
+    elif isinstance(error, commands.CheckFailure):
+        # str(error) traegt die Begruendung aus is_admin() bzw.
+        # has_permission_check() - siehe cogs/admin.py.
+        art, kontext = "fehlende_berechtigung", {"grund": str(error) or None}
+    elif isinstance(error, commands.MissingRequiredArgument):
+        art, kontext = "fehlendes_argument", {"parameter": error.param.name, "verwendung": hinweis}
+    elif isinstance(error, (commands.BadArgument, commands.BadLiteralArgument,
+                            commands.ConversionError, commands.UserInputError)):
+        art, kontext = "falsches_argument", {"verwendung": hinweis}
+    elif isinstance(error, commands.CommandOnCooldown):
+        art, kontext = "cooldown", {"sekunden": error.retry_after}
+    elif isinstance(error, commands.NoPrivateMessage):
+        art, kontext = "nur_auf_server", {}
+    else:
+        art, kontext = "intern", {}
+        # Nur bei unerwarteten Fehlern die vollstaendige Ausnahme ins Log - die
+        # bekannten Faelle oben sind Bedienfehler und wuerden es nur zumuellen.
+        print(f"[befehl] Unerwarteter Fehler in /{befehl or '?'}: {error!r}")
+        traceback.print_exception(type(error), error, error.__traceback__)
+
+    text = fehler.meldung(art, **kontext)
+    if text is None:
+        return
+    try:
+        await ctx.send(text, ephemeral=True)
+    except discord.HTTPException as exc:
+        # Antworten kann selbst scheitern (Interaktion abgelaufen, keine
+        # Schreibrechte). Dann bleibt es beim Logeintrag - die Fehlerbehandlung
+        # darf nicht ihrerseits einen Fehler ausloesen.
+        print(f"[befehl] Fehlermeldung konnte nicht zugestellt werden: {exc}")
+
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: Exception):
+    """Fuer reine Slash-Befehle ohne Chat-Gegenstueck.
+
+    Die Hybrid-Befehle laufen ueber on_command_error oben; dieser Handler faengt
+    ab, was dort nicht ankommt, damit kein Fall stumm bleibt.
+    """
+    error = getattr(error, "original", error)
+    print(f"[befehl] Fehler in einem Slash-Befehl: {error!r}")
+    text = fehler.meldung("intern")
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(text, ephemeral=True)
+        else:
+            await interaction.response.send_message(text, ephemeral=True)
+    except discord.HTTPException:
+        pass
 
 
 async def _sync_slash_commands():
