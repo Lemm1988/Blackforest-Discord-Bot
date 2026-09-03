@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Verdiente Rollen - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">Verdiente Rollen</h3>
+<p class="text-muted">
+    Wer eine Bedingung erfüllt, bekommt vom Bot eine Rolle angeboten. Beispiel: Wer 100
+    Quizfragen richtig beantwortet hat, kann Ideenschmied werden — der Bot meldet sich, und
+    die Person holt sich die Rolle mit einem Klick ab.
+</p>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Neue Regel</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('earned_roles_add') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="bedingung_art" class="form-label">Bedingung</label>
+                    <select class="form-select" id="bedingung_art" name="bedingung_art" required>
+                        {% for schluessel, art in bedingungsarten.items() %}
+                        <option value="{{ schluessel }}">{{ art.label }}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="form-text">
+                        {% for art in bedingungsarten.values() %}
+                        <div><strong>{{ art.label }}:</strong> {{ art.hinweis }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label for="schwelle" class="form-label">Ab wie vielen?</label>
+                    <input type="number" class="form-control" id="schwelle" name="schwelle"
+                           min="1" value="100" required>
+                </div>
+                <div class="col-md-3">
+                    <label for="role_id" class="form-label">Rolle</label>
+                    <select class="form-select" id="role_id" name="role_id" required>
+                        {% for r in rollen %}
+                        <option value="{{ r.id }}" {% if not r.verwaltbar %}disabled{% endif %}>
+                            {{ r.name }}{% if not r.verwaltbar %} — steht über dem Bot{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="channel_id" class="form-label">Ankündigung in</label>
+                    <select class="form-select channel-picker" id="channel_id" name="channel_id">
+                        <option value="">— per Direktnachricht —</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mt-3">
+                <label for="ankuendigung" class="form-label">Ankündigungstext <span class="text-muted small fw-normal">(optional)</span></label>
+                <input type="text" class="form-control" id="ankuendigung" name="ankuendigung"
+                       placeholder="🎉 {mention}, du hast {wert} von {schwelle} erreicht — hol dir die Rolle {rolle}!">
+                <div class="form-text">
+                    Platzhalter: <code>{mention}</code>, <code>{rolle}</code>, <code>{wert}</code>
+                    (erreichter Stand), <code>{schwelle}</code>. Leer lassen für einen Standardtext.
+                </div>
+            </div>
+            <div class="form-check form-switch mt-3">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       id="automatisch" name="automatisch" value="1">
+                <label class="form-check-label" for="automatisch">
+                    Rolle sofort vergeben, ohne Abholen
+                </label>
+                <div class="form-text">
+                    Aus lassen für den Knopf zum Abholen — das fühlt sich mehr nach Belohnung an.
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary mt-3">Regel anlegen</button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h5 class="h6 mb-0">Bestehende Regeln</h5></div>
+    <div class="card-body">
+        {% if not regeln %}
+        <p class="text-muted mb-0">Noch keine Regeln angelegt.</p>
+        {% else %}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Bedingung</th><th>Rolle</th><th>Einstellungen</th><th></th></tr></thead>
+                <tbody>
+                    {% for r in regeln %}
+                    <tr {% if not r.enabled %}class="opacity-50"{% endif %}>
+                        <td class="small">
+                            {{ r.bedingung_label }}<br>
+                            <span class="text-muted">ab {{ r.schwelle }} {{ r.einheit }}</span>
+                        </td>
+                        <td class="small">
+                            {{ r.rollenname }}
+                            {% if not r.vergebbar %}
+                            <div class="text-danger small">⚠️ steht über der Bot-Rolle — wird nicht vergeben</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form method="POST" action="{{ url_for('earned_roles_update', regel_id=r.id) }}"
+                                  class="d-flex flex-column gap-1">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <div class="d-flex gap-2 align-items-center">
+                                    <label class="form-label small mb-0" for="schwelle_{{ r.id }}">ab</label>
+                                    <input type="number" name="schwelle" id="schwelle_{{ r.id }}"
+                                           class="form-control form-control-sm" style="width:7rem"
+                                           min="1" value="{{ r.schwelle }}">
+                                </div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" name="enabled" value="1"
+                                           id="enabled_{{ r.id }}" {% if r.enabled %}checked{% endif %}>
+                                    <label class="form-check-label small" for="enabled_{{ r.id }}">aktiv</label>
+                                </div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" name="automatisch" value="1"
+                                           id="auto_{{ r.id }}" {% if r.automatisch %}checked{% endif %}>
+                                    <label class="form-check-label small" for="auto_{{ r.id }}">sofort vergeben</label>
+                                </div>
+                                <input type="text" name="ankuendigung" class="form-control form-control-sm"
+                                       value="{{ r.ankuendigung or '' }}" placeholder="Standardtext">
+                                <button type="submit" class="btn btn-outline-primary btn-sm">Speichern</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="POST" action="{{ url_for('earned_roles_delete', regel_id=r.id) }}"
+                                  onsubmit="return confirm('Regel wirklich löschen?\n\nBereits vergebene Rollen bleiben bestehen.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Löschen</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

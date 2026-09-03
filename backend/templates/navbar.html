@@ -62,6 +62,7 @@
                         {% endif %}
                         {% if has_permission('manage_game_settings') %}
                         <li><a class="dropdown-item" href="{{ url_for('reaction_roles_page') }}">Reaktionsrollen</a></li>
+                        <li><a class="dropdown-item" href="{{ url_for('earned_roles_page') }}">Verdiente Rollen</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('personality_page') }}">Personality</a></li>
                         {% endif %}
                     </ul>

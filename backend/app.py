@@ -23,6 +23,7 @@ import database
 import mood
 import rollenabgleich
 import scheduling
+import verdiente_rollen
 from . import oauth
 from .moderation_rules import moderation_block_reason
 
@@ -1295,6 +1296,92 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             return rollen, verwaltbar
 
         return run_on_bot(_holen())
+
+    # --- Verdiente Rollen (Bot-Setup) ---
+
+    @app.route("/earned-roles")
+    @require_permission("manage_badword_filter")
+    def earned_roles_page():
+        rollen, verwaltbare = _discord_rollen()
+        rollennamen = {r["id"]: r["name"] for r in rollen}
+        regeln = database.get_earned_roles()
+        for r in regeln:
+            r["rollenname"] = rollennamen.get(r["role_id"], f"unbekannt ({r['role_id']})")
+            r["vergebbar"] = r["role_id"] in verwaltbare
+            art = verdiente_rollen.BEDINGUNGSARTEN.get(r["bedingung_art"])
+            r["bedingung_label"] = art.label if art else r["bedingung_art"]
+            r["einheit"] = art.einheit if art else ""
+        return render_template(
+            "earned_roles.html",
+            regeln=regeln,
+            rollen=rollen,
+            bedingungsarten=verdiente_rollen.BEDINGUNGSARTEN,
+        )
+
+    @app.route("/earned-roles/add", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def earned_roles_add():
+        form = request.form
+        _, verwaltbare = _discord_rollen()
+
+        role_id = (form.get("role_id") or "").strip()
+        art = (form.get("bedingung_art") or "").strip()
+        try:
+            schwelle = int(form.get("schwelle", "0"))
+        except (TypeError, ValueError):
+            schwelle = 0
+
+        if not verdiente_rollen.ist_gueltige_art(art):
+            flash("Unbekannte Bedingung.", "error")
+            return redirect(url_for("earned_roles_page"))
+        if schwelle < 1:
+            flash("Die Schwelle muss mindestens 1 sein.", "error")
+            return redirect(url_for("earned_roles_page"))
+        if role_id not in verwaltbare:
+            flash("Diese Rolle steht über der Bot-Rolle — der Bot könnte sie nicht vergeben.", "error")
+            return redirect(url_for("earned_roles_page"))
+
+        channel_id = (form.get("channel_id") or "").strip()
+        if channel_id and not channel_id.isdigit():
+            channel_id = ""
+
+        neu_id = database.add_earned_role(
+            role_id=role_id, bedingung_art=art, schwelle=schwelle,
+            ankuendigung=form.get("ankuendigung", ""), channel_id=channel_id,
+            automatisch=form.get("automatisch") == "1",
+        )
+        database.log_audit(
+            session["discord_user_id"], "earned_role_add", target_id=neu_id,
+            detail=f"{art} >= {schwelle} -> Rolle {role_id}",
+        )
+        flash("Regel angelegt.", "success")
+        return redirect(url_for("earned_roles_page"))
+
+    @app.route("/earned-roles/<int:regel_id>/update", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def earned_roles_update(regel_id):
+        form = request.form
+        try:
+            schwelle = max(1, int(form.get("schwelle", "1")))
+        except (TypeError, ValueError):
+            schwelle = None
+        database.update_earned_role(
+            regel_id, schwelle=schwelle,
+            ankuendigung=form.get("ankuendigung", ""),
+            automatisch=form.get("automatisch") == "1",
+            enabled=form.get("enabled") == "1",
+        )
+        database.log_audit(session["discord_user_id"], "earned_role_update", target_id=regel_id)
+        flash("Regel gespeichert.", "success")
+        return redirect(url_for("earned_roles_page"))
+
+    @app.route("/earned-roles/<int:regel_id>/delete", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def earned_roles_delete(regel_id):
+        database.delete_earned_role(regel_id)
+        database.log_audit(session["discord_user_id"], "earned_role_delete", target_id=regel_id)
+        flash("Regel gelöscht. Bereits vergebene Rollen bleiben bestehen.", "success")
+        return redirect(url_for("earned_roles_page"))
 
     # --- Reaktionsrollen (Bot-Setup) ---
 

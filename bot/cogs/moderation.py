@@ -18,6 +18,7 @@ import discord
 from discord.ext import commands
 
 import announcements
+from cogs import verdiente_rollen
 import config
 import database
 import mood
@@ -241,6 +242,8 @@ class Moderation(commands.Cog):
         # kein eigener Parallel-Mechanismus fuer Level-Aufstiege/Achievements,
         # die durch Nachrichten-XP statt Quiz-Erfolg ausgeloest werden.
         await announcements.announce_progress(self.bot, message.author, xp_result)
+        # Neue XP koennen eine Schwelle fuer eine verdiente Rolle gerissen haben.
+        await verdiente_rollen.verdiente_rollen_pruefen(self.bot, message.author)
 
     # --- Schimpfwortfilter ---
 

@@ -36,6 +36,36 @@ CREATE TABLE IF NOT EXISTS answered_questions (
     PRIMARY KEY (user_id, question_id)
 );
 
+-- Verdiente Rollen (03.09.2026): Wer eine Bedingung erfuellt, bekommt die Rolle
+-- angeboten. Anders als bei den Reaktionsrollen ist der Ausloeser kein Klick,
+-- sondern eine Zahl, die der Bot ohnehin fuehrt (richtige Quizantworten, Level,
+-- XP, eingereichte Fragen, Tage auf dem Server).
+CREATE TABLE IF NOT EXISTS earned_roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    role_id TEXT NOT NULL,
+    bedingung_art TEXT NOT NULL,
+    schwelle INTEGER NOT NULL,
+    -- Text der Ankuendigung, mit Platzhaltern. Leer = Standardtext.
+    ankuendigung TEXT,
+    -- Kanal fuer die Ankuendigung. Leer = per Direktnachricht.
+    channel_id TEXT,
+    -- 1 = sofort vergeben, 0 = anbieten und auf den Abhol-Knopf warten.
+    automatisch INTEGER NOT NULL DEFAULT 0,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Wem wurde welche verdiente Rolle schon angeboten bzw. gegeben. Ohne das
+-- wuerde der Bot bei jedem Ausloeser erneut ankuendigen - derselbe Fehler, den
+-- der Tagesmerker beim Morgengruss verhindert.
+CREATE TABLE IF NOT EXISTS earned_role_grants (
+    rule_id INTEGER NOT NULL,
+    discord_user_id TEXT NOT NULL,
+    angekuendigt_at TEXT,
+    vergeben_at TEXT,
+    PRIMARY KEY (rule_id, discord_user_id)
+);
+
 -- Reaktionsrollen (03.09.2026): Wer auf eine bestimmte Nachricht mit einem
 -- bestimmten Emoji reagiert, bekommt eine Rolle. Loest die frueher fest
 -- verdrahtete Regel-Reaktion ab, die als vier einzelne Settings existierte
@@ -829,6 +859,128 @@ def get_user_permissions(discord_user_id):
             (str(discord_user_id),),
         ).fetchall()
         return [r["permission_key"] for r in rows]
+
+
+def get_earned_roles(nur_aktive: bool = False):
+    with get_connection() as conn:
+        sql = "SELECT * FROM earned_roles"
+        if nur_aktive:
+            sql += " WHERE enabled = 1"
+        return [dict(r) for r in conn.execute(sql + " ORDER BY schwelle, id")]
+
+
+def get_earned_role(regel_id: int):
+    with get_connection() as conn:
+        row = conn.execute("SELECT * FROM earned_roles WHERE id = ?", (int(regel_id),)).fetchone()
+        return dict(row) if row else None
+
+
+def add_earned_role(role_id, bedingung_art: str, schwelle: int, ankuendigung: str = "",
+                    channel_id: str = "", automatisch: bool = False) -> int:
+    with get_connection() as conn:
+        cur = conn.execute(
+            "INSERT INTO earned_roles (role_id, bedingung_art, schwelle, ankuendigung, "
+            "channel_id, automatisch) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(role_id), bedingung_art, int(schwelle), (ankuendigung or "").strip(),
+             (channel_id or "").strip(), 1 if automatisch else 0),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_earned_role(regel_id: int, *, schwelle=None, ankuendigung=None,
+                       channel_id=None, automatisch=None, enabled=None):
+    felder, werte = [], []
+    if schwelle is not None:
+        felder.append("schwelle = ?"); werte.append(int(schwelle))
+    if ankuendigung is not None:
+        felder.append("ankuendigung = ?"); werte.append((ankuendigung or "").strip())
+    if channel_id is not None:
+        felder.append("channel_id = ?"); werte.append((channel_id or "").strip())
+    if automatisch is not None:
+        felder.append("automatisch = ?"); werte.append(1 if automatisch else 0)
+    if enabled is not None:
+        felder.append("enabled = ?"); werte.append(1 if enabled else 0)
+    if not felder:
+        return
+    with get_connection() as conn:
+        conn.execute(f"UPDATE earned_roles SET {', '.join(felder)} WHERE id = ?",
+                     (*werte, int(regel_id)))
+        conn.commit()
+
+
+def delete_earned_role(regel_id: int) -> None:
+    """Loescht die Regel UND die Merker dazu.
+
+    Die Merker allein zurueckzulassen brächte nichts: Legt jemand spaeter eine
+    neue Regel an, bekaeme sie eine neue id, und die alten Zeilen zeigten ins
+    Leere. Bereits VERGEBENE Rollen bleiben davon unberuehrt - die hat der
+    Nutzer, und er soll sie behalten.
+    """
+    with get_connection() as conn:
+        conn.execute("DELETE FROM earned_role_grants WHERE rule_id = ?", (int(regel_id),))
+        conn.execute("DELETE FROM earned_roles WHERE id = ?", (int(regel_id),))
+        conn.commit()
+
+
+def earned_role_status(regel_id: int, discord_user_id):
+    """Was ist bei dieser Person zu dieser Regel schon passiert?"""
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT angekuendigt_at, vergeben_at FROM earned_role_grants "
+            "WHERE rule_id = ? AND discord_user_id = ?",
+            (int(regel_id), str(discord_user_id)),
+        ).fetchone()
+        return dict(row) if row else {"angekuendigt_at": None, "vergeben_at": None}
+
+
+def mark_earned_role_announced(regel_id: int, discord_user_id) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO earned_role_grants (rule_id, discord_user_id, angekuendigt_at) "
+            "VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(rule_id, discord_user_id) DO UPDATE SET "
+            "angekuendigt_at = COALESCE(angekuendigt_at, datetime('now'))",
+            (int(regel_id), str(discord_user_id)),
+        )
+        conn.commit()
+
+
+def mark_earned_role_granted(regel_id: int, discord_user_id) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT INTO earned_role_grants (rule_id, discord_user_id, angekuendigt_at, vergeben_at) "
+            "VALUES (?, ?, datetime('now'), datetime('now')) "
+            "ON CONFLICT(rule_id, discord_user_id) DO UPDATE SET vergeben_at = datetime('now')",
+            (int(regel_id), str(discord_user_id)),
+        )
+        conn.commit()
+
+
+def werte_fuer_bedingungen(discord_user_id) -> dict:
+    """Die Zahlen einer Person, auf die sich Bedingungen stuetzen koennen.
+
+    An EINER Stelle gesammelt, damit die Bedingungslogik selbst ohne Datenbank
+    auskommt und einzeln testbar bleibt. "tage_dabei" fehlt hier bewusst - das
+    weiss nur Discord, der Cog ergaenzt es.
+    """
+    uid = str(discord_user_id)
+    with get_connection() as conn:
+        quiz = conn.execute(
+            "SELECT quiz_correct_count FROM user_stats WHERE discord_user_id = ?", (uid,)
+        ).fetchone()
+        xp = conn.execute(
+            "SELECT xp, level FROM user_xp WHERE discord_user_id = ?", (uid,)
+        ).fetchone()
+        fragen = conn.execute(
+            "SELECT COUNT(*) c FROM questions WHERE submitted_by = ?", (uid,)
+        ).fetchone()
+    return {
+        "quiz_richtig": quiz["quiz_correct_count"] if quiz else 0,
+        "xp": xp["xp"] if xp else 0,
+        "level": xp["level"] if xp else 0,
+        "fragen_eingereicht": fragen["c"] if fragen else 0,
+    }
 
 
 def get_reaction_roles(nur_aktive: bool = False):

@@ -14,6 +14,7 @@ import discord
 from discord.ext import commands
 
 import announcements
+from cogs import verdiente_rollen
 import config
 import database
 import mood
@@ -78,6 +79,11 @@ class AnswerView(discord.ui.View):
                 ))
                 xp_result = database.award_xp(self.author.id, xp_amount, reason="quiz", bypass_cooldown=True)
                 await announcements.announce_progress(interaction.client, self.author, xp_result)
+                # Zaehler fuer richtige Antworten ist gestiegen - kann eine
+                # verdiente Rolle ausloesen (z.B. 100 richtige Fragen).
+                await verdiente_rollen.verdiente_rollen_pruefen(
+                    interaction.client, interaction.guild.get_member(self.author.id)
+                    if interaction.guild else None)
                 # Server-Statistik-Tracking (Phase 11) - nur bei richtiger Antwort,
                 # wie in der Spec vorgegeben (aktive_users wird bewusst NUR ueber
                 # Nachrichten gezaehlt, siehe cogs/moderation.py).
@@ -442,6 +448,8 @@ class Quiz(commands.Cog):
             return
 
         database.submit_question(frage, antwort_a, antwort_b, antwort_c, antwort_d, richtige_antwort, ctx.author.id)
+        await verdiente_rollen.verdiente_rollen_pruefen(
+            self.bot, ctx.guild.get_member(ctx.author.id) if ctx.guild else None)
         await ctx.send(
             f"✅ Danke {ctx.author.mention}! Deine Frage wurde eingereicht und wartet jetzt auf Verifizierung "
             "durch ein Team-Mitglied."
