@@ -30,6 +30,53 @@
 </div>
 
 <div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">🌅 Guten-Morgen-Nachricht</h5></div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Der Bot schreibt einmal täglich von selbst eine Begrüßung in den gewählten Kanal.
+            Die <strong>Texte</strong> pflegst du unter
+            <a href="{{ url_for('personality_texts_page') }}">Personality &rarr; Texte</a>
+            im Pool „Guten-Morgen-Nachricht". Die Auswahl ist zufällig und
+            <strong>unabhängig von der Stimmung</strong> des Bots.
+        </p>
+        <form method="POST" action="{{ url_for('server_setup_morning_settings') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       id="morning_greeting_enabled" name="morning_greeting_enabled" value="1"
+                       {% if morning_settings.morning_greeting_enabled == '1' %}checked{% endif %}>
+                <label class="form-check-label" for="morning_greeting_enabled">Täglich grüßen</label>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="morning_greeting_channel_id" class="form-label">Kanal</label>
+                    <select class="form-select channel-picker" id="morning_greeting_channel_id"
+                            name="morning_greeting_channel_id"
+                            data-current="{{ morning_settings.morning_greeting_channel_id }}"></select>
+                </div>
+                <div class="col-md-3">
+                    <label for="morning_greeting_time" class="form-label">Uhrzeit</label>
+                    <input type="time" class="form-control" id="morning_greeting_time"
+                           name="morning_greeting_time"
+                           value="{{ morning_settings.morning_greeting_time }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label for="morning_greeting_grace_minutes" class="form-label">Nachlauf (Min.)</label>
+                    <input type="number" class="form-control" id="morning_greeting_grace_minutes"
+                           name="morning_greeting_grace_minutes" min="0" max="720"
+                           value="{{ morning_settings.morning_greeting_grace_minutes }}">
+                    <div class="form-text">
+                        War der Pi zur eingestellten Zeit aus, wird nur innerhalb dieses
+                        Fensters nachgeholt. Danach fällt der Gruß für den Tag aus.
+                    </div>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary mt-3">Speichern</button>
+        </form>
+    </div>
+</div>
+
+<div class="card mb-4">
     <div class="card-header"><h5 class="h6 mb-0">✅ Regel-Rolle (👍-Reaktion)</h5></div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('server_setup_role_settings') }}">

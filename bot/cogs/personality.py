@@ -15,6 +15,7 @@ die sich OHNE Bot-Neustart aendern lassen sollen; ein discord.ext.tasks.loop
 mit fest im Code verankertem Intervall wuerde das nicht erlauben.
 """
 import asyncio
+import random
 import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,7 @@ import config
 import database
 import events
 import mood
+import scheduling
 
 
 def _minutes_since(iso_timestamp: str) -> float:
@@ -161,6 +163,10 @@ class Personality(commands.Cog):
         except Exception as exc:
             print(f"[personality] Fehler bei Zufallsereignis-Check: {exc}")
         try:
+            await self._maybe_send_morning_greeting()
+        except Exception as exc:
+            print(f"[personality] Fehler beim Morgengruss: {exc}")
+        try:
             await self._maybe_check_server_records()
         except Exception as exc:
             print(f"[personality] Fehler bei Rekord-Check: {exc}")
@@ -224,6 +230,74 @@ class Personality(commands.Cog):
             await self._maybe_send_spontaneous_message(new_mood)
 
     # --- Dynamischer Status ---
+
+    # --- Taegliche Guten-Morgen-Nachricht (03.09.2026) ---
+    #
+    # Ersetzt den frueheren >gumo-Befehl. BEWUSST unabhaengig von der Stimmung
+    # (Vorgabe Patrick): eine flache Liste, jeder Text gleich wahrscheinlich -
+    # deshalb random.choice() statt mood.pick_variant().
+    #
+    # Haengt am bestehenden Minuten-Herzschlag statt an einem eigenen
+    # tasks.loop - dasselbe Prinzip wie bei Mood, Status und Zufallsereignissen.
+
+    async def _maybe_send_morning_greeting(self):
+        if database.get_setting(
+            "morning_greeting_enabled", config.DEFAULT_SETTINGS["morning_greeting_enabled"]
+        ) != "1":
+            return
+
+        # Lokale Zeit, nicht UTC: Die eingestellte Uhrzeit meint die Uhr an der
+        # Wand. Der Pi laeuft auf Europe/Berlin, die Sommerzeitumstellung
+        # erledigt damit das System und nicht dieser Code.
+        senden, tagesmerker = scheduling.morgengruss_faellig(
+            jetzt=datetime.now(),
+            uhrzeit=database.get_setting(
+                "morning_greeting_time", config.DEFAULT_SETTINGS["morning_greeting_time"]
+            ),
+            zuletzt_gegruesst=database.get_bot_state("last_morning_greeting"),
+            nachlauf_minuten=int(database.get_setting(
+                "morning_greeting_grace_minutes",
+                config.DEFAULT_SETTINGS["morning_greeting_grace_minutes"],
+            )),
+        )
+        if not senden:
+            if tagesmerker:
+                # Fenster verpasst (Pi war aus). Tag abhaken, damit der Gruss
+                # nicht nachmittags doch noch herausrutscht.
+                database.set_bot_state("last_morning_greeting", tagesmerker)
+            return
+
+        # Erst ab hier etwas kosten lassen: Kanal und Texte werden nur geholt,
+        # wenn tatsaechlich gesendet wird - der Herzschlag laeuft jede Minute.
+        channel_id = database.get_setting(
+            "morning_greeting_channel_id", config.DEFAULT_SETTINGS["morning_greeting_channel_id"]
+        )
+        if not channel_id:
+            print("[personality] Morgengruss ist an, aber kein Kanal eingestellt - uebersprungen.")
+            return
+
+        pool = database.get_personality_text_pool("morning")
+        # Pool ohne Mood/Tier: alles liegt unter dem Schluessel "none",
+        # die Tier-Angabe ist dort bedeutungslos (siehe database.get_personality_text_pool).
+        texte = [text for _tier, text in pool.get("none", [])]
+        if not texte:
+            print("[personality] Morgengruss ist an, aber der Textpool 'morning' ist leer - uebersprungen.")
+            return
+
+        channel = self.bot.get_channel(int(channel_id))
+        if channel is None:
+            print(f"[personality] Morgengruss: Kanal {channel_id} nicht gefunden - uebersprungen.")
+            return
+
+        try:
+            await channel.send(random.choice(texte))
+        except discord.HTTPException as exc:
+            # Kein Tagesmerker bei einem Fehlschlag: Beim naechsten Herzschlag
+            # noch einmal versuchen, solange das Nachlauffenster laeuft.
+            print(f"[personality] Morgengruss konnte nicht gesendet werden: {exc}")
+            return
+
+        database.set_bot_state("last_morning_greeting", tagesmerker)
 
     async def _maybe_rotate_status(self):
         if database.get_setting(

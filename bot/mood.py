@@ -152,37 +152,52 @@ def pick_status_text(pool: dict, mood_key: str) -> str:
 # cogs/quiz.py und cogs/personality.py holen ihre Pools stattdessen ueber
 # database.get_personality_text_pool(<name>).
 
-HELLO_VARIANTS = {
-    "happy": [
-        ("low", "Hallo {name}, schön dich zu sehen."),
-        ("medium", "Hey {name}! Heute ist einfach ein guter Tag hier. 😊"),
-        ("high", "Juhuu, {name} ist da! Was für ein toller Tag! 🎉"),
-    ],
-    "neutral": [
-        ("low", "Guten Tag {name}."),
-        ("medium", "Hey {name}, schön dass du da bist! 👋"),
-    ],
-    "excited": [
-        ("low", "Hallo {name}, hier ist gerade einiges los."),
-        ("medium", "Hey {name}! Hier ist gerade richtig was los. 🔥"),
-        ("high", "{name}!! Perfektes Timing, hier brennt gerade die Bude! 🚀"),
-    ],
-    "bored": [
-        ("low", "Hallo {name}. Hier war länger nicht viel los."),
-        ("medium", "Hey {name}, schön dass du da bist - war ganz schön ruhig hier. 😌"),
-        ("high", "Endlich, {name}! Mir war schon fast langweilig hier. 🥱✨"),
-    ],
-    "sleepy": [
-        ("low", "Hallo {name}. Es ist gerade spät."),
-        ("medium", "Hey {name} 😴 Bin gerade etwas müde, aber schön dich zu sehen."),
-        ("high", "*gähn* Hallo {name}... 😴💤 spät unterwegs, was?"),
-    ],
-    "annoyed": [
-        ("low", "Guten Tag {name}."),
-        ("medium", "Hey {name}, hier war gerade ganz schön was zu tun - trotzdem: hallo! 👋"),
-        ("high", "Puh, {name}! Ganz schön turbulent hier gerade, aber immer her mit dir! 😅"),
-    ],
-}
+# Guten-Morgen-Nachrichten, die der Bot einmal taeglich von selbst in einen
+# einstellbaren Kanal schickt (siehe cogs/personality.py, _maybe_send_morning_greeting).
+#
+# BEWUSST OHNE Mood und ohne Humorstufe - Vorgabe von Patrick am 03.09.2026:
+# "guten morgen unabhaengig von mood". Deshalb eine flache Liste statt der
+# verschachtelten Struktur der anderen Pools, und has_mood/has_tier stehen in
+# TEXT_POOL_INFO auf False. Die Bearbeitungsseite im Backend blendet die beiden
+# Auswahlfelder dann von selbst aus.
+#
+# BEWUSST OHNE {name}: Diese Nachricht richtet sich an den ganzen Kanal, nicht an
+# eine einzelne Person. Die 89 Texte des alten >gumo-Befehls waren durchgehend
+# auf {name} gemuenzt und deshalb nicht uebernehmbar (sie waren ausserdem
+# unbrauchbar, siehe Loeschung von bot/data/gumo.txt - die Datei enthielt
+# Python-Quelltext statt reiner Textzeilen).
+MORNING_GREETINGS = [
+    "Guten Morgen zusammen! ☀️",
+    "Einen wunderschönen guten Morgen euch allen!",
+    "Moin! Ich hoffe, ihr seid gut aufgestanden. ☕",
+    "Guten Morgen! Der Kaffee läuft, die Pflanzen wachsen. 🌱",
+    "Hallo und guten Morgen! Auf einen guten Tag.",
+    "Guten Morgen! Ein neuer Tag, ein neues Stück Wachstum. 🌿",
+    "Moin zusammen — schön, dass ihr da seid.",
+    "Guten Morgen! Was steht heute bei euch an?",
+    "Einen guten Start in den Tag, ihr Lieben! ✨",
+    "Guten Morgen! Denkt ans Gießen. 💧",
+    "Aufstehen, die Sonne ist auch schon wach. Guten Morgen! ☀️",
+    "Guten Morgen! Heute ist ein guter Tag, um etwas wachsen zu lassen.",
+    "Moin! Erst der Kaffee, dann der Rest. ☕",
+    "Guten Morgen zusammen! Ich hoffe, ihr habt gut geschlafen. 😊",
+    "Ein frischer Morgen, ein frischer Anfang. Guten Morgen!",
+    "Guten Morgen! Die Lampen sind an, es kann losgehen. 💡",
+    "Hallo in die Runde und einen schönen guten Morgen!",
+    "Guten Morgen! Nehmt euch heute etwas Schönes vor. 🌻",
+    "Moin moin! Wie ist die Lage bei euch?",
+    "Guten Morgen! Auch die kleinen Fortschritte zählen. 🌱",
+    "Einen wunderbaren Morgen euch! Lasst es ruhig angehen.",
+    "Guten Morgen! Ich bin wach — mehr oder weniger. 😴☕",
+    "Hallo zusammen, guten Morgen! Auf ein gutes Miteinander heute.",
+    "Guten Morgen! Vergesst nicht, mal nach euren Pflanzen zu schauen. 👀🌿",
+    "Ein neuer Tag wartet. Guten Morgen! 🌅",
+    "Guten Morgen! Heute schon jemanden zum Lächeln gebracht?",
+    "Moin! Möge euer Kaffee stark und euer Tag entspannt sein. ☕",
+    "Guten Morgen zusammen! Erzählt mal, was heute ansteht.",
+    "Guten Morgen! Geduld ist beim Wachsen die halbe Miete. 🌱",
+    "Schönen guten Morgen! Ich wünsche euch einen richtig guten Tag. ☀️",
+]
 
 QUIZ_CORRECT_VARIANTS = {
     "happy": [
@@ -271,7 +286,7 @@ SPONTANEOUS_VARIANTS = {
 # Antworten bei direkter @Erwaehnung des Bots (personality_response_mode =
 # "mention_only", Spec 1, Phase B4/Nachtrag) - im Unterschied zu SPONTANEOUS_VARIANTS
 # (nur excited/annoyed, unaufgefordert in einen Kanal gepostet) deckt dieser Pool
-# ALLE Moods ab (analog zu HELLO_VARIANTS), da eine direkte Erwaehnung immer eine
+# ALLE Moods ab (analog zu WELCOME_VARIANTS), da eine direkte Erwaehnung immer eine
 # Reaktion verdient, unabhaengig von der aktuellen Mood - aber NUR als Reaktion,
 # nie von sich aus.
 MENTION_REPLY_VARIANTS = {
@@ -346,7 +361,7 @@ def pick_humor_event_text(pool: list, humor_level: str) -> str:
 #   "mood_only"   -> {mood: [text, ...]}                   (status, keine Tier-Staffelung)
 #   "tier_only"   -> [(tier, text), ...]                   (humor_event, kein Mood-Bezug)
 TEXT_POOL_SEEDS = {
-    "hello": ("mood_tier", HELLO_VARIANTS),
+    "morning": ("plain", MORNING_GREETINGS),
     "quiz_correct": ("mood_tier", QUIZ_CORRECT_VARIANTS),
     "welcome": ("mood_tier", WELCOME_VARIANTS),
     "spontaneous": ("mood_tier", SPONTANEOUS_VARIANTS),
@@ -359,7 +374,7 @@ TEXT_POOL_SEEDS = {
 # welcher Pool wo benutzt wird und welche {platzhalter} im Text erlaubt/nötig
 # sind, damit der Admin dort keine kaputten .format()-Aufrufe erzeugen kann.
 TEXT_POOL_INFO = {
-    "hello": {"label": "Begrüßung (>hallo-Befehl)", "placeholders": "{name}", "has_mood": True, "has_tier": True},
+    "morning": {"label": "Guten-Morgen-Nachricht (täglich, automatisch)", "placeholders": "(keine)", "has_mood": False, "has_tier": False},
     "quiz_correct": {"label": "Quiz: richtige Antwort", "placeholders": "{points}", "has_mood": True, "has_tier": True},
     "welcome": {"label": "Willkommensnachricht (neues Mitglied)", "placeholders": "{mention}", "has_mood": True, "has_tier": True},
     "spontaneous": {"label": "Spontane Mood-Wechsel-Nachricht", "placeholders": "(keine)", "has_mood": True, "has_tier": True},

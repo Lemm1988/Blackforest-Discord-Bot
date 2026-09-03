@@ -35,15 +35,6 @@ CREATE TABLE IF NOT EXISTS answered_questions (
     PRIMARY KEY (user_id, question_id)
 );
 
--- Berechtigungen: wer darf was im Backend/über Admin-Bot-Befehle.
--- role: 'admin' | 'moderator' | 'bot_user'
-CREATE TABLE IF NOT EXISTS permissions (
-    discord_user_id TEXT PRIMARY KEY,
-    role TEXT NOT NULL,
-    granted_by TEXT,
-    granted_at TEXT DEFAULT (datetime('now'))
-);
-
 -- Konfigurierbare Bot-Einstellungen (Kanal-IDs etc.), später über Backend änderbar.
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
@@ -287,14 +278,6 @@ ALL_PERMISSIONS = [
     "moderate_members",
 ]
 
-# Für die Migration der alten festen Rollen in einzelne Flags.
-_ROLE_TO_PERMISSIONS = {
-    "admin": ["is_admin"],
-    "moderator": [p for p in ALL_PERMISSIONS if p != "is_admin"],
-    "bot_user": [],  # entspricht jetzt der Basis-Berechtigung, die niemand explizit braucht
-}
-
-
 def _ensure_column(conn, table: str, column: str, coldef: str):
     """Fügt eine Spalte idempotent hinzu (ALTER TABLE ADD COLUMN ist in SQLite nicht
     von sich aus wiederholbar wie CREATE TABLE IF NOT EXISTS - hier wird vorher
@@ -304,20 +287,30 @@ def _ensure_column(conn, table: str, column: str, coldef: str):
         conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}")
 
 
-def _migrate_roles_to_permissions(conn):
-    """Übersetzt bestehende Einträge der alten "permissions"-Tabelle (role-basiert)
-    in einzelne Flags in "user_permissions". Idempotent dank INSERT OR IGNORE und
-    dem UNIQUE(discord_user_id, permission_key)-Constraint - mehrfaches Ausführen
-    (z.B. bei jedem Bot-Start) erzeugt keine Duplikate und überschreibt nichts.
-    Die alte Tabelle wird dabei nicht verändert oder gelöscht."""
-    old_rows = conn.execute("SELECT discord_user_id, role FROM permissions").fetchall()
-    for row in old_rows:
-        for key in _ROLE_TO_PERMISSIONS.get(row["role"], []):
-            conn.execute(
-                "INSERT OR IGNORE INTO user_permissions (discord_user_id, permission_key, granted_by) "
-                "VALUES (?, ?, 'migration')",
-                (row["discord_user_id"], key),
-            )
+def _cleanup_veraltetes(conn):
+    """Einmaliges, idempotentes Aufraeumen von Altlasten (03.09.2026, Freigabe
+    von Patrick).
+
+    1. Die Tabelle "permissions" stammt aus dem frueheren rollenbasierten System
+       ('admin'/'moderator'/'bot_user') und wurde von "user_permissions"
+       (Einzel-Flags) abgeloest. Die Uebersetzung ist laengst gelaufen - der
+       einzige alte Eintrag (role=admin) steht als is_admin mit granted_by=
+       'migration' in der neuen Tabelle. Damit ist die alte Tabelle tot, ebenso
+       die drei Funktionen get_permission/set_permission/revoke_permission, die
+       nur sie angefasst haben und von niemandem mehr aufgerufen wurden.
+
+    2. Der Textpool "hello" hatte genau einen Nutzer: den >hallo-Befehl. Der ist
+       entfallen, damit stehen die 17 Texte nur noch in der Backend-Oberflaeche
+       herum und laden dazu ein, etwas zu pflegen, das nirgends erscheint. Als
+       Morgengruesse taugten sie nicht: alle sprechen mit {name} eine einzelne
+       ankommende Person an, keiner erwaehnt den Morgen, und alle haengen an
+       Mood und Humorstufe - was beim Morgengruss ausdruecklich nicht gewollt
+       ist.
+
+    Beides laeuft ins Leere, sobald es einmal passiert ist.
+    """
+    conn.execute("DROP TABLE IF EXISTS permissions")
+    conn.execute("DELETE FROM personality_texts WHERE pool = 'hello'")
 
 
 # Feste Achievement-Definitionen (Spec 1, Phase 6). INSERT OR IGNORE macht das
@@ -369,6 +362,13 @@ def _seed_personality_texts(conn):
         elif shape == "tier_only":
             for tier, text in data:
                 rows.append((pool_name, None, tier, text))
+        elif shape == "plain":
+            # Weder Mood noch Humorstufe - eine flache Liste gleichberechtigter
+            # Texte (Pool "morning"). Beide Spalten bleiben NULL, die
+            # Bearbeitungsseite blendet die Auswahlfelder dann von selbst aus
+            # (siehe mood.TEXT_POOL_INFO, has_mood/has_tier = False).
+            for text in data:
+                rows.append((pool_name, None, None, text))
         if rows:
             conn.executemany(
                 "INSERT INTO personality_texts (pool, mood, humor_tier, text) VALUES (?, ?, ?, ?)",
@@ -508,7 +508,7 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_personality_texts_pool "
             "ON personality_texts (pool)"
         )
-        _migrate_roles_to_permissions(conn)
+        _cleanup_veraltetes(conn)
         _migrate_link_filter_mode(conn)
         _seed_achievements(conn)
         _seed_personality_texts(conn)
@@ -624,37 +624,6 @@ def count_recent_violations(minutes: int = 60) -> int:
             "SELECT COUNT(*) c FROM badword_violations WHERE timestamp > datetime('now', ?)",
             (f"-{int(minutes)} minutes",),
         ).fetchone()["c"]
-
-
-def get_permission(discord_user_id: str):
-    """VERALTET (altes rollenbasiertes System) - nur noch für die Migration und
-    etwaige alte Aufrufer erhalten, schreibt/liest die alte "permissions"-Tabelle.
-    Neuer Code sollte has_permission()/get_user_permissions() verwenden."""
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT role FROM permissions WHERE discord_user_id = ?",
-            (str(discord_user_id),),
-        ).fetchone()
-        return row["role"] if row else None
-
-
-def set_permission(discord_user_id: str, role: str, granted_by: str):
-    """VERALTET, siehe get_permission()."""
-    with get_connection() as conn:
-        conn.execute(
-            "INSERT INTO permissions (discord_user_id, role, granted_by) VALUES (?, ?, ?) "
-            "ON CONFLICT(discord_user_id) DO UPDATE SET role = excluded.role, "
-            "granted_by = excluded.granted_by, granted_at = datetime('now')",
-            (str(discord_user_id), role, str(granted_by)),
-        )
-        conn.commit()
-
-
-def revoke_permission(discord_user_id: str):
-    """VERALTET, siehe get_permission()."""
-    with get_connection() as conn:
-        conn.execute("DELETE FROM permissions WHERE discord_user_id = ?", (str(discord_user_id),))
-        conn.commit()
 
 
 def bootstrap_admin(discord_user_id: str):

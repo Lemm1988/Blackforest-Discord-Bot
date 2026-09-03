@@ -18,7 +18,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 3. Backend-Routen (`backend/app.py` + `backend/internal_app.py`)
 4. Komplettes Datenbankschema (25 Tabellen)
 5. Berechtigungssystem (Owner, `is_admin`, 9 Flags, Basis-Rechte)
-6. Vollständige Settings-Referenz (70 Einstellungen)
+6. Vollständige Settings-Referenz (74 Einstellungen)
 7. Menü-/Modul-Struktur im Backend
 8. Sicherheitsfundament (Owner-Schutz, Audit-Log, Backup, Session-Invalidierung)
 9. Personality/Mood/Events-System
@@ -28,7 +28,8 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 13. Umgesetzte Sicherheitsmaßnahmen
 14. Unterschiede zum alten Bot
 15. Den Bot erweitern
-16. Offene Punkte (Stand 31.08.2026)
+16. Testsuite (`tests/`, 207 Tests)
+17. Offene Punkte (Stand 03.09.2026)
 
 ---
 
@@ -94,8 +95,17 @@ Abschnitt 10 und `Fernzugriff-Setup-Anleitung.md` Abschnitt 7.5 für Details.
 
 ## 2. Vollständige Befehlsliste
 
-Alle Befehle sind **Hybrid-Commands** (`@commands.hybrid_command`) — funktionieren als
-Prefix-Befehl (`>befehl`) und Slash-Command (`/befehl`). **17 Befehle insgesamt.**
+Alle Befehle sind **Hybrid-Commands** (`@commands.hybrid_command`), also technisch für
+Prefix-Befehl (`>befehl`) **und** Slash-Command (`/befehl`) vorgesehen. **17 Befehle
+insgesamt.**
+
+> **Achtung, Stand 03.09.2026: Die Slash-Variante funktioniert nicht.** Ein
+> Hybrid-Command erscheint bei Discord erst als `/befehl`, wenn der Befehlsbaum einmal
+> mit `bot.tree.sync()` registriert wurde — dieser Aufruf kommt im Projekt nicht vor.
+> Bei Discord abgefragt: 0 global und 0 serverspezifisch registrierte Befehle. **Alle 17
+> Befehle sind ausschließlich über `>befehl` erreichbar.** Die frühere Formulierung an
+> dieser Stelle war falsch. Plan zur Behebung:
+> `~/Desktop/pläne/01-slash-commands.md`.
 
 ### Quiz (`cogs/quiz.py`)
 
@@ -121,9 +131,14 @@ Prefix-Befehl (`>befehl`) und Slash-Command (`/befehl`). **17 Befehle insgesamt.
 | Befehl | Beschreibung |
 |---|---|
 | `zitat` | Zufälliges Zitat. |
-| `gumo` | "Guten Morgen"-Nachricht. |
-| `hallo` | Begrüßung, ggf. mood-gefärbt. |
-| `bothelp` | Vollständige Befehlsübersicht per DM (automatisch aus registrierten Befehlen erzeugt). |
+
+**Am 03.09.2026 entfernt (Freigabe Patrick):**
+
+| Entfernt | Warum, und was an die Stelle tritt |
+|---|---|
+| `gumo` | Ersetzt durch die **automatische tägliche Guten-Morgen-Nachricht** (siehe Abschnitt 9). Der Befehl war zudem defekt: `bot/data/gumo.txt` enthielt Python-Quelltext statt Textzeilen, der Bot postete deshalb Zeilen wie `"Guten Morgen, {name}!",` oder `gumo_responses = [` — **keine** der 89 Zeilen war sauber. Datei gelöscht (Sicherung im Backup des alten Bots). |
+| `hallo` | Altlast des ersten Bots. Neue Mitglieder werden über die Willkommensnachricht begrüßt (Textpool `welcome`). Der zugehörige Textpool `hello` (17 Texte) wurde mitentfernt, da er keinen anderen Nutzer hatte. |
+| `bothelp` | Wird durch `/help` ersetzt. Der alte Befehl zeigte **jedem alles** — auch `grant_access` und `revoke_access` standen in der DM, die jedes Mitglied bekam. |
 
 ### Admin (`cogs/admin.py`)
 
@@ -286,7 +301,7 @@ granularen Modell. `is_admin` impliziert es weiterhin automatisch.
 
 ---
 
-## 6. Vollständige Settings-Referenz (70 Einstellungen)
+## 6. Vollständige Settings-Referenz (74 Einstellungen)
 
 Änderungen wirken sofort, ohne Bot-Neustart, werden im Audit-Log protokolliert.
 
@@ -294,6 +309,16 @@ granularen Modell. `is_admin` impliziert es weiterhin automatisch.
 `welcome_channel_id`, `welcome_message_enabled` (neu), `rules_message_id`,
 `rules_channel_name`, `member_role_name`, `role_reaction_enabled` (neu) — vorher teils
 gar nicht änderbar (nur in `.env`/Code), jetzt vollständig über die Web-UI.
+
+### Guten-Morgen-Nachricht (`/server-setup`, neu 03.09.2026)
+`morning_greeting_enabled` (Standard aus), `morning_greeting_time` (`HH:MM`, lokale Zeit),
+`morning_greeting_channel_id` (leer = der Bot grüßt **nirgendwo**, kein Rückfall auf einen
+anderen Kanal), `morning_greeting_grace_minutes` (Standard 60).
+
+Das Nachlauffenster regelt den Fall, dass der Pi zur eingestellten Zeit aus war: Innerhalb
+des Fensters wird nachgeholt, danach fällt der Gruß für den Tag aus — und der Tag wird
+trotzdem abgehakt, damit eine spätere Änderung der Uhrzeit ihn nicht nachträglich auslöst.
+Ein „Guten Morgen" um 15 Uhr ist schlimmer als gar keins.
 
 ### Schimpfwortfilter (`/moderation`)
 `badword_filter_enabled`, `badword_filter_action`, `badword_timeout_threshold`,
@@ -423,7 +448,29 @@ Vorversion dieser Doku für die volle Herleitung. **Seit 31.08.2026 sind die
 Erkennungsschwellen selbst Settings** (Abschnitt 6), nicht mehr hartcodiert — User-Wunsch,
 überschreibt die ursprüngliche Phase-9-Entscheidung.
 
-**Text-Varianten editierbar (Phase B3):** `/personality/texts` — pro Pool (Begrüßung,
+### Tägliche Guten-Morgen-Nachricht (neu 03.09.2026)
+
+Hängt am **selben** Herzschlag-Task wie Mood, Status und Zufallsereignisse — bewusst kein
+zweiter Zeitplaner. Ersetzt den entfernten `>gumo`-Befehl.
+
+**Ausdrücklich unabhängig von der Stimmung** (Vorgabe Patrick): eine flache Liste im
+Textpool `morning`, jeder Text gleich wahrscheinlich, ausgewählt per `random.choice()`
+statt `mood.pick_variant()`. Der Pool ist deshalb der erste mit `has_mood: False` **und**
+`has_tier: False` — die Bearbeitungsseite blendet beide Auswahlfelder dann von selbst aus,
+dafür war kein Backend-Code nötig. Neue Seed-Form `"plain"` in `_seed_personality_texts()`.
+
+Die Texte enthalten bewusst **kein** `{name}`: Die Nachricht richtet sich an den ganzen
+Kanal, nicht an eine Person. Genau daran scheiterte die Übernahme der 89 alten
+`gumo`-Texte, die durchgehend auf `{name}` gemünzt waren.
+
+Die Zeitentscheidung steht als reine, I/O-freie Funktion in `bot/scheduling.py`
+(`morgengruss_faellig()`) — gleiche Trennung wie bei `events.py`, damit sie ohne Discord
+und ohne Warten auf den nächsten Morgen testbar ist (38 Tests, siehe Abschnitt 16). Der
+Merker gegen doppelte Grüße ist ein **lokales Kalenderdatum** in `bot_state`
+(`last_morning_greeting`), kein UTC-Zeitstempel wie die übrigen `last_*`-Werte: Die Frage
+lautet „war heute schon", nicht „wie lange ist es her".
+
+**Text-Varianten editierbar (Phase B3):** `/personality/texts` — pro Pool (Guten-Morgen,
 Quiz-Feedback, Willkommensnachricht, spontane Nachricht, Status-Text, Humor-Event) eine
 Tabelle mit Inline-Bearbeiten/Löschen + Hinzufügen. `mood.py` bleibt bewusst I/O-frei
 (reine Funktionen bekommen den Pool als Parameter), nur die Cogs holen ihn aus der DB.
@@ -501,10 +548,27 @@ sudo systemctl status bot-connect-dashboard.service   # Port 5050
 Der interne Mitglieder-Endpunkt (Port 5052) läuft als Thread IM Bot-Prozess selbst, kein
 eigener systemd-Dienst nötig.
 
-**Bekanntes Problem:** Der `blackforestbot.service` hat kein `PYTHONUNBUFFERED=1`, daher
-erscheinen reine `print()`-Ausgaben verzögert in `journalctl`. Für Startup-Diagnose
-bewährt: kurzer unbuffered Vordergrund-Lauf (`../venv/bin/python -u main.py`, Dienst vorher
-stoppen) statt journalctl.
+**Gelöst am 03.09.2026 (vorher als bekanntes Problem geführt).** Der Dienst schrieb in
+Wahrheit gar kein Log — nicht „verzögert", sondern nie. Nachgemessen über 24 Stunden: 21
+Zeilen im Journal, alle 21 von systemd, keine einzige vom Bot. Python puffert stdout
+blockweise, sobald es kein Terminal ist; die Ausgaben blieben im 8-KB-Puffer, der bei drei
+kurzen Startmeldungen nie volllief. Damit war jede Fehlersuche über das Bot-Log
+aussichtslos — und die unbehandelten Ausnahmen, die discord.py normalerweise auf stderr
+schreibt, waren ebenfalls unsichtbar (siehe Abschnitt 16).
+
+Behoben über eine Ergänzungsdatei, bewusst nicht in der Haupt-Unit, damit ein Update sie
+nicht entfernt:
+
+```
+/etc/systemd/system/blackforestbot.service.d/logging.conf
+
+[Service]
+Environment=PYTHONUNBUFFERED=1
+```
+
+Seither erscheinen die Startmeldungen (`Logged in as ...`, Waitress-Ports) unmittelbar in
+`journalctl -u blackforestbot -f`. Der frühere Notbehelf — ein Vordergrund-Lauf mit
+`python -u` — wird dadurch überflüssig.
 
 **Vor jeder Code-Änderung:** Bot stoppen → Backup von `.env`+`bot.db` → Änderung →
 Syntax-Check → Bot starten → Tests → Bestandsdaten-Kontrolle → **git commit + push**
@@ -559,7 +623,65 @@ wäre sonst `undefined`).
 
 ---
 
-## 16. Offene Punkte (Stand 02.09.2026)
+## 16. Testsuite (`tests/`, 207 Tests)
+
+Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
+(`.github/workflows/tests.yml`) und lokal mit:
+
+```bash
+cd /opt/BlackforestBot-v2 && venv/bin/python -m pytest -q
+```
+
+### Grundprinzip: keine Laufzeitabhängigkeiten
+
+Die CI installiert **ausschließlich pytest** — kein discord.py, kein Flask, keine
+Datenbank. Das ist eine bewusste Entscheidung: Die Tests laufen dadurch in unter einer
+Sekunde, brauchen kein Netz und können nicht an einer Paketversion scheitern.
+
+Damit die Tests trotzdem **echten Produktivcode** prüfen und keine Nachbauten (die genau
+dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
+
+- **`tests/discord_source.py`** parst `backend/app.py` und führt gezielt einzelne
+  Funktionen daraus aus — mit einem Ersatz für `discord.Embed`, dessen Längenberechnung
+  gegen discord.py 2.4.0 abgeglichen ist. Der Rest des Moduls (Flask-App, Datenbank) wird
+  nie angefasst.
+- **AST-Prüfungen**, die strukturelle Zusagen festhalten: dass eine Whitelist *vor* dem
+  ersten SQL-Aufruf greift, dass eine Grenze überhaupt existiert.
+
+### Was abgedeckt ist
+
+| Datei | Tests | Sichert ab |
+|---|---|---|
+| `test_discord_limits.py` | 55 | Alle acht Embed-Grenzen gegen die offizielle Dokumentation, jeweils genau am Limit erlaubt und ein Zeichen darüber abgelehnt; die 6000-Zeichen-Gesamtsumme; Farbwerte; Zeitzonenbehandlung |
+| `test_csrf_coverage.py` | 71 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
+| `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
+| `test_moderation_limits.py` | 12 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
+| `test_moderation_hierarchy.py` | 5 | Rollenhierarchie als eigene Schranke neben den Berechtigungen |
+| `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
+| `test_morning_greeting.py` | 38 | Zeitlogik der täglichen Guten-Morgen-Nachricht: Fenster, Tagesmerker gegen doppelte Grüße nach einem Neustart, Randuhrzeiten um Mitternacht, unbrauchbare Eingaben |
+| `test_mood.py` | 5 | Mood-Texte, Häufigkeitsgrenzen, Nachtstunden über Mitternacht |
+| `test_webview_dialogs.py` | 3 | `WebChromeClient` in der App — ohne ihn schlucken WebViews `confirm()` und Kick/Ban/Timeout bleiben wirkungslos |
+
+### Warum die Zahlen mit Quelle und Datum dokumentiert sind
+
+In `test_discord_limits.py` und `test_moderation_limits.py` steht zu jeder Grenze, woher
+sie stammt und wann sie nachgeschlagen wurde. Grund: Diese Zahlen sehen willkürlich aus
+(warum 40320? warum 4096?) und werden sonst irgendwann „aufgerundet" oder aus dem
+Gedächtnis korrigiert. Fällt einer dieser Tests, ist entweder der Code falsch **oder
+Discord hat seine Grenzen geändert** — im zweiten Fall gehört die neue Zahl mit Datum und
+Quelle in dieselbe Datei.
+
+### Die Tests wurden gegen absichtlich eingebaute Fehler geprüft
+
+Ein Test, der nie fehlschlägt, ist wertlos. Die neuen Prüfungen wurden deshalb mit
+gezielten Mutationen im Produktivcode gegengeprüft — Gesamtlimit entfernt, Feldzahl von 25
+auf 30 gesetzt, `>` durch `>=` ersetzt, ein CSRF-Token aus einem Template gelöscht. Jede
+Mutation wurde von mindestens einem Test gefangen, danach wurde der Originalzustand
+wiederhergestellt.
+
+---
+
+## 17. Offene Punkte (Stand 03.09.2026)
 
 - ~~**`ERR_TIMED_OUT` in der Android-App**~~ — **am 02.09.2026 gelöst.** Die hier
   vermutete Relay-/NAT-Instabilität war NICHT die Ursache. Es waren zwei unabhängige
@@ -573,3 +695,21 @@ wäre sonst `undefined`).
   Presence-Intent, manuell im Discord Developer Portal freizuschalten).
 - **Live-Test der Moderationsaktionen** (Kick/Ban/Timeout) gegen den echten Server:
   bisher nur per Fake-Discord-Objekten/DB-Kopien verifiziert.
+- **Kein einziger Slash-Befehl ist bei Discord registriert** (gefunden 03.09.2026). 17
+  Befehle sind als `commands.hybrid_command` gebaut und damit für `/befehl` vorgesehen,
+  inklusive Beschreibungstexten und Auswahllisten — aber `bot.tree.sync()` kommt im
+  Projekt nicht vor. Bei Discord abgefragt: 0 global und 0 serverspezifisch registrierte
+  Befehle. Alle 17 existieren ausschließlich als `>befehl`, was für neue Servermitglieder
+  praktisch unauffindbar ist. Plan liegt unter `~/Desktop/pläne/01-slash-commands.md`.
+- **Keine Fehlerbehandlung für Chat-Befehle.** Es gibt keinen `on_command_error`-Handler;
+  fehlende Argumente, falsche Argumenttypen und Cooldowns bleiben für den Nutzer völlig
+  stumm. Dieselbe Fehlerklasse wie beim WebView-Problem: Es passiert nichts und nichts
+  sagt warum. Plan unter `~/Desktop/pläne/04-befehlsfehler.md`.
+- **Moderationsgründe werden nicht auf 512 Zeichen begrenzt**, die von Discord für den
+  `X-Audit-Log-Reason`-Header dokumentierte Obergrenze (URL-kodiert gezählt, ein Umlaut
+  belegt dort sechs Zeichen). Ein zu langer Grund lässt Kick/Ban/Timeout mit einer
+  nichtssagenden 400er-Meldung scheitern. Plan unter
+  `~/Desktop/pläne/02-moderationsgrund.md`.
+- **Bild-/Link-Felder im Embed-Builder werden nicht geprüft.** Discord akzeptiert nur
+  `http`, `https` und `attachment` und antwortet sonst mit `Invalid Form Body`, ohne das
+  betroffene Feld zu nennen. Plan unter `~/Desktop/pläne/03-embed-urls.md`.

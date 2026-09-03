@@ -48,12 +48,33 @@ COMMAND_PREFIX = ">"
 
 DATA_DIR = BASE_DIR / "data"
 ZITATE_FILE = DATA_DIR / "zitate.txt"
-GUMO_FILE = DATA_DIR / "gumo.txt"
 BADWORDS_FILE = DATA_DIR / "badwords.txt"
 
 # Standardwerte für konfigurierbare Bot-Settings (Erststart, danach in DB änderbar über settings-Tabelle)
 DEFAULT_SETTINGS = {
     "welcome_channel_id": "1239923799420567595",
+
+    # --- Taegliche Guten-Morgen-Nachricht (03.09.2026) ---
+    # Ersetzt den frueheren >gumo-Befehl: Statt dass jemand den Bot danach
+    # fragen muss, gruesst er von selbst einmal am Tag. Die Texte liegen im
+    # Textpool "morning" (Tabelle personality_texts) und sind unter
+    # Bot-Setup -> Personality -> Texte pflegbar.
+    #
+    # BEWUSST unabhaengig von der Stimmung des Bots (Vorgabe Patrick,
+    # 03.09.2026) - eine flache Liste, jeder Text gleich wahrscheinlich.
+    "morning_greeting_enabled": "0",
+    # Uhrzeit in lokaler Zeit (Pi laeuft auf Europe/Berlin, Sommer-/Winterzeit
+    # erledigt das System). Format HH:MM.
+    "morning_greeting_time": "07:00",
+    # Leer = der Bot grueesst NIRGENDWO. Bewusst kein Rueckfall auf einen anderen
+    # Kanal - dieselbe Regel wie bei announcement_channel_id, damit der Bot nie
+    # unerwartet irgendwo auftaucht.
+    "morning_greeting_channel_id": "",
+    # Nachlauffenster in Minuten: War der Pi zur eingestellten Zeit aus, wird nur
+    # innerhalb dieses Fensters nachgeholt. Danach faellt der Gruss fuer den Tag
+    # aus - eine verpasste Begruessung faellt niemandem auf, ein "Guten Morgen"
+    # um 15 Uhr schon.
+    "morning_greeting_grace_minutes": "60",
     # An/Aus-Schalter fuer die Willkommensnachricht bzw. die Regel-Reaktion
     # (Rollenvergabe per 👍) - jede Hintergrund-Funktion des Bots soll einzeln
     # abschaltbar sein, nicht nur die grossen Features wie Quiz/Automod.

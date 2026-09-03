@@ -1,4 +1,3 @@
-zi_tat = [
 	"Das Geheimnis des Erfolgs ist anzufangen." – Mark Twain  
 	"Der einzige Weg, großartige Arbeit zu leisten, ist, zu lieben, was man tut." – Steve Jobs  
 	"Die Zukunft gehört denen, die an die Schönheit ihrer Träume glauben." – Eleanor Roosevelt  
@@ -307,6 +306,5 @@ zi_tat = [
 	"Kiffen ist die beste Art, kreativ zu sein." - Artsy Alice  
 	"Warum rennen, wenn du auch chillen kannst?" - Laidback Luke  
 	"High sein bedeutet, die Welt neu zu entdecken." - Explorer Eddie  
-]
 
 

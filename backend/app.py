@@ -20,6 +20,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import config
 import database
 import mood
+import scheduling
 from . import oauth
 from .moderation_rules import moderation_block_reason
 
@@ -1899,6 +1900,26 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             ),
         }
 
+    def _morning_settings():
+        """Taegliche Guten-Morgen-Nachricht (03.09.2026). Die TEXTE stehen nicht
+        hier, sondern im Textpool "morning" unter Personality -> Texte - hier nur
+        Ob, Wann und Wohin."""
+        return {
+            "morning_greeting_enabled": database.get_setting(
+                "morning_greeting_enabled", config.DEFAULT_SETTINGS["morning_greeting_enabled"]
+            ),
+            "morning_greeting_time": database.get_setting(
+                "morning_greeting_time", config.DEFAULT_SETTINGS["morning_greeting_time"]
+            ),
+            "morning_greeting_channel_id": database.get_setting(
+                "morning_greeting_channel_id", config.DEFAULT_SETTINGS["morning_greeting_channel_id"]
+            ),
+            "morning_greeting_grace_minutes": database.get_setting(
+                "morning_greeting_grace_minutes",
+                config.DEFAULT_SETTINGS["morning_greeting_grace_minutes"],
+            ),
+        }
+
     def _role_settings():
         return {
             "role_reaction_enabled": database.get_setting(
@@ -1922,6 +1943,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             "server_setup.html",
             welcome_settings=_welcome_settings(),
             role_settings=_role_settings(),
+            morning_settings=_morning_settings(),
         )
 
     @app.route("/server-setup/welcome_settings", methods=["POST"])
@@ -1940,6 +1962,49 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             "welcome_message_enabled": welcome_message_enabled,
             "welcome_channel_id": welcome_channel_id,
         })
+        return redirect(url_for("server_setup_page"))
+
+    @app.route("/server-setup/morning_settings", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def server_setup_morning_settings():
+        form = request.form
+        old_values = _morning_settings()
+        enabled = "1" if form.get("morning_greeting_enabled") == "1" else "0"
+
+        # Uhrzeit gegen dieselbe Funktion pruefen, die auch der Bot benutzt -
+        # sonst nimmt das Formular etwas an, das der Bot spaeter stillschweigend
+        # verwirft, und der Gruss bleibt ohne erkennbaren Grund aus.
+        zeit_roh = (form.get("morning_greeting_time") or "").strip()
+        if scheduling.parse_uhrzeit(zeit_roh) is None:
+            flash("Ungültige Uhrzeit. Erwartet wird HH:MM, zum Beispiel 07:00.", "error")
+            return redirect(url_for("server_setup_page"))
+        stunde, minute = scheduling.parse_uhrzeit(zeit_roh)
+        zeit = f"{stunde:02d}:{minute:02d}"
+
+        channel_id = form.get("morning_greeting_channel_id", "").strip()
+        if channel_id and not channel_id.isdigit():
+            channel_id = ""
+
+        try:
+            nachlauf = max(0, min(720, int(form.get("morning_greeting_grace_minutes", "60"))))
+        except (TypeError, ValueError):
+            nachlauf = 60
+
+        if enabled == "1" and not channel_id:
+            flash("Ohne Kanal kann der Bot nirgendwo grüßen - bitte einen Kanal auswählen.", "error")
+            return redirect(url_for("server_setup_page"))
+
+        database.set_setting("morning_greeting_enabled", enabled)
+        database.set_setting("morning_greeting_time", zeit)
+        database.set_setting("morning_greeting_channel_id", channel_id)
+        database.set_setting("morning_greeting_grace_minutes", str(nachlauf))
+        _log_settings_change("config_change", old_values, {
+            "morning_greeting_enabled": enabled,
+            "morning_greeting_time": zeit,
+            "morning_greeting_channel_id": channel_id,
+            "morning_greeting_grace_minutes": str(nachlauf),
+        })
+        flash("Guten-Morgen-Nachricht gespeichert.", "success")
         return redirect(url_for("server_setup_page"))
 
     @app.route("/server-setup/role_settings", methods=["POST"])
