@@ -28,7 +28,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 13. Umgesetzte Sicherheitsmaßnahmen
 14. Unterschiede zum alten Bot
 15. Den Bot erweitern
-16. Testsuite (`tests/`, 360 Tests)
+16. Testsuite (`tests/`, 454 Tests)
 17. Offene Punkte (Stand 03.09.2026)
 
 ---
@@ -642,7 +642,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 16. Testsuite (`tests/`, 360 Tests)
+## 16. Testsuite (`tests/`, 454 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -672,6 +672,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | Datei | Tests | Sichert ab |
 |---|---|---|
 | `test_discord_limits.py` | 76 | Alle acht Embed-Grenzen gegen die offizielle Dokumentation, jeweils genau am Limit erlaubt und ein Zeichen darüber abgelehnt; die 6000-Zeichen-Gesamtsumme; Farbwerte; Zeitzonenbehandlung |
+| `test_nutzertexte.py` | 94 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
 | `test_csrf_coverage.py` | 71 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
 | `test_moderation_limits.py` | 33 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |

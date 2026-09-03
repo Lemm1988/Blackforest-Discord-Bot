@@ -50,7 +50,7 @@
             <textarea name="text" class="form-control form-control-sm w-100" rows="2" required>{{ entry['text'] }}</textarea>
         </form>
         {% else %}
-        <p class="text-muted">Noch keine Texte in diesem Pool - der Bot verwendet solange einen Standard-Fallback.</p>
+        <p class="text-muted">Noch keine Texte in dieser Gruppe — bis du welche anlegst, benutzt der Bot seine Standardtexte.</p>
         {% endfor %}
 
         <form method="POST" action="{{ url_for('personality_texts_add') }}" class="personality-text-entry border rounded p-2 mt-3 bg-body-secondary bg-opacity-50">

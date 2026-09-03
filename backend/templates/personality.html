@@ -103,8 +103,8 @@
             </p>
             <ul class="text-muted small">
                 <li><strong>status_only</strong> (Standard, am sichersten): der Bot postet nie von sich
-                    aus. Nur bereits bestehende Befehle (<code>&gt;hallo</code>, Quiz-Feedback,
-                    Willkommensnachricht) fallen ggf. mood-gefärbt aus, plus der rotierende Status.</li>
+                    aus. Nur ohnehin fällige Ausgaben (Quiz-Feedback, Willkommensnachricht für
+                    neue Mitglieder) fallen ggf. mood-gefärbt aus, plus der rotierende Status.</li>
                 <li><strong>mention_only</strong>: zusätzlich zu status_only antwortet der Bot
                     mood-gefärbt, wenn er direkt mit <code>@BotName</code> erwähnt wird - aber
                     weiterhin nur als Reaktion, nie unaufgefordert.</li>
@@ -168,7 +168,7 @@
                     <select class="form-select channel-picker" id="event_channel_id" name="event_channel_id" data-current="{{ event_settings.event_channel_id }}">
                         <option value="">— kein Kanal (deaktiviert) —</option>
                     </select>
-                    <div class="form-text">Ohne Kanal postet der Bot KEINE Zufallsereignis-Nachrichten (kein Fallback mehr auf einen anderen Kanal).</div>
+                    <div class="form-text">Ohne Kanal postet der Bot keine Zufallsereignis-Nachrichten — er weicht bewusst auf keinen anderen Kanal aus.</div>
                 </div>
             </div>
 
