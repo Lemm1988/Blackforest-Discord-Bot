@@ -28,7 +28,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 13. Umgesetzte Sicherheitsmaßnahmen
 14. Unterschiede zum alten Bot
 15. Den Bot erweitern
-16. Testsuite (`tests/`, 265 Tests)
+16. Testsuite (`tests/`, 331 Tests)
 17. Offene Punkte (Stand 03.09.2026)
 
 ---
@@ -99,13 +99,17 @@ Alle Befehle sind **Hybrid-Commands** (`@commands.hybrid_command`), also technis
 Prefix-Befehl (`>befehl`) **und** Slash-Command (`/befehl`) vorgesehen. **17 Befehle
 insgesamt.**
 
-> **Achtung, Stand 03.09.2026: Die Slash-Variante funktioniert nicht.** Ein
-> Hybrid-Command erscheint bei Discord erst als `/befehl`, wenn der Befehlsbaum einmal
-> mit `bot.tree.sync()` registriert wurde — dieser Aufruf kommt im Projekt nicht vor.
-> Bei Discord abgefragt: 0 global und 0 serverspezifisch registrierte Befehle. **Alle 17
-> Befehle sind ausschließlich über `>befehl` erreichbar.** Die frühere Formulierung an
-> dieser Stelle war falsch. Plan zur Behebung:
-> `~/Desktop/pläne/01-slash-commands.md`.
+> **Gelöst am 03.09.2026.** Vorher war kein einziger Slash-Befehl bei Discord
+> registriert — `bot.tree.sync()` kam im Projekt nicht vor, nachgeprüft über die API: 0
+> global, 0 serverspezifisch. Die Befehle existierten ausschließlich als `>befehl` und
+> waren für neue Mitglieder praktisch unauffindbar.
+>
+> **Seitdem gilt das Umgekehrte: `>` ist abgeschaltet, es gibt nur noch `/`.**
+> `command_prefix=commands.when_mentioned` lässt kein Zeichen mehr übrig, mit dem sich ein
+> Befehl aus dem Chat aufrufen ließe. Wer trotzdem `>xp` tippt, bekommt einen freundlichen
+> Hinweis auf die neue Schreibweise statt Schweigen (`cogs/hilfe.py`, `on_message`) — eng
+> gefasst, damit der Bot nicht auf jedes Zitat antwortet. Der Hinweis löscht sich nach 30
+> Sekunden selbst und darf verschwinden, sobald sich niemand mehr vertippt.
 
 ### Quiz (`cogs/quiz.py`)
 
@@ -638,7 +642,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 16. Testsuite (`tests/`, 265 Tests)
+## 16. Testsuite (`tests/`, 331 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -673,6 +677,8 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_moderation_limits.py` | 25 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
 | `test_moderation_hierarchy.py` | 7 | Rollenhierarchie als eigene Schranke neben den Berechtigungen |
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
+| `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
+| `test_befehlsfehler.py` | 27 | Jeder absehbare Befehlsfehler sagt etwas; Prüfungen antworten nicht mehr selbst |
 | `test_achievements_module.py` | 43 | Modultrennung der Achievements und alle Auslöseschwellen; prüft ausdrücklich, dass `database.py` keinen Achievement-Namen mehr kennt |
 | `test_morning_greeting.py` | 38 | Zeitlogik der täglichen Guten-Morgen-Nachricht: Fenster, Tagesmerker gegen doppelte Grüße nach einem Neustart, Randuhrzeiten um Mitternacht, unbrauchbare Eingaben |
 | `test_mood.py` | 5 | Mood-Texte, Häufigkeitsgrenzen, Nachtstunden über Mitternacht |

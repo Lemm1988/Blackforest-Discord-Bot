@@ -16,6 +16,7 @@ laufenden Bot prüfbar sind.
 import discord
 from discord.ext import commands
 
+import config
 import database
 import hilfe
 
@@ -112,6 +113,47 @@ class Hilfe(commands.Cog):
             color=discord.Color.green(),
         )
         await ctx.send(embed=embed, ephemeral=True)
+
+
+    # ------------------------------------------------------------------
+    # Uebergangshilfe fuer alte Gewohnheiten
+    # ------------------------------------------------------------------
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Weist freundlich darauf hin, wenn jemand noch die alte Schreibweise
+        mit ">" benutzt.
+
+        Seit dem 03.09.2026 loesen Textbefehle nichts mehr aus. Ohne diesen
+        Hinweis waere ">xp" einfach eine Nachricht, auf die nichts passiert -
+        und der Bot wirkte kaputt. Das ist dieselbe Fehlerklasse, die uns bei
+        Kick/Ban und bei den fehlenden Befehlsfehlern schon beschaeftigt hat:
+        Es passiert nichts, und nichts sagt warum.
+
+        BEWUSST eng gefasst - der Hinweis kommt nur, wenn direkt hinter dem ">"
+        ein Befehl steht, den es wirklich gibt. Sonst wuerde der Bot auf jedes
+        Zitat und jeden Pfeil im Chat antworten.
+
+        Der Hinweis loescht sich nach 30 Sekunden selbst, damit der Kanal nicht
+        mit Uebergangsmeldungen volllaeuft.
+
+        Diese Methode darf wieder verschwinden, sobald sich niemand mehr
+        vertippt.
+        """
+        if message.author.bot:
+            return
+
+        text = hilfe.altes_praefix_hinweis(
+            message.content,
+            config.ALTES_PRAEFIX,
+            {b.qualified_name for b in self.bot.commands},
+        )
+        if text is None:
+            return
+        try:
+            await message.channel.send(f"{message.author.mention} {text}", delete_after=30)
+        except discord.HTTPException:
+            pass
 
 
 async def setup(bot: commands.Bot):

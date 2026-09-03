@@ -112,3 +112,44 @@ def nicht_gefunden(name: str, verfuegbar: list[str]) -> str:
         liste = ", ".join(f"`/{n}`" for n in sorted(verfuegbar))
         text += f"\n\nDas hier kannst du benutzen:\n{liste}"
     return text
+
+
+# --------------------------------------------------------------------------
+# Uebergang von ">" auf "/"
+# --------------------------------------------------------------------------
+
+# Befehle, die es unter altem Namen gab. Wer ">leaderboard" tippt, soll den
+# neuen Namen erfahren statt nur "gibt es nicht". None = ersatzlos entfallen.
+UMBENANNT = {
+    "leaderboard": "quiz_rangliste",
+    "bothelp": "help",
+    "gumo": None,
+    "hallo": None,
+}
+
+
+def altes_praefix_hinweis(inhalt: str, praefix: str, bekannte_befehle: set[str]) -> str | None:
+    """Antwort auf eine Nachricht in alter Schreibweise, oder None.
+
+    BEWUSST eng gefasst: Nur wenn direkt hinter dem Praefix ein Befehl steht,
+    den es gibt (oder frueher gab). Sonst antwortete der Bot auf jedes Zitat und
+    jeden Pfeil im Chat - genau der Grund, warum auch unbekannte Befehle still
+    bleiben (siehe fehler.meldung).
+    """
+    if not inhalt.startswith(praefix):
+        return None
+    rest = inhalt[len(praefix):].strip()
+    if not rest:
+        return None
+    wort = rest.split(maxsplit=1)[0].lower()
+
+    if wort in UMBENANNT:
+        neu = UMBENANNT[wort]
+        if neu is None:
+            return f"`{praefix}{wort}` gibt es nicht mehr. Schau mit `/help`, was ich heute kann."
+        return f"Ich höre jetzt auf `/` statt auf `{praefix}` — probier mal `/{neu}`."
+
+    if wort in bekannte_befehle:
+        return f"Ich höre jetzt auf `/` statt auf `{praefix}` — probier mal `/{wort}`."
+
+    return None

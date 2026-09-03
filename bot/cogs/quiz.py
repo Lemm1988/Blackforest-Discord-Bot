@@ -1,7 +1,7 @@
 """Pflanzenquiz: Kategorie wählen, Fragen per Button beantworten, Punkte, Leaderboard.
 
 Punkte pro richtiger Antwort, Antwort-Zeitlimit und Cooldown zwischen zwei
-`>frage`-Aufrufen sind über die Backend-Seite "/games/quiz" einstellbar (settings-
+`/frage`-Aufrufen sind über die Backend-Seite "/games/quiz" einstellbar (settings-
 Tabelle) und werden bei JEDEM Aufruf frisch aus der DB gelesen (nicht einmalig
 beim Bot-Start gecacht) - Änderungen im Backend wirken sich sofort aus, ohne
 Bot-Neustart. Fragen-Kategorien sind über die Backend-Seite "/categories"
@@ -235,7 +235,7 @@ class Quiz(commands.Cog):
                 cat_name = category["name"] if category else "dieser Kategorie"
                 text = (
                     f"🎉 {author.mention}, du hast bereits **alle Fragen in der Kategorie "
-                    f"\"{cat_name}\"** beantwortet! Wähle gerne eine andere Kategorie mit `>frage`.\n"
+                    f"\"{cat_name}\"** beantwortet! Wähle gerne eine andere Kategorie mit `/frage`.\n"
                     f"Dein aktueller Punktestand: **{score}** Punkte."
                 )
             else:
@@ -362,12 +362,12 @@ class Quiz(commands.Cog):
             "quiz_answer_timeout_seconds", config.DEFAULT_SETTINGS["quiz_answer_timeout_seconds"]
         )
         rules_text = (
-            "1️⃣ **Frage beantworten:** Schreibe `>frage` oder `/frage`.\n"
+            "1️⃣ **Frage beantworten:** Schreibe `/frage`.\n"
             "2️⃣ **Kategorie wählen:** Wähle eine Themenkategorie oder \"Zufällige Kategorie\".\n"
             f"3️⃣ **Antwort auswählen:** Klicke innerhalb von {timeout_seconds} Sekunden auf einen Antwort-Button.\n"
             f"4️⃣ **Punkte sammeln:** Jede richtige Antwort bringt dir **{points} Punkte**.\n"
             "5️⃣ **Keine Wiederholung:** Jede Frage wird dir nur einmal gestellt.\n"
-            "6️⃣ **Leaderboard:** Sieh die Top 15 Spieler mit `>leaderboard`, oder die komplette\n"
+            "6️⃣ **Rangliste:** Die Top 15 im Quiz mit `/quiz_rangliste`, oder die komplette\n"
             "Rangliste im Web-Backend unter \"Spiele\" → \"Pflanzenquiz\".\n"
         )
         embed = discord.Embed(title="📜 Spielregeln 📜", description=rules_text, color=discord.Color.blue())
@@ -392,9 +392,9 @@ class Quiz(commands.Cog):
         )
         embed.add_field(
             name="Spielbefehle",
-            value="`>frage` – Starte eine neue Frage\n`>gamescore` – Zeige deinen Punktestand an\n"
-                  "`>leaderboard` – Zeige die Top 15 Spieler\n`>rules` – Zeige die Spielregeln\n"
-                  "`>frage_einreichen` – Reiche eine eigene Frage direkt per Befehl ein\n\n"
+            value="`/frage` – Starte eine neue Frage\n`/gamescore` – Zeige deinen Punktestand an\n"
+                  "`/quiz_rangliste` – Die Top 15 im Quiz\n`/rules` – Zeige die Spielregeln\n"
+                  "`/frage_einreichen` – Reiche eine eigene Frage direkt per Befehl ein\n\n"
                   "Viel Erfolg und Spaß beim Spielen!",
             inline=True,
         )

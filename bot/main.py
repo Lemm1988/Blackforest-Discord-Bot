@@ -28,7 +28,20 @@ intents.messages = True
 intents.reactions = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix=config.COMMAND_PREFIX, intents=intents, help_command=None)
+# command_prefix=when_mentioned schaltet die Textbefehle ab: Es gibt kein
+# Zeichen mehr, mit dem sich ein Befehl aus dem Chat heraus aufrufen liesse.
+# discord.py verlangt zwingend ein Praefix, deshalb die Erwaehnung des Bots
+# selbst - die kann niemand versehentlich tippen.
+#
+# Vorher war es ">". Ein solcher Befehl ist fuer Discord eine gewoehnliche
+# Chatnachricht, die der Bot selbst durchsucht - er taucht in keiner
+# Vorschlagsliste auf, hat keine Beschreibung und ist fuer neue Mitglieder
+# praktisch unauffindbar. Genau deshalb die Umstellung (Vorgabe Patrick,
+# 03.09.2026: ">" komplett raus, "/" rein).
+#
+# Wer trotzdem noch ">xp" tippt, bekommt einen freundlichen Hinweis auf die neue
+# Schreibweise statt Schweigen - siehe cogs/hilfe.py.
+bot = commands.Bot(command_prefix=commands.when_mentioned, intents=intents, help_command=None)
 # help_command=None schaltet die eingebaute Hilfe von discord.py ab. Sie muss
 # weichen, weil sie einen Prefix-Befehl namens "help" belegt - unser eigener
 # /help (cogs/hilfe.py) koennte sonst gar nicht registriert werden. Inhaltlich

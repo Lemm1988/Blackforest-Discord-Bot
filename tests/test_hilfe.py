@@ -222,3 +222,95 @@ def test_module_tragen_ihr_label_selbst(cog, label):
     denken muss."""
     quelle = (COGS / cog).read_text()
     assert "MODUL_LABEL" in quelle and label in quelle
+
+
+# --------------------------------------------------------------------------
+# Übergang von ">" auf "/" (Plan 01, Schritt 4 — 03.09.2026)
+#
+# Seit der Umstellung lösen Textbefehle nichts mehr aus. Ohne Hinweis wäre
+# ">xp" einfach eine Nachricht, auf die nichts passiert - und der Bot wirkte
+# kaputt. Dieselbe Fehlerklasse wie bei den verschluckten WebView-Dialogen und
+# den fehlenden Befehlsfehlern: Es passiert nichts, und nichts sagt warum.
+#
+# Die Gratwanderung: hilfreich genug, um Gewohnheiten aufzufangen, aber eng
+# genug, um nicht auf jedes Zitat im Chat zu antworten.
+# --------------------------------------------------------------------------
+
+BEKANNT = {"xp", "frage", "help", "quiz_rangliste", "serverxp_rangliste"}
+
+
+def _hinweis(text):
+    return hilfe.altes_praefix_hinweis(text, ">", BEKANNT)
+
+
+@pytest.mark.parametrize("eingabe, erwartet_in", [
+    (">xp", "/xp"),
+    (">frage", "/frage"),
+    (">XP", "/xp"),
+    (">frage bitte", "/frage"),
+    ("  >xp", None),
+])
+def test_bekannter_befehl_bekommt_einen_hinweis(eingabe, erwartet_in):
+    """Auch Großschreibung und angehängte Argumente sollen erkannt werden.
+    Führende Leerzeichen dagegen nicht - dann ist es keine Befehlszeile."""
+    hinweis = _hinweis(eingabe)
+    if erwartet_in is None:
+        assert hinweis is None
+    else:
+        assert hinweis and erwartet_in in hinweis
+
+
+@pytest.mark.parametrize("eingabe", [
+    ">",
+    ">   ",
+    "> das ist ein Zitat",
+    ">>> mehrzeiliges Zitat",
+    "kein Präfix am Anfang >xp",
+    ">gibtsnicht",
+    "",
+])
+def test_alles_andere_bleibt_still(eingabe):
+    """Der Bot darf nicht auf jeden Pfeil und jedes Zitat antworten - das wäre
+    schlimmer als das Schweigen, das er ersetzen soll."""
+    assert _hinweis(eingabe) is None
+
+
+def test_umbenannter_befehl_nennt_den_neuen_namen():
+    """Wer `>leaderboard` tippt, soll `/quiz_rangliste` erfahren statt nur
+    'gibt es nicht'."""
+    hinweis = _hinweis(">leaderboard")
+    assert hinweis and "/quiz_rangliste" in hinweis
+
+
+def test_entfallener_befehl_wird_als_entfallen_gemeldet():
+    """`>gumo` gibt es ersatzlos nicht mehr - ein Hinweis auf `/gumo` wäre
+    falsch und würde erneut ins Leere führen."""
+    hinweis = _hinweis(">gumo")
+    assert hinweis and "nicht mehr" in hinweis
+    assert "/gumo" not in hinweis
+    assert "/help" in hinweis
+
+
+def test_bothelp_verweist_auf_die_neue_hilfe():
+    assert "/help" in _hinweis(">bothelp")
+
+
+def test_prefix_ist_im_bot_wirklich_abgeschaltet():
+    """Die Gegenprobe: Solange command_prefix auf ">" stünde, wären die Hinweise
+    oben sinnlos, weil die Befehle noch funktionierten."""
+    quelle = (REPO / "bot" / "main.py").read_text()
+    assert "when_mentioned" in quelle, "Textbefehle sind nicht abgeschaltet."
+    assert "command_prefix=config" not in quelle
+
+
+def test_keine_nutzersichtbaren_texte_verweisen_mehr_auf_prefix():
+    """In den Quiz-Texten standen noch `>frage` und `>leaderboard` - letzteres
+    doppelt falsch, weil es den Befehl gar nicht mehr gibt."""
+    import re
+    for datei in sorted((REPO / "bot").rglob("*.py")):
+        for nr, zeile in enumerate(datei.read_text().splitlines(), 1):
+            if zeile.lstrip().startswith("#"):
+                continue
+            assert not re.search(r"`>[a-z_]+`", zeile), (
+                f"{datei.name}:{nr} verweist noch auf einen >Befehl: {zeile.strip()[:70]}"
+            )

@@ -44,7 +44,12 @@ REDIRECT_URI = f"https://{FLASK_HOST}:{OAUTH_REDIRECT_PORT}/callback"
 
 FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY")  # wird in main.py generiert falls leer
 
-COMMAND_PREFIX = ">"
+# Das frühere Befehlspräfix. Seit dem 03.09.2026 werden damit KEINE Befehle mehr
+# ausgelöst - der Bot hört nur noch auf Slash-Befehle. Der Wert bleibt stehen,
+# weil der Bot Nachrichten wie ">xp" weiterhin ERKENNT, um freundlich auf die
+# neue Schreibweise hinzuweisen (siehe cogs/hilfe.py). Sobald sich niemand mehr
+# vertippt, kann der Hinweis und damit auch diese Zeile weg.
+ALTES_PRAEFIX = ">"
 
 DATA_DIR = BASE_DIR / "data"
 ZITATE_FILE = DATA_DIR / "zitate.txt"
