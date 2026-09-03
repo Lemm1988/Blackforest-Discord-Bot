@@ -149,6 +149,25 @@ def _richtige_antworten(discord_user_id) -> int:
     return row["quiz_correct_count"] if row else 0
 
 
+def _beantwortete_fragen(discord_user_id) -> int:
+    """Wie viele Quizfragen jemand insgesamt beantwortet hat - richtig UND falsch.
+
+    Unterschied zu _richtige_antworten(): Hier zaehlt die Teilnahme, nicht das
+    Ergebnis. Wer sich durch die Fragen arbeitet und dabei auch mal danebenliegt,
+    soll ebenso vorankommen.
+
+    Gezaehlt wird ueber answered_questions - dieselbe Tabelle, die verhindert,
+    dass jemand dieselbe Frage zweimal bekommt. Der Hoechstwert entspricht also
+    der Zahl der verifizierten Fragen.
+    """
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) c FROM answered_questions WHERE user_id = ?",
+            (str(discord_user_id),),
+        ).fetchone()
+    return row["c"] if row else 0
+
+
 def _eingereichte_fragen(discord_user_id) -> int:
     import database
     with _conn() as conn:
@@ -224,6 +243,10 @@ for _b in (
     Bedingungsart("quiz_richtig", "Richtig beantwortete Quizfragen", "Fragen",
                   "Z\u00e4hlt jede richtig beantwortete Quizfrage seit Beginn.",
                   NAME, _richtige_antworten),
+    Bedingungsart("quiz_beantwortet", "Beantwortete Quizfragen", "Fragen",
+                  "Z\u00e4hlt jede beantwortete Frage - richtig wie falsch. Belohnt "
+                  "Teilnahme statt Treffsicherheit.",
+                  NAME, _beantwortete_fragen),
     Bedingungsart("fragen_eingereicht", "Eingereichte Quizfragen", "Fragen",
                   "Z\u00e4hlt eingereichte Fragen, auch noch nicht freigegebene.",
                   NAME, _eingereichte_fragen),
@@ -265,6 +288,12 @@ module.REGISTRATUR.eintragen(module.Modul(
     ereignis_kontext={
         "quiz_correct": _kontext_quiz_richtig,
         "question_submitted": _kontext_frage_eingereicht,
+    },
+    berechtigungen={
+        # Wer eigene Quizfragen einreichen darf. Bis zum 03.09.2026 durfte das
+        # jedes Servermitglied; seit der Rolle "Ideenschmied" ist es etwas, das
+        # man sich verdient.
+        "submit_questions": "Eigene Quizfragen einreichen",
     },
     nutzer_uebersicht=_uebersicht,
     uebersicht_standard={

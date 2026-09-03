@@ -37,7 +37,7 @@
                     <select class="form-select" id="role_id" name="role_id" required>
                         {% for r in rollen %}
                         <option value="{{ r.id }}" {% if not r.verwaltbar %}disabled{% endif %}>
-                            {{ r.name }}{% if not r.verwaltbar %} — steht über dem Bot{% endif %}
+                            {{ r.name }}{% if not r.verwaltbar %} — {{ r.grund or "steht über dem Bot" }}{% endif %}
                         </option>
                         {% endfor %}
                     </select>

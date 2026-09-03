@@ -12,6 +12,10 @@
     Rollen darüber sind in der Auswahl gesperrt — sie lassen sich nur direkt in Discord vergeben.
     Wenn du eine gesperrte Rolle brauchst, zieh die Bot-Rolle in den Servereinstellungen
     darüber. Bedenke dabei: Der Bot kann dann auch die Träger dieser Rolle kicken und bannen.
+    <br><br>
+    Ebenfalls gesperrt sind Rollen, die über eine <strong>Reaktion</strong> vergeben werden
+    — etwa die Mitglieder-Rolle für das Akzeptieren der Regeln. Sie sollen nur auf diesem
+    einen Weg entstehen; ein zweiter Weg wäre eine Umgehung.
 </div>
 
 <div class="card mb-4">
@@ -35,7 +39,7 @@
                                     <option value="{{ r.id }}"
                                             {% if not r.verwaltbar %}disabled{% endif %}
                                             {% if zuordnung.get(key) == r.id %}selected{% endif %}>
-                                        {{ r.name }}{% if not r.verwaltbar %} — steht über dem Bot{% endif %}
+                                        {{ r.name }}{% if not r.verwaltbar %} — {{ r.grund or "steht über dem Bot" }}{% endif %}
                                     </option>
                                     {% endfor %}
                                 </select>
@@ -47,6 +51,45 @@
             </div>
             <button type="submit" class="btn btn-primary">Speichern</button>
         </form>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Rolle bringt Berechtigung mit</h5></div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Die andere Richtung: Wer eine bestimmte Rolle trägt, bekommt damit Rechte im
+            Bot — ohne dass jemand sie einzeln vergeben muss. Gedacht für verdiente Rollen,
+            etwa „Ideenschmied darf eigene Quizfragen einreichen".
+        </p>
+        {% for r in rollen %}
+        <form method="POST" action="{{ url_for('roles_mapping_role_rights') }}"
+              class="border-bottom py-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="role_id" value="{{ r.id }}">
+            <div class="d-flex flex-wrap align-items-center gap-2">
+                <strong class="me-2" style="min-width:14rem">{{ r.name }}</strong>
+                {% for key in alle_rechte %}
+                {% if key != 'is_admin' %}
+                <div class="form-check form-check-inline mb-0">
+                    <input class="form-check-input" type="checkbox" name="rechte" value="{{ key }}"
+                           id="rr_{{ r.id }}_{{ key }}"
+                           {% if key in rollenrechte.get(r.id, []) %}checked{% endif %}>
+                    <label class="form-check-label small" for="rr_{{ r.id }}_{{ key }}">
+                        {{ permission_labels.get(key, key) }}
+                    </label>
+                </div>
+                {% endif %}
+                {% endfor %}
+                <button type="submit" class="btn btn-outline-primary btn-sm ms-auto">Speichern</button>
+            </div>
+        </form>
+        {% endfor %}
+        <p class="form-text mt-3 mb-0">
+            Admin-Rechte fehlen hier bewusst: Sie über eine Rolle zu vergeben hieße, dass
+            jeder, der die Rolle vergeben darf, auch volle Backend-Rechte verteilen kann.
+            Die gehören einzeln in die Benutzerverwaltung.
+        </p>
     </div>
 </div>
 

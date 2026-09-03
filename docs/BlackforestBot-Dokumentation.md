@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 594 Tests)
+17. Testsuite (`tests/`, 616 Tests)
 18. Offene Punkte (Stand 03.09.2026, abends)
 19. Chronik des 03.09.2026
 
@@ -482,12 +482,27 @@ Rollenvergabe ohne Fehlermeldung abgeschaltet.
 Beim Anlegen setzt der Bot die Reaktion selbst unter die Nachricht und prüft, ob es diese
 überhaupt gibt.
 
+**Reaktionsrollen sind exklusiv.** Eine Rolle, die über eine Reaktion vergeben wird, lässt
+sich weder als verdiente Rolle noch in der Rechte-Zuordnung eintragen — die Auswahllisten
+sperren sie mit Begründung, und beide Formulare weisen sie serverseitig ab.
+
+Der Grund ist bei diesem Server konkret: **Die Mitglieder-Rolle ist das Tor.** Wer sie hat,
+sieht alle Kanäle; sie entsteht ausschließlich durch das Akzeptieren der Regeln im
+Regelkanal. Ein zweiter Vergabeweg wäre per Definition eine Umgehung — jemand bekäme
+vollen Zugriff, ohne die Regeln gelesen zu haben.
+
+Die Sperre gilt auch für **abgeschaltete** Regeln. Sonst liesse sie sich aufheben, indem
+man die Reaktionsregel kurz deaktiviert, den Eintrag woanders anlegt und sie wieder
+einschaltet. Wer eine Rolle wirklich auf mehreren Wegen vergeben will, entfernt die
+Reaktionsregel — dann ist die Absicht ausdrücklich.
+
 ### Weg 2 — Verdiente Rollen (`/earned-roles`)
 
 Bedingung erfüllt → der Bot meldet sich → die Person holt die Rolle per Knopf ab.
 
-Fünf Bedingungen, alle auf Zahlen gestützt, die der Bot ohnehin führt: richtig
-beantwortete Quizfragen, Level, XP, eingereichte Fragen, Tage auf dem Server. **Welche
+Sechs Bedingungen, alle auf Zahlen gestützt, die der Bot ohnehin führt: richtig
+beantwortete Quizfragen, **beantwortete** Quizfragen (Teilnahme statt Treffsicherheit),
+Level, XP, eingereichte Fragen, Tage auf dem Server. **Welche
 davon zur Auswahl stehen, hängt an den installierten Modulen** — ohne Pflanzenquiz gibt es
 keine Quiz-Bedingungen.
 
@@ -516,6 +531,31 @@ ohne Zuordnung wie Member und Server Booster, alles über der Bot-Rolle, und der
 
 Die Planung (`rollenabgleich.massnahmen()`) ist vom Ausführen getrennt und rein — sie
 verändert ihre Eingaben nicht, sonst zeigte die Vorschau je nach Reihenfolge etwas anderes.
+
+### Die Gegenrichtung — eine Rolle bringt Rechte mit
+
+Wege 1 bis 3 vergeben Rollen. Seit dem 03.09.2026 geht es auch andersherum: Eine Rolle
+kann eine **Berechtigung im Bot** mitbringen, ohne dass jemand sie einzeln vergibt.
+
+Anlass war „Ideenschmied": Wer sich durch 100 Quizfragen gearbeitet hat, bekommt die Rolle
+— und mit ihr das Recht, eigene Fragen einzureichen. Vorher durfte das jedes
+Servermitglied.
+
+Eingestellt wird das auf derselben Seite wie die Zuordnung, aber in einem **eigenen
+Formular**. Beides zusammenzulegen wäre kürzer, aber man könnte beim Lesen nicht mehr
+unterscheiden, welche Richtung gemeint ist.
+
+**`is_admin` lässt sich nicht über eine Rolle vergeben.** Sonst könnte jeder, der die Rolle
+in Discord vergeben darf, volle Backend-Rechte verteilen — an der Benutzerverwaltung
+vorbei, wo so etwas einzeln und nachvollziehbar passiert.
+
+Technisch: `has_permission()` nimmt seit dem Umbau optional die Rollen-IDs entgegen. Die
+Funktion kennt Discord nicht und soll es nicht — wer die Rollen kennt (Backend, Cogs),
+reicht sie herein; wer nicht, bekommt weiterhin das Verhalten von vorher.
+
+**Rechte können zu einem Modul gehören.** `submit_questions` gibt es nur mit dem
+Pflanzenquiz — ohne das Modul steht es gar nicht erst zur Vergabe, weil es dann nichts
+gäbe, wofür es gilt.
 
 ### Was die Benutzerverwaltung zeigt
 
@@ -809,7 +849,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 594 Tests)
+## 17. Testsuite (`tests/`, 616 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -839,8 +879,9 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | Datei | Tests | Sichert ab |
 |---|---|---|
 | `test_discord_limits.py` | 76 | Alle acht Embed-Grenzen gegen die offizielle Dokumentation, jeweils genau am Limit erlaubt und ein Zeichen darüber abgelehnt; die 6000-Zeichen-Gesamtsumme; Farbwerte; Zeitzonenbehandlung |
-| `test_verdiente_rollen.py` | 47 | Verdiente Rollen: Schwellen, Abhol-Knopf (an eine Person gebunden, übersteht Neustarts) und der Merker gegen wiederholte Ankündigungen |
-| `test_reaktionsrollen.py` | 15 | Reaktionsrollen: Schema-Zusagen, Umzug der alten Regel, und dass Kanal und Rolle über IDs statt Namen angesprochen werden |
+| `test_verdiente_rollen.py` | 49 | Verdiente Rollen: Schwellen, Abhol-Knopf (an eine Person gebunden, übersteht Neustarts) und der Merker gegen wiederholte Ankündigungen |
+| `test_reaktionsrollen.py` | 20 | Reaktionsrollen: Schema-Zusagen, Umzug der alten Regel, und dass Kanal und Rolle über IDs statt Namen angesprochen werden |
+| `test_rollenrechte.py` | 15 | Eine Rolle bringt Rechte mit: getrennte Tabellen für beide Richtungen, kein `is_admin` über Rollen, Befehl **und** Webformular abgesichert |
 | `test_rollenabgleich.py` | 28 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten |
 | `test_nutzertexte.py` | 106 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
 | `test_csrf_coverage.py` | 79 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |

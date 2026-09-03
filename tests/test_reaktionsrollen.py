@@ -189,3 +189,62 @@ def test_find_reaction_role_liefert_nur_aktive():
     block = quelle[quelle.index("def find_reaction_role"):]
     block = block[: block.index("def add_reaction_role")]
     assert "enabled = 1" in block
+
+
+# --------------------------------------------------------------------------
+# Reaktionsrollen sind exklusiv (Vorgabe Patrick, 03.09.2026)
+#
+# „member bekommen nur mitglieder die im regel kanal die regel akzeptieren und
+# damit einsicht auf den ganzen server" — die Mitglieder-Rolle ist das Tor, nicht
+# eine Belohnung. Wer sie hat, sieht alle Kanäle.
+#
+# Ein versehentlicher Eintrag unter „Verdiente Rollen" oder in der
+# Rechte-Zuordnung würde Leuten den Server öffnen, ohne dass sie die Regeln
+# gelesen haben. Deshalb sind über Reaktionen vergebene Rollen für die anderen
+# beiden Wege gesperrt.
+# --------------------------------------------------------------------------
+
+def test_reaktionsrollen_werden_als_gesperrt_gemeldet():
+    quelle = DATABASE_PY.read_text()
+    block = quelle[quelle.index("def reaktionsvergebene_rollen"):]
+    block = block[: block.index("def find_reaction_role")]
+    assert "SELECT role_id FROM reaction_roles" in block
+
+
+def test_auch_abgeschaltete_regeln_sperren():
+    """Sonst wäre die Sperre weg, sobald jemand die Regel kurz deaktiviert - und
+    die Rolle liesse sich anderswo eintragen."""
+    quelle = DATABASE_PY.read_text()
+    block = quelle[quelle.index("def reaktionsvergebene_rollen"):]
+    block = block[: block.index("def find_reaction_role")]
+    assert "enabled" not in block, (
+        "Die Sperre filtert nach enabled - eine kurz abgeschaltete Regel würde sie aufheben."
+    )
+
+
+def test_verdiente_rollen_lehnen_reaktionsrollen_ab():
+    quelle = APP_PY.read_text()
+    block = quelle[quelle.index("def earned_roles_add"):]
+    block = block[: block.index("def earned_roles_update")]
+    assert "reaktionsvergebene_rollen" in block
+    pruefung = block.index("reaktionsvergebene_rollen")
+    speichern = block.index("add_earned_role")
+    assert pruefung < speichern, "Die Prüfung steht nach dem Speichern."
+
+
+def test_rechte_zuordnung_lehnt_reaktionsrollen_ab():
+    quelle = APP_PY.read_text()
+    block = quelle[quelle.index("def roles_mapping_save"):]
+    block = block[: block.index("@app.route(\"/users\")")]
+    assert "reaktionsvergebene_rollen" in block
+    pruefung = block.index("reaktionsvergebene_rollen")
+    speichern = block.index("set_permission_role")
+    assert pruefung < speichern
+
+
+def test_die_auswahllisten_nennen_den_grund():
+    """„Gesperrt" ohne Begründung führt zu einer Rückfrage. Der Grund steht
+    direkt daneben."""
+    for datei in ("earned_roles.html", "roles_mapping.html"):
+        quelle = (REPO / "backend" / "templates" / datei).read_text()
+        assert "r.grund" in quelle, f"{datei} zeigt den Sperrgrund nicht an."

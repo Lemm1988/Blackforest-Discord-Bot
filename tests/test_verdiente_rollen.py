@@ -301,3 +301,29 @@ def test_loeschen_raeumt_die_merker_mit_auf():
     block = quelle[quelle.index("def delete_earned_role"):]
     block = block[: block.index("def earned_role_status")]
     assert "DELETE FROM earned_role_grants" in block
+
+
+def test_teilnahme_zaehlt_getrennt_von_treffsicherheit():
+    """„Beantwortete Fragen" (03.09.2026 ergänzt) zählt richtig UND falsch. Wer
+    sich durch die Fragen arbeitet und dabei danebenliegt, soll ebenso
+    vorankommen wie jemand, der alles trifft."""
+    assert vr.ist_gueltige_art("quiz_beantwortet")
+    beantwortet = vr.BEDINGUNGSARTEN()["quiz_beantwortet"]
+    richtig = vr.BEDINGUNGSARTEN()["quiz_richtig"]
+    assert beantwortet.modul == richtig.modul == "quiz"
+    assert beantwortet.schluessel != richtig.schluessel
+    # Die Bedingungen duerfen sich nicht gegenseitig ausloesen
+    assert vr.erfuellt("quiz_beantwortet", 100, {"quiz_richtig": 999}) is False
+    assert vr.erfuellt("quiz_richtig", 100, {"quiz_beantwortet": 999}) is False
+
+
+def test_beantwortete_fragen_zaehlt_ueber_die_richtige_tabelle():
+    """answered_questions ist dieselbe Tabelle, die verhindert, dass jemand
+    eine Frage zweimal bekommt - der Höchstwert entspricht also der Zahl der
+    verifizierten Fragen. Über user_stats zu zählen wäre falsch, dort stehen
+    nur die richtigen."""
+    quelle = (REPO / "bot" / "modul_quiz.py").read_text()
+    block = quelle[quelle.index("def _beantwortete_fragen"):]
+    block = block[: block.index("def _eingereichte_fragen")]
+    assert "answered_questions" in block
+    assert "quiz_correct_count" not in block

@@ -54,6 +54,13 @@ class Modul:
     """{Ereignisname: Funktion(user_id) -> dict}. Liefert die Zahlen, die die
     Achievements dieses Moduls für dieses Ereignis brauchen."""
 
+    berechtigungen: dict = field(default_factory=dict)
+    """{Schlüssel: Bezeichnung} — Rechte, die es nur mit diesem Modul gibt.
+
+    Ohne das Quizmodul soll „Eigene Quizfragen einreichen" gar nicht erst zur
+    Vergabe stehen; eine zentrale Liste kennte das Recht auch dann, wenn es
+    nichts mehr gibt, wofür es gilt."""
+
     nutzer_uebersicht: Callable | None = None
     """Funktion(user_id) -> dict. Der Beitrag dieses Moduls zur Übersicht einer
     Person auf der Mitgliederseite. Ohne das Modul fehlen die Werte einfach,
@@ -92,6 +99,13 @@ class Modulregistratur:
             if modul.schema or modul.migrationen:
                 angewendet.append(modul.name)
         return angewendet
+
+    def berechtigungen(self) -> dict:
+        """Alle Rechte der installierten Module, {Schlüssel: Bezeichnung}."""
+        gesammelt: dict = {}
+        for modul in self.alle():
+            gesammelt.update(modul.berechtigungen)
+        return gesammelt
 
     def uebersicht(self, discord_user_id) -> dict:
         """Die Übersichtswerte aller installierten Module für eine Person.

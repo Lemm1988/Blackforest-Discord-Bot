@@ -22,6 +22,7 @@ import config
 import database
 import modul_xp_level
 import modul_quiz
+import module
 import mood
 import rollenabgleich
 import scheduling
@@ -266,6 +267,26 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             return False
         return bot.guilds[0].get_member(int(discord_user_id)) is not None
 
+    def _rollen_von(discord_user_id) -> set:
+        """Discord-Rollen einer Person - fuer Rechte, die an einer Rolle haengen.
+
+        Reine Cache-Abfrage ohne Netzzugriff. Ist die Person nicht (mehr) auf dem
+        Server, kommt eine leere Menge zurueck und es zaehlen nur die
+        Backend-Flags.
+        """
+        if not bot.guilds:
+            return set()
+        member = bot.guilds[0].get_member(int(discord_user_id))
+        if member is None:
+            return set()
+        return {str(r.id) for r in member.roles}
+
+    def _hat_recht(discord_user_id, key: str) -> bool:
+        """Berechtigungspruefung inklusive der Rechte, die eine Rolle mitbringt."""
+        return database.has_permission(
+            discord_user_id, key, rollen=_rollen_von(discord_user_id)
+        )
+
     def require_login(view):
         """Nur eingeloggt, keine weitere Prüfung - für Routen, die selbst intern
         differenzieren (z.B. /game: Leaderboard vs. Einstellungen)."""
@@ -298,7 +319,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             def wrapped(*args, **kwargs):
                 if "discord_user_id" not in session:
                     return redirect(url_for("login"))
-                if not database.has_permission(session["discord_user_id"], key):
+                if not _hat_recht(session["discord_user_id"], key):
                     return render_template("no_access.html"), 403
                 return view(*args, **kwargs)
             return wrapped
@@ -313,7 +334,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
                 if "discord_user_id" not in session:
                     return redirect(url_for("login"))
                 uid = session["discord_user_id"]
-                if not any(database.has_permission(uid, k) for k in keys):
+                if not any(_hat_recht(uid, k) for k in keys):
                     return render_template("no_access.html"), 403
                 return view(*args, **kwargs)
             return wrapped
@@ -326,7 +347,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         def _has_permission(key):
             if "discord_user_id" not in session:
                 return False
-            return database.has_permission(session["discord_user_id"], key)
+            return _hat_recht(session["discord_user_id"], key)
         return {"has_permission": _has_permission}
 
     def _get_csrf_token():
@@ -549,7 +570,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         ]
 
         settings = None
-        if database.has_permission(session["discord_user_id"], "manage_game_settings"):
+        if _hat_recht(session["discord_user_id"], "manage_game_settings"):
             settings = {
                 "enabled": database.get_setting(
                     "game_quiz_enabled", config.DEFAULT_SETTINGS["game_quiz_enabled"]
@@ -635,7 +656,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     @require_guild_member
     def xp_level_page():
         settings = None
-        if database.has_permission(session["discord_user_id"], "manage_game_settings"):
+        if _hat_recht(session["discord_user_id"], "manage_game_settings"):
             settings = {
                 key: database.get_setting(key, config.DEFAULT_SETTINGS[key]) for key in XP_LEVEL_SETTING_KEYS
             }
@@ -689,16 +710,17 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         })
         return redirect(url_for("xp_level_page"))
 
-    # --- Fragen einreichen (Basis-Berechtigung: jedes aktuelle Guild-Mitglied) ---
+    # --- Fragen einreichen. Seit dem 03.09.2026 an das Recht "submit_questions"
+    # gebunden, das auch aus einer Discord-Rolle kommen kann (Ideenschmied). ---
 
     @app.route("/dbot")
-    @require_guild_member
+    @require_permission("submit_questions")
     def bot_question_insert():
         user_questions = modul_quiz.get_questions_by_user(session["discord_user_id"])
         return render_template("dbot.html", user_questions=user_questions, categories=modul_quiz.get_categories())
 
     @app.route("/qinput", methods=["POST"])
-    @require_guild_member
+    @require_permission("submit_questions")
     def submit_question():
         form = request.form
         question = (form.get("question") or "").strip()
@@ -1305,6 +1327,13 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     @require_permission("manage_badword_filter")
     def earned_roles_page():
         rollen, verwaltbare = _discord_rollen()
+        # Rollen, die ueber eine Reaktion vergeben werden, sind hier gesperrt -
+        # sonst gaebe es einen zweiten Weg an der Regel-Zustimmung vorbei.
+        gesperrt = database.reaktionsvergebene_rollen()
+        for r in rollen:
+            if r["id"] in gesperrt:
+                r["verwaltbar"] = False
+                r["grund"] = "wird über eine Reaktion vergeben"
         rollennamen = {r["id"]: r["name"] for r in rollen}
         regeln = database.get_earned_roles()
         for r in regeln:
@@ -1338,6 +1367,10 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             return redirect(url_for("earned_roles_page"))
         if schwelle < 1:
             flash("Die Schwelle muss mindestens 1 sein.", "error")
+            return redirect(url_for("earned_roles_page"))
+        if role_id in database.reaktionsvergebene_rollen():
+            flash("Diese Rolle wird über eine Reaktion vergeben und darf nicht zusätzlich "
+                  "verdient werden — sonst gäbe es einen zweiten Weg daran vorbei.", "error")
             return redirect(url_for("earned_roles_page"))
         if role_id not in verwaltbare:
             flash("Diese Rolle steht über der Bot-Rolle — der Bot könnte sie nicht vergeben.", "error")
@@ -1626,13 +1659,55 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     @require_permission("is_admin")
     def roles_mapping_page():
         rollen, _ = _discord_rollen()
+        gesperrt = database.reaktionsvergebene_rollen()
+        for r in rollen:
+            if r["id"] in gesperrt:
+                r["verwaltbar"] = False
+                r["grund"] = "wird über eine Reaktion vergeben"
+        labels = dict(config.PERMISSION_LABELS)
+        labels.update(module.REGISTRATUR.berechtigungen())
         return render_template(
             "roles_mapping.html",
             rollen=rollen,
             zuordnung=database.get_permission_role_map(),
+            rollenrechte=database.get_role_permission_map(),
             all_permissions=database.ALL_PERMISSIONS,
-            permission_labels=config.PERMISSION_LABELS,
+            alle_rechte=database.alle_berechtigungen(),
+            permission_labels=labels,
         )
+
+    @app.route("/roles-mapping/role-rights", methods=["POST"])
+    @require_permission("is_admin")
+    def roles_mapping_role_rights():
+        """Die Gegenrichtung: Welche Rechte bringt eine Rolle mit?
+
+        Bewusst getrennt vom Speichern der anderen Richtung - beides in einem
+        Formular waere kuerzer, aber man koennte beim Lesen nicht mehr
+        unterscheiden, was gerade gemeint ist.
+        """
+        role_id = (request.form.get("role_id") or "").strip()
+        if not role_id.isdigit():
+            flash("Ungültige Rolle.", "error")
+            return redirect(url_for("roles_mapping_page"))
+        keys = [k for k in request.form.getlist("rechte") if k in database.alle_berechtigungen()]
+
+        # is_admin ueber eine Rolle zu vergeben hiesse: Wer die Rolle in Discord
+        # vergibt, vergibt volle Backend-Rechte. Das gehoert in die
+        # Benutzerverwaltung, wo es einzeln und nachvollziehbar passiert.
+        if "is_admin" in keys:
+            flash("Admin-Rechte lassen sich nicht über eine Rolle vergeben — das würde "
+                  "bedeuten, dass jeder, der die Rolle vergeben darf, auch volle "
+                  "Backend-Rechte verteilen kann. Bitte einzeln in der Benutzerverwaltung.",
+                  "error")
+            return redirect(url_for("roles_mapping_page"))
+
+        database.set_role_permissions(role_id, keys)
+        database.log_audit(
+            session["discord_user_id"], "role_permissions_change", target_id=role_id,
+            detail=", ".join(keys) or "(keine)",
+        )
+        flash("Rechte der Rolle gespeichert.", "success")
+        return redirect(url_for("roles_mapping_page"))
 
     @app.route("/roles-mapping/save", methods=["POST"])
     @require_permission("is_admin")
@@ -1645,6 +1720,11 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             # Nur Rollen zulassen, die der Bot auch verwalten kann. Ein
             # manipulierter Aufruf soll keine Zuordnung anlegen koennen, die
             # spaeter beim Vergeben an Discord scheitert.
+            if neu_wert and neu_wert in database.reaktionsvergebene_rollen():
+                flash("Diese Rolle wird über eine Reaktion vergeben und darf keiner "
+                      "Berechtigung zugeordnet werden — sonst gäbe es einen zweiten Weg "
+                      "daran vorbei.", "error")
+                return redirect(url_for("roles_mapping_page"))
             if neu_wert and neu_wert not in verwaltbar:
                 flash("Diese Rolle steht über der Bot-Rolle und kann nicht zugeordnet werden.", "error")
                 return redirect(url_for("roles_mapping_page"))

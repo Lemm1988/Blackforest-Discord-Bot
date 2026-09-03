@@ -47,6 +47,21 @@ CREATE TABLE IF NOT EXISTS earned_role_grants (
     PRIMARY KEY (rule_id, discord_user_id)
 );
 
+-- Die Gegenrichtung (03.09.2026): Welche Discord-Rolle welche Berechtigung im
+-- Bot mitbringt. Anlass war die Rolle "Ideenschmied" - wer sie hat, darf eigene
+-- Quizfragen einreichen.
+--
+-- Bewusst getrennt von permission_roles: Dort steht "Recht X bedeutet Rolle Y"
+-- (der Bot vergibt), hier "Rolle Y bedeutet Recht X" (der Bot leitet ab). Beide
+-- Richtungen in eine Tabelle zu legen waere kuerzer, aber man koennte nicht
+-- mehr erkennen, welche gemeint ist - und ein Kreis (Recht gibt Rolle gibt
+-- Recht) waere nicht auffindbar.
+CREATE TABLE IF NOT EXISTS role_permissions (
+    role_id TEXT NOT NULL,
+    permission_key TEXT NOT NULL,
+    PRIMARY KEY (role_id, permission_key)
+);
+
 -- Welche Rollen der Bot wegen einer BERECHTIGUNG vergeben hat (03.09.2026).
 --
 -- Der Grund fuer diese Tabelle: Der Bot soll nur wegnehmen, was er selbst
@@ -700,13 +715,68 @@ def is_protected_owner(discord_user_id) -> bool:
     return bool(config.BOT_OWNER_ID) and str(discord_user_id) == config.BOT_OWNER_ID
 
 
-def has_permission(discord_user_id, key: str) -> bool:
+def get_role_permission_map() -> dict:
+    """{Rollen-ID: {Rechte}}. Leer, solange nichts eingerichtet ist."""
+    karte: dict = {}
+    with get_connection() as conn:
+        for row in conn.execute("SELECT role_id, permission_key FROM role_permissions"):
+            karte.setdefault(row["role_id"], set()).add(row["permission_key"])
+    return karte
+
+
+def set_role_permissions(role_id, keys) -> None:
+    """Legt fest, welche Rechte eine Rolle mitbringt. Ersetzt die bisherigen."""
+    erlaubt = set(alle_berechtigungen())
+    keys = [k for k in keys if k in erlaubt]
+    with get_connection() as conn:
+        conn.execute("DELETE FROM role_permissions WHERE role_id = ?", (str(role_id),))
+        conn.executemany(
+            "INSERT INTO role_permissions (role_id, permission_key) VALUES (?, ?)",
+            [(str(role_id), k) for k in keys],
+        )
+        conn.commit()
+
+
+def rechte_aus_rollen(rollen_ids) -> set:
+    """Welche Rechte bringen diese Rollen zusammen mit?"""
+    if not rollen_ids:
+        return set()
+    karte = get_role_permission_map()
+    rechte: set = set()
+    for rid in rollen_ids:
+        rechte |= karte.get(str(rid), set())
+    return rechte
+
+
+def alle_berechtigungen() -> list:
+    """Die Kern-Rechte plus die der installierten Module.
+
+    ALL_PERMISSIONS bleibt die Liste der Rechte, die es IMMER gibt. Was nur mit
+    einem Modul existiert, kommt von dort - ohne das Quizmodul steht "Eigene
+    Quizfragen einreichen" gar nicht erst zur Vergabe.
+    """
+    return list(ALL_PERMISSIONS) + sorted(module.REGISTRATUR.berechtigungen())
+
+
+def berechtigungs_bezeichnung(key: str) -> str:
+    return module.REGISTRATUR.berechtigungen().get(key, key)
+
+
+def has_permission(discord_user_id, key: str, rollen=None) -> bool:
     """True, wenn der User genau dieses Flag ODER is_admin hat (is_admin impliziert alles).
 
     Der Bot-Owner (config.BOT_OWNER_ID) ist ein Sonderfall VOR der eigentlichen
     Abfrage: er hat immer alle Rechte, unabhaengig vom Zustand von
     user_permissions (auch wenn die Tabelle leer/manipuliert ist) - analog zum
-    bestehenden is_admin-Bypass, nur eine Ebene davor."""
+    bestehenden is_admin-Bypass, nur eine Ebene davor.
+
+    "rollen" (03.09.2026): Discord-Rollen-IDs der Person. Werden sie mitgegeben,
+    zaehlen auch Rechte, die eine ROLLE mitbringt - etwa "Ideenschmied darf
+    Fragen einreichen". Bewusst ein optionales Argument statt einer Abfrage im
+    Innern: Diese Funktion kennt Discord nicht und soll es auch nicht. Wer die
+    Rollen kennt (Backend, Cogs), reicht sie herein; wer nicht, bekommt weiterhin
+    das Verhalten von vorher.
+    """
     if is_protected_owner(discord_user_id):
         return True
     with get_connection() as conn:
@@ -714,7 +784,12 @@ def has_permission(discord_user_id, key: str) -> bool:
             "SELECT 1 FROM user_permissions WHERE discord_user_id = ? AND permission_key IN (?, 'is_admin')",
             (str(discord_user_id), key),
         ).fetchone()
-        return row is not None
+        if row is not None:
+            return True
+    if not rollen:
+        return False
+    aus_rollen = rechte_aus_rollen(rollen)
+    return key in aus_rollen or "is_admin" in aus_rollen
 
 
 def log_audit(actor_id, action: str, target_id=None, detail=None):
@@ -930,6 +1005,26 @@ def get_reaction_roles(nur_aktive: bool = False):
         if nur_aktive:
             sql += " WHERE enabled = 1"
         return [dict(r) for r in conn.execute(sql + " ORDER BY id")]
+
+
+def reaktionsvergebene_rollen() -> set:
+    """Rollen, die ueber eine Reaktionsregel vergeben werden.
+
+    Diese Rollen duerfen von den anderen beiden Wegen (verdiente Rollen,
+    Rechte-Zuordnung) NICHT vergeben werden. Grund (Vorgabe Patrick,
+    03.09.2026): Member ist bei diesem Server das Tor - wer sie hat, sieht alle
+    Kanaele. Sie darf ausschliesslich durch das Akzeptieren der Regeln entstehen.
+
+    Bewusst hergeleitet statt konfiguriert: Wenn eine Rolle ueber eine Reaktion
+    vergeben wird, ist das ihr Weg. Ein zweiter Weg daran vorbei waere per
+    Definition eine Umgehung. Wer eine Rolle doch auf mehreren Wegen vergeben
+    will, entfernt die Reaktionsregel - dann ist die Absicht ausdruecklich.
+
+    Auch ABGESCHALTETE Regeln zaehlen: Sonst waere die Sperre weg, sobald jemand
+    die Regel kurz deaktiviert, und die Rolle liesse sich anderswo eintragen.
+    """
+    with get_connection() as conn:
+        return {row["role_id"] for row in conn.execute("SELECT role_id FROM reaction_roles")}
 
 
 def find_reaction_role(message_id, emoji: str):

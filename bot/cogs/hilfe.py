@@ -66,8 +66,12 @@ class Hilfe(commands.Cog):
             })
         return module
 
-    def _pruefer(self, user_id):
-        return lambda recht: database.has_permission(user_id, recht)
+    def _pruefer(self, ctx):
+        """Rechtepruefung fuer die Hilfe - inklusive dessen, was eine Rolle
+        mitbringt. Sonst stuende ein Befehl nicht in der Hilfe, den der Aufrufer
+        sehr wohl benutzen darf."""
+        rollen = {str(r.id) for r in getattr(ctx.author, "roles", [])}
+        return lambda recht: database.has_permission(ctx.author.id, recht, rollen=rollen)
 
     # ------------------------------------------------------------------
     # Der Befehl
@@ -83,7 +87,7 @@ class Hilfe(commands.Cog):
     )
     @discord.app_commands.describe(befehl="Optional: der Befehl, den du genauer erklärt haben möchtest")
     async def help(self, ctx: commands.Context, befehl: str = ""):
-        pruefer = self._pruefer(ctx.author.id)
+        pruefer = self._pruefer(ctx)
         module = self._module()
 
         # Nur was der Aufrufer sehen darf - auch fuer die Suche unten, damit die

@@ -211,6 +211,24 @@ class CategorySelectView(discord.ui.View):
             child.disabled = True
 
 
+async def _darf_fragen_einreichen(ctx: commands.Context) -> bool:
+    """Fragen einreichen ist seit dem 03.09.2026 an ein Recht gebunden.
+
+    Es kann aus dem Backend kommen (Flag "submit_questions") ODER aus einer
+    Discord-Rolle, der dieses Recht zugeordnet ist - so ist "Ideenschmied"
+    gedacht: Wer sich durch 100 Fragen gearbeitet hat, darf eigene beisteuern.
+
+    Vorher durfte das jedes Servermitglied.
+    """
+    rollen = {str(r.id) for r in getattr(ctx.author, "roles", [])}
+    if database.has_permission(ctx.author.id, "submit_questions", rollen=rollen):
+        return True
+    raise commands.CheckFailure(
+        "Fragen einreichen dürfen Mitglieder mit der passenden Rolle. "
+        "Beantworte fleißig Quizfragen — ab einer gewissen Zahl schalte ich dich frei!"
+    )
+
+
 class Quiz(commands.Cog):
     # Fuer die Gruppierung in /help. Das Label steht am Cog und nicht in
     # einer zentralen Liste, damit ein entferntes Modul auch aus der Hilfe
@@ -415,7 +433,7 @@ class Quiz(commands.Cog):
     @commands.hybrid_command(
         name="frage_einreichen",
         description="Reiche eine eigene Quizfrage ein",
-        extras={"hilfe": "Du kannst eigene Fragen beisteuern. Gib den Fragetext, vier Antworten und die richtige Antwort an.\nDeine Frage wird **nicht sofort** gespielt: Ein Admin sieht sie sich vorher an. Für deine erste eingereichte Frage gibt es das Achievement „Community-Mitglied\"."},
+        extras={"hilfe": "Du kannst eigene Fragen beisteuern. Gib den Fragetext, vier Antworten und die richtige Antwort an.\nDeine Frage wird **nicht sofort** gespielt: Ein Admin sieht sie sich vorher an. Für deine erste eingereichte Frage gibt es das Achievement „Community-Mitglied\".", "recht": "submit_questions"},
     )
     @discord.app_commands.describe(
         frage="Der Fragetext",
@@ -425,6 +443,7 @@ class Quiz(commands.Cog):
         antwort_d="Antwortmöglichkeit D",
         richtige_antwort="Welche der vier Antworten korrekt ist",
     )
+    @commands.check(_darf_fragen_einreichen)
     async def frage_einreichen(
         self,
         ctx: commands.Context,

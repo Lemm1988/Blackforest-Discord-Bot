@@ -53,9 +53,19 @@ import database
 # nicht". Ausserdem stand die Absage vorher oeffentlich im Kanal.
 
 
+def _rollen(ctx) -> set:
+    """Discord-Rollen des Aufrufers, fuer Rechte die an einer Rolle haengen.
+
+    In einer Direktnachricht gibt es keine Rollen - dann zaehlen nur die
+    Backend-Flags.
+    """
+    member = getattr(ctx, "author", None)
+    return {str(r.id) for r in getattr(member, "roles", [])}
+
+
 def is_admin():
     async def predicate(ctx: commands.Context) -> bool:
-        if not database.has_permission(ctx.author.id, "is_admin"):
+        if not database.has_permission(ctx.author.id, "is_admin", rollen=_rollen(ctx)):
             raise commands.CheckFailure("⛔ Dieser Befehl ist nur für Admins.")
         return True
     return commands.check(predicate)
@@ -63,7 +73,7 @@ def is_admin():
 
 def has_permission_check(key: str):
     async def predicate(ctx: commands.Context) -> bool:
-        if not database.has_permission(ctx.author.id, key):
+        if not database.has_permission(ctx.author.id, key, rollen=_rollen(ctx)):
             raise commands.CheckFailure(
                 f"⛔ Dir fehlt die Berechtigung **{key}** für diesen Befehl."
             )
