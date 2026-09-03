@@ -26,6 +26,7 @@ from discord.ext import commands, tasks
 import announcements
 import config
 import database
+import modul_xp_level
 import events
 import mood
 import scheduling
@@ -451,8 +452,8 @@ class Personality(commands.Cog):
 
         # reason="event_xpdrop" (NICHT "quiz"/"message") - der versprochene Betrag
         # soll exakt stimmen, ohne sich mit einem evtl. gleichzeitig laufenden
-        # Community-Bonus oder Quiz-Blitz-Event zu vermischen (siehe database.award_xp()).
-        database.award_xp(user.id, amount, reason="event_xpdrop", bypass_cooldown=True)
+        # Community-Bonus oder Quiz-Blitz-Event zu vermischen (siehe modul_xp_level.award_xp()).
+        modul_xp_level.award_xp(user.id, amount, reason="event_xpdrop", bypass_cooldown=True)
         try:
             await message.reply(f"🎉 {user.mention} war am schnellsten und erhält **{amount} XP**!")
         except discord.HTTPException:

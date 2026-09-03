@@ -203,19 +203,6 @@ def test_kontext_kommt_aus_den_modulen():
     assert "REGISTRATUR.kontext(event" in text
 
 
-def test_die_verbliebene_kopplung_ist_bekannt_und_begrenzt():
-    """Ehrlichkeit über den Stand: Die Abfragefunktionen der Module stehen noch
-    in database.py. Für das Ziel „Datenbank baut sich selbst auf" reicht das
-    Schema, aber ein entferntes Modul liesse seine Abfragen zurück.
-
-    Der Test hält fest, dass diese Einschränkung DOKUMENTIERT ist - damit sie
-    nicht in Vergessenheit gerät und irgendwann jemand annimmt, die Trennung
-    sei vollständig."""
-    kopf = (REPO / "bot" / "module.py").read_text()[:2000]
-    assert "Einschränkung" in kopf or "Einschraenkung" in kopf
-    assert "database.py" in kopf
-
-
 def test_kaputtes_modul_reisst_die_anderen_nicht_mit():
     """Fehlt die Tabelle eines halb entfernten Moduls, sollen die übrigen
     weiterarbeiten."""
@@ -286,3 +273,84 @@ def test_schema_helfer_bleibt_abhaengigkeitsfrei():
             assert namen <= {"sqlite3", "__future__"}, (
                 f"schema_helfer.py importiert {sorted(namen)} - er soll nur sqlite3 brauchen."
             )
+
+
+# --------------------------------------------------------------------------
+# Der Kern kennt die Tabellen der Module nicht mehr
+#
+# Am 03.09.2026 sind 29 Abfragefunktionen aus database.py in die Module
+# gewandert - get_leaderboard, award_xp, get_user_overview und die übrigen.
+# Vorher hätte ein entferntes Modul dort Funktionen zurückgelassen, die auf
+# Tabellen zugreifen, die es nicht mehr gibt.
+# --------------------------------------------------------------------------
+
+MODULTABELLEN = ("questions", "answered_questions", "players", "categories",
+                 "user_stats", "user_xp")
+
+
+def _sql_aus(quelle: str) -> str:
+    """Nur die Zeichenketten aus dem Code - Kommentare und Docstrings
+    ausgenommen. Dort DARF eine Tabelle erwähnt werden, das ist Erklärung."""
+    import ast
+    import re
+
+    baum = ast.parse(quelle)
+    docstrings = set()
+    for node in ast.walk(baum):
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            d = ast.get_docstring(node, clean=False)
+            if d:
+                docstrings.add(d)
+    ohne_kommentar = "\n".join(
+        z for z in quelle.split("\n") if not z.lstrip().startswith("#")
+    )
+    texte = re.findall(r'"""(?:.|\n)*?"""|"[^"\n]*"|\'[^\'\n]*\'', ohne_kommentar)
+    return " ".join(t for t in texte if t.strip('"\'' + "\n") not in docstrings)
+
+
+@pytest.mark.parametrize("tabelle", MODULTABELLEN)
+def test_kern_greift_nicht_mehr_auf_modultabellen_zu(tabelle):
+    import re
+
+    sql = _sql_aus((REPO / "bot" / "database.py").read_text())
+    assert not re.search(rf"\b{tabelle}\b", sql), (
+        f"database.py enthält wieder SQL auf {tabelle} - die Tabelle gehört einem "
+        "Modul. Ohne dieses Modul liefe die Abfrage ins Leere."
+    )
+
+
+def test_die_abfragen_sind_wirklich_da():
+    """Gegenprobe: Sie sollen verschoben sein, nicht verschwunden."""
+    import ast
+
+    for datei, erwartet in (
+        ("modul_quiz.py", ["get_leaderboard", "add_points", "submit_question", "get_categories"]),
+        ("modul_xp_level.py", ["award_xp", "get_user_xp", "get_xp_leaderboard"]),
+    ):
+        quelle = (REPO / "bot" / datei).read_text()
+        namen = {n.name for n in ast.walk(ast.parse(quelle)) if isinstance(n, ast.FunctionDef)}
+        for fn in erwartet:
+            assert fn in namen, f"{fn}() fehlt in {datei}"
+
+
+def test_uebersicht_kommt_aus_den_modulen():
+    """get_user_overview() fragte drei Tabellen aus zwei Modulen direkt ab.
+    Jetzt tragen die Module bei, und der Kern führt nur zusammen."""
+    import ast
+
+    quelle = (REPO / "bot" / "database.py").read_text()
+    fn = next(n for n in ast.walk(ast.parse(quelle))
+              if isinstance(n, ast.FunctionDef) and n.name == "get_user_overview")
+    text = ast.get_source_segment(quelle, fn) or ""
+    assert "REGISTRATUR.uebersicht" in text
+    assert "SELECT" not in text.upper(), "Der Zusammenführer fragt selbst ab."
+
+
+def test_uebersicht_bleibt_vollstaendig_ohne_module():
+    """Fehlt ein Modul, sollen seine Werte auf Standardwerten stehen statt zu
+    fehlen - sonst müsste die Seite jeden einzeln absichern."""
+    module.laden()
+    voll = module.REGISTRATUR.uebersicht("999999999999999999")
+    for schluessel in ("message_count", "quiz_correct_count", "score", "xp", "level"):
+        assert schluessel in voll, f"{schluessel} fehlt in der Übersicht."
+    assert voll["level"] == 1, "Ohne XP ist man auf Level 1, nicht 0."

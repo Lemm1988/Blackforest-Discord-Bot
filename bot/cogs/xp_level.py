@@ -22,6 +22,7 @@ import discord
 from discord.ext import commands
 
 import database
+import modul_xp_level
 
 
 class XpLevel(commands.Cog):
@@ -39,7 +40,7 @@ class XpLevel(commands.Cog):
         extras={"hilfe": "Zeigt, wie viele XP du gesammelt hast, auf welchem Level du bist und wie weit es noch bis zum nächsten ist.\nXP bekommst du fürs Schreiben im Chat, für richtige Quizantworten und gelegentlich durch Zufallsereignisse. Pro Tag gibt es eine Obergrenze, damit niemand sie durch reines Vielschreiben hochtreibt."},
     )
     async def xp(self, ctx: commands.Context):
-        progress = database.get_user_xp(ctx.author.id)
+        progress = modul_xp_level.get_user_xp(ctx.author.id)
         await ctx.send(
             f"{ctx.author.mention}, du bist **Level {progress['level']}** mit **{progress['xp']} XP**. "
             f"Noch **{int(progress['xp_to_next'])} XP** bis Level {progress['level'] + 1}! 📈"
@@ -51,7 +52,7 @@ class XpLevel(commands.Cog):
         extras={"hilfe": "Zeigt die 15 Personen mit den meisten **Server-XP** — also aus Chat, Quiz und Zufallsereignissen zusammen.\nDie reine Quiz-Wertung findest du unter `/quiz_rangliste`."},
     )
     async def serverxp_rangliste(self, ctx: commands.Context):
-        top = database.get_xp_leaderboard(15)
+        top = modul_xp_level.get_xp_leaderboard(15)
         if not top:
             await ctx.send("Es hat noch niemand XP gesammelt.")
             return

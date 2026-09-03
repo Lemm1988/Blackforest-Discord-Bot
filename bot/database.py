@@ -1017,109 +1017,6 @@ def get_all_permissioned_users():
 
 # --- Quiz ---
 
-def get_unanswered_question(user_id, category_id=None):
-    """category_id=None bedeutet "egal welche Kategorie" (Option "Zufällige Kategorie")."""
-    with get_connection() as conn:
-        if category_id is not None:
-            return conn.execute(
-                """SELECT * FROM questions
-                   WHERE verified = 1 AND category_id = ?
-                     AND id NOT IN (SELECT question_id FROM answered_questions WHERE user_id = ?)
-                   ORDER BY RANDOM() LIMIT 1""",
-                (category_id, str(user_id)),
-            ).fetchone()
-        return conn.execute(
-            """SELECT * FROM questions
-               WHERE verified = 1
-                 AND id NOT IN (SELECT question_id FROM answered_questions WHERE user_id = ?)
-               ORDER BY RANDOM() LIMIT 1""",
-            (str(user_id),),
-        ).fetchone()
-
-
-def count_unanswered_for_user(user_id, category_id=None) -> int:
-    """Wie viele verifizierte Fragen dieser User noch nicht beantwortet hat (für die
-    Fortschrittsanzeige im Quiz-Embed: "Frage X von Y"), optional auf eine Kategorie
-    eingeschränkt."""
-    with get_connection() as conn:
-        if category_id is not None:
-            return conn.execute(
-                """SELECT COUNT(*) c FROM questions
-                   WHERE verified = 1 AND category_id = ?
-                     AND id NOT IN (SELECT question_id FROM answered_questions WHERE user_id = ?)""",
-                (category_id, str(user_id)),
-            ).fetchone()["c"]
-        return conn.execute(
-            """SELECT COUNT(*) c FROM questions
-               WHERE verified = 1
-                 AND id NOT IN (SELECT question_id FROM answered_questions WHERE user_id = ?)""",
-            (str(user_id),),
-        ).fetchone()["c"]
-
-
-def mark_question_answered(user_id, question_id):
-    with get_connection() as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO answered_questions (user_id, question_id) VALUES (?, ?)",
-            (str(user_id), question_id),
-        )
-        conn.commit()
-
-
-def add_points(user_id, points):
-    with get_connection() as conn:
-        conn.execute("INSERT OR IGNORE INTO players (user_id, score) VALUES (?, 0)", (str(user_id),))
-        conn.execute("UPDATE players SET score = score + ? WHERE user_id = ?", (points, str(user_id)))
-        conn.commit()
-
-
-def get_score(user_id) -> int:
-    with get_connection() as conn:
-        row = conn.execute("SELECT score FROM players WHERE user_id = ?", (str(user_id),)).fetchone()
-        return row["score"] if row else 0
-
-
-def get_leaderboard(limit: int = 15):
-    with get_connection() as conn:
-        return conn.execute(
-            "SELECT user_id, score FROM players ORDER BY score DESC LIMIT ?", (limit,)
-        ).fetchall()
-
-
-def get_xp_leaderboard(limit: int = 15):
-    """Rangliste ueber die SERVERWEITEN XP - Modul "XP & Level".
-
-    Bewusst getrennt von get_leaderboard(), das die Quiz-Punkte aus der Tabelle
-    players liefert. Es sind zwei verschiedene Wertungen mit zwei verschiedenen
-    Datentoepfen: Quiz-Punkte bekommt man nur durchs Quiz, XP dagegen auch durch
-    Chatnachrichten und Zufallsereignisse. Jemand kann in der einen Liste ganz
-    oben und in der anderen gar nicht auftauchen.
-
-    Sortiert nach XP, bei Gleichstand nach Level - damit die Reihenfolge stabil
-    bleibt und nicht bei jedem Aufruf wechselt.
-    """
-    with get_connection() as conn:
-        return conn.execute(
-            "SELECT discord_user_id, xp, level FROM user_xp "
-            "ORDER BY xp DESC, level DESC, discord_user_id ASC LIMIT ?",
-            (limit,),
-        ).fetchall()
-
-
-def get_leaderboard_page(limit: int, offset: int):
-    """Für die Backend-Seite /game: vollständige, paginierte Rangliste (nicht nur Top 15)."""
-    with get_connection() as conn:
-        return conn.execute(
-            "SELECT user_id, score FROM players ORDER BY score DESC LIMIT ? OFFSET ?",
-            (limit, offset),
-        ).fetchall()
-
-
-def count_players() -> int:
-    with get_connection() as conn:
-        return conn.execute("SELECT COUNT(*) c FROM players").fetchone()["c"]
-
-
 def validate_question_submission(question, option_a, option_b, option_c, option_d, correct_option):
     """Gemeinsame Validierung fuer JEDEN Weg, eine Frage einzureichen (Web-Formular
     /qinput UND der Discord-Befehl >frage_einreichen) - eine einzige Quelle der
@@ -1134,133 +1031,7 @@ def validate_question_submission(question, option_a, option_b, option_c, option_
     return None
 
 
-def submit_question(question, option_a, option_b, option_c, option_d, correct_option, submitted_by, category_id=None):
-    with get_connection() as conn:
-        cur = conn.execute(
-            """INSERT INTO questions
-               (question, option_a, option_b, option_c, option_d, correct_option, submitted_by, verified, category_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)""",
-            (question, option_a, option_b, option_c, option_d, correct_option, str(submitted_by), category_id),
-        )
-        conn.commit()
-        question_id = cur.lastrowid
-    # Achievement-Pruefung zentral hier statt bei jedem Aufrufer (Web-Formular
-    # /qinput, kuenftig evtl. auch ein Bot-Command) - siehe check_and_unlock_achievements().
-    check_and_unlock_achievements(submitted_by, "question_submitted")
-    return question_id
-
-
-def get_questions_by_user(discord_user_id):
-    with get_connection() as conn:
-        return conn.execute(
-            "SELECT id, question FROM questions WHERE submitted_by = ? ORDER BY id DESC",
-            (str(discord_user_id),),
-        ).fetchall()
-
-
-def get_question_stats():
-    with get_connection() as conn:
-        total = conn.execute("SELECT COUNT(*) c FROM questions").fetchone()["c"]
-        verified = conn.execute("SELECT COUNT(*) c FROM questions WHERE verified = 1").fetchone()["c"]
-        unverified = total - verified
-        counts = {}
-        for opt in ("A", "B", "C", "D"):
-            counts[opt] = conn.execute(
-                "SELECT COUNT(*) c FROM questions WHERE correct_option = ?", (opt,)
-            ).fetchone()["c"]
-        return {
-            "total": total,
-            "verified": verified,
-            "unverified": unverified,
-            "counts": counts,
-            "percentages": {k: (v / total * 100 if total else 0) for k, v in counts.items()},
-        }
-
-
-def get_questions(verified: bool, limit: int, offset: int):
-    with get_connection() as conn:
-        return conn.execute(
-            "SELECT * FROM questions WHERE verified = ? ORDER BY id LIMIT ? OFFSET ?",
-            (1 if verified else 0, limit, offset),
-        ).fetchall()
-
-
-def count_questions(verified: bool, category_id=None) -> int:
-    with get_connection() as conn:
-        if category_id is not None:
-            return conn.execute(
-                "SELECT COUNT(*) c FROM questions WHERE verified = ? AND category_id = ?",
-                (1 if verified else 0, category_id),
-            ).fetchone()["c"]
-        return conn.execute(
-            "SELECT COUNT(*) c FROM questions WHERE verified = ?", (1 if verified else 0,)
-        ).fetchone()["c"]
-
-
-def update_question(question_id, question, option_a, option_b, option_c, option_d, correct_option, verified, category_id=None):
-    with get_connection() as conn:
-        conn.execute(
-            """UPDATE questions SET question=?, option_a=?, option_b=?, option_c=?, option_d=?,
-               correct_option=?, verified=?, category_id=? WHERE id=?""",
-            (question, option_a, option_b, option_c, option_d, correct_option, int(verified), category_id, question_id),
-        )
-        conn.commit()
-
-
 # --- Kategorien ---
-
-def get_categories():
-    with get_connection() as conn:
-        return conn.execute("SELECT * FROM categories ORDER BY name").fetchall()
-
-
-def get_category(category_id):
-    with get_connection() as conn:
-        return conn.execute("SELECT * FROM categories WHERE id = ?", (category_id,)).fetchone()
-
-
-def add_category(name: str, emoji: str = None):
-    name = (name or "").strip()
-    if not name:
-        return
-    with get_connection() as conn:
-        conn.execute("INSERT OR IGNORE INTO categories (name, emoji) VALUES (?, ?)", (name, emoji))
-        conn.commit()
-
-
-def update_category(category_id, name: str, emoji: str = None):
-    with get_connection() as conn:
-        conn.execute(
-            "UPDATE categories SET name = ?, emoji = ? WHERE id = ?",
-            (name, emoji, category_id),
-        )
-        conn.commit()
-
-
-def delete_category(category_id):
-    """Löscht eine Kategorie. Die zugehörigen Fragen werden NICHT gelöscht, nur ihre
-    Kategorie-Zuordnung entfernt (explizit hier UND per ON DELETE SET NULL in der
-    Spaltendefinition abgesichert)."""
-    with get_connection() as conn:
-        conn.execute("UPDATE questions SET category_id = NULL WHERE category_id = ?", (category_id,))
-        conn.execute("DELETE FROM categories WHERE id = ?", (category_id,))
-        conn.commit()
-
-
-def count_questions_by_category():
-    """Für die Kategorien-Verwaltungsseite: wie viele Fragen je Kategorie zugeordnet sind."""
-    with get_connection() as conn:
-        rows = conn.execute(
-            "SELECT category_id, COUNT(*) c FROM questions GROUP BY category_id"
-        ).fetchall()
-        return {row["category_id"]: row["c"] for row in rows}
-
-
-def delete_question(question_id):
-    with get_connection() as conn:
-        conn.execute("DELETE FROM questions WHERE id = ?", (question_id,))
-        conn.commit()
-
 
 # --- Giveaways ---
 
@@ -1554,218 +1325,9 @@ def set_link_filter_exempt_channels(channel_ids, added_by):
 _xp_cooldowns: dict = {}
 
 
-def _xp_threshold(level: int) -> float:
-    """Kumulierte XP-Schwelle fuer ein Level, aus zwei konfigurierbaren Settings
-    berechnet statt einer festen Tabelle (Spec 1 fordert eine konfigurierbare
-    Levelkurve). Formel: schwelle(n) = base*(n-1) + growth*(n-1)*(n-2)/2 - das
-    ergibt eine arithmetisch wachsende Kurve mit Zuwaechsen base, base+growth,
-    base+2*growth, ... Mit den Defaults base=100/growth=50 trifft das exakt die
-    Beispielwerte aus Spec 1: Level 1->0, 2->100, 3->250, 4->450 XP."""
-    base = float(get_setting("xp_level_base", config.DEFAULT_SETTINGS["xp_level_base"]))
-    growth = float(get_setting("xp_level_growth", config.DEFAULT_SETTINGS["xp_level_growth"]))
-    n = level
-    return base * (n - 1) + growth * (n - 1) * (n - 2) / 2
-
-
-_MAX_XP_LEVEL_ITER = 100_000  # Sicherheitsgrenze gegen eine Endlosschleife bei base=growth=0
-
-
-def _level_for_xp(xp: float) -> int:
-    """Hoechstes Level, dessen Schwelle <= xp ist (mindestens Level 1)."""
-    level = 1
-    for _ in range(_MAX_XP_LEVEL_ITER):
-        if _xp_threshold(level + 1) > xp:
-            break
-        level += 1
-    return level
-
-
-def get_user_xp(discord_user_id) -> dict:
-    """Aktueller XP-/Level-Stand eines Users, inkl. Restdistanz zum naechsten
-    Level - fuer Anzeige im Backend/Bot-Command. Nutzer ohne Eintrag gelten als
-    Level 1 mit 0 XP, ohne dass dafuer eine Zeile angelegt werden muss."""
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT xp, level FROM user_xp WHERE discord_user_id = ?", (str(discord_user_id),)
-        ).fetchone()
-    xp = row["xp"] if row else 0
-    level = row["level"] if row else 1
-    next_threshold = _xp_threshold(level + 1)
-    return {
-        "xp": xp,
-        "level": level,
-        "next_level_xp": next_threshold,
-        "xp_to_next": max(0, next_threshold - xp),
-    }
-
-
-def _apply_community_bonus(amount):
-    """Multipliziert `amount`, falls gerade ein Community-Bonus-Event laeuft
-    (bot_state.community_bonus_until in der Zukunft) - siehe cogs/personality.py,
-    _trigger_community_event(). Laeuft das Fenster ab, wird hier bewusst NICHTS
-    zurueckgesetzt (unschaedlich - der naechste Event-Check ueberschreibt den
-    Wert ohnehin bei Bedarf neu)."""
-    until_str = get_bot_state("community_bonus_until")
-    if not until_str:
-        return amount
-    until = datetime.fromisoformat(until_str)
-    if until.tzinfo is None:
-        until = until.replace(tzinfo=timezone.utc)
-    if datetime.now(timezone.utc) >= until:
-        return amount
-    multiplier = float(get_setting(
-        "event_community_bonus_multiplier", config.DEFAULT_SETTINGS["event_community_bonus_multiplier"]
-    ))
-    return amount * multiplier
-
-
-def _apply_quiz_double_xp(amount):
-    """Verdoppelt `amount` GENAU EINMAL, wenn ein Quiz-Blitz-Event aktiv ist
-    (bot_state.quiz_double_xp_pending == "1") - konsumiert das Flag sofort,
-    damit es wirklich nur fuer die naechste richtige Antwort gilt, nicht fuer
-    mehrere. Bewusst kein Zeitlimit (anders als der Community-Bonus): die Spec
-    beschreibt es als "die naechste richtige Antwort", nicht als Zeitfenster."""
-    if get_bot_state("quiz_double_xp_pending") != "1":
-        return amount
-    set_bot_state("quiz_double_xp_pending", "")
-    return amount * 2
-
-
-def award_xp(discord_user_id, amount: int, reason: str = "generic", bypass_cooldown: bool = False,
-             _check_achievements: bool = True):
-    """Vergibt XP und aktualisiert ggf. das Level. Gibt ein Dict mit dem neuen
-    Stand zurueck, oder None, wenn die Vergabe wegen des Cooldowns unterdrueckt
-    wurde (nur relevant, wenn bypass_cooldown=False).
-
-    bypass_cooldown=True ist fuer den Quiz-Erfolg gedacht (reason="quiz"): der
-    Quiz-eigene Cooldown (quiz_cooldown_seconds) regelt dort das Spam-Problem
-    bereits, ein zweiter, unabhaengiger XP-Cooldown wuerde nur verwirren. Fuer
-    generische/zukuenftige Quellen (z.B. Nachrichtenaktivitaet) bleibt der
-    Cooldown aktiv, damit XP nicht pro Nachricht vergeben wird (Spec 1).
-
-    Die eigentliche Levelaufstiegs-Ankuendigung (Nachricht an den User) ist NICHT
-    Teil dieser Funktion - sie bereitet nur die Information (leveled_up/new_level)
-    fuer einen spaeteren Aufrufer vor.
-
-    Zentrale Achievement-Anbindung (Spec 1, Phase 6, "keine unabhaengigen
-    Parallelmechanismen"): statt dass jeder Aufrufer separat an Achievements
-    denken muss, meldet award_xp() selbst zwei der drei Ereignisse - "level_up"
-    nach jedem Levelaufstieg, und "quiz_correct", wenn reason=="quiz" ist. Das
-    dritte Ereignis ("question_submitted") meldet submit_question().
-
-    WELCHE Achievements auf diese Ereignisse reagieren, weiss diese Datei seit
-    dem 03.09.2026 bewusst NICHT mehr - das steht in den Modulen selbst
-    (achievements_quiz.py, achievements_xp_level.py), damit sich ein Modul
-    entfernen laesst, ohne hier Reste zu hinterlassen. Siehe achievements.py.
-    _check_achievements=False wird NUR intern von check_and_unlock_achievements()
-    selbst gesetzt, wenn es die xp_reward eines gerade freigeschalteten
-    Achievements gutschreibt - verhindert, dass ein Achievement-Bonus rekursiv
-    erneut denselben Levelaufstieg auswertet (bei den aktuell kleinen Belohnungen
-    ohnehin kaum relevant, aber sauberer als sich darauf zu verlassen).
-
-    reason="message" (Phase 7, Nachrichten-XP) unterliegt zusaetzlich einem
-    taeglichen Limit (daily_xp_limit) - dafuer wird pro User ein persistenter
-    Tageszaehler (daily_message_xp/daily_xp_date) in user_xp mitgefuehrt, der
-    sich automatisch zuruecksetzt, sobald daily_xp_date nicht mehr das heutige
-    Datum ist. Das Limit gilt AUSSCHLIESSLICH fuer diese Quelle - Quiz-/
-    Achievement-XP sind davon unberuehrt. Wird das Limit erreicht, gibt die
-    Funktion None zurueck (wie bei einer Cooldown-Sperre), OHNE ueberhaupt XP
-    gutzuschreiben."""
-    uid = str(discord_user_id)
-    if not bypass_cooldown:
-        cooldown = float(get_setting("xp_cooldown_seconds", config.DEFAULT_SETTINGS["xp_cooldown_seconds"]))
-        last = _xp_cooldowns.get(uid)
-        now = time.monotonic()
-        if last is not None and cooldown > 0 and now - last < cooldown:
-            return None
-        _xp_cooldowns[uid] = now
-
-    # Event-Modifikatoren (Phase 10, Zufallsereignisse): Community-Bonus
-    # multipliziert JEDE Quiz-/Nachrichten-XP-Vergabe innerhalb eines
-    # Zeitfensters; das Quiz-Blitz-Event verdoppelt zusaetzlich GENAU die
-    # naechste richtige Quiz-Antwort (wird danach konsumiert, kein Zeitlimit -
-    # gilt buchstaeblich fuer "die naechste Antwort", egal wann die kommt).
-    # Bewusst NUR fuer reason in (quiz, message) - Achievement-Belohnungen
-    # (reason="achievement:...") und generische Testaufrufe bleiben unberuehrt,
-    # damit sich Boni nicht unkontrolliert ueberlagern.
-    if reason in ("quiz", "message"):
-        amount = _apply_community_bonus(amount)
-    if reason == "quiz":
-        amount = _apply_quiz_double_xp(amount)
-    amount = int(round(amount))
-
-    today = time.strftime("%Y-%m-%d")
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT xp, level, daily_message_xp, daily_xp_date FROM user_xp WHERE discord_user_id = ?", (uid,)
-        ).fetchone()
-        old_xp = row["xp"] if row else 0
-        old_level = row["level"] if row else 1
-        # Tageszaehler gilt nur, wenn er vom heutigen Tag stammt - sonst ist er
-        # (noch) nicht zurueckgesetzt und wird hier als 0 behandelt.
-        daily_xp_so_far = row["daily_message_xp"] if row and row["daily_xp_date"] == today else 0
-
-        if reason == "message":
-            daily_limit = int(get_setting("daily_xp_limit", config.DEFAULT_SETTINGS["daily_xp_limit"]))
-            # Echte Obergrenze: blockt bereits die Nachricht, die die Grenze
-            # ueberschreiten WUERDE (nicht erst die naechste danach) - so kann
-            # daily_message_xp den konfigurierten Wert nie uebersteigen. Genau
-            # auf der Grenze landen (Summe == Limit) bleibt weiterhin erlaubt.
-            if daily_xp_so_far + amount > daily_limit:
-                return None
-
-        new_xp = old_xp + amount
-        new_level = _level_for_xp(new_xp)
-        if reason == "message":
-            new_daily_xp = daily_xp_so_far + amount
-            new_daily_date = today
-        else:
-            # Nicht-Nachrichten-XP laesst den Tageszaehler unangetastet - dafuer
-            # den ROHEN gespeicherten Stand zurueckschreiben, nicht die oben ggf.
-            # auf 0 normalisierte Variante (die waere nur fuer die Limit-Pruefung
-            # gedacht, nicht zum dauerhaften Ueberschreiben eines noch gueltigen
-            # Zaehlers eines anderen Tages).
-            new_daily_xp = row["daily_message_xp"] if row else 0
-            new_daily_date = row["daily_xp_date"] if row else None
-        conn.execute(
-            "INSERT INTO user_xp (discord_user_id, xp, level, updated_at, daily_message_xp, daily_xp_date) "
-            "VALUES (?, ?, ?, datetime('now'), ?, ?) "
-            "ON CONFLICT(discord_user_id) DO UPDATE SET xp = excluded.xp, level = excluded.level, "
-            "updated_at = excluded.updated_at, daily_message_xp = excluded.daily_message_xp, "
-            "daily_xp_date = excluded.daily_xp_date",
-            (uid, new_xp, new_level, new_daily_xp, new_daily_date),
-        )
-        conn.commit()
-
-    leveled_up = new_level > old_level
-    unlocked_achievements = []
-    if _check_achievements:
-        if leveled_up:
-            unlocked_achievements += check_and_unlock_achievements(uid, "level_up", new_level=new_level)
-        if reason == "quiz":
-            unlocked_achievements += check_and_unlock_achievements(
-                uid, "quiz_correct", hour=time.localtime().tm_hour
-            )
-
-    return {
-        "xp": new_xp,
-        "old_level": old_level,
-        "new_level": new_level,
-        "leveled_up": leveled_up,
-        "reason": reason,
-        "unlocked_achievements": unlocked_achievements,
-    }
-
 
 
 # --- Zaehler fuer Achievement-Bedingungen ---
-
-def count_questions_by_user(discord_user_id) -> int:
-    with get_connection() as conn:
-        return conn.execute(
-            "SELECT COUNT(*) c FROM questions WHERE submitted_by = ?", (str(discord_user_id),)
-        ).fetchone()["c"]
-
 
 # --- Achievements (Spec 1, Phase 6) ---
 
@@ -1826,6 +1388,11 @@ def check_and_unlock_achievements(discord_user_id, event: str, **context) -> lis
 
     for achievement in unlocked:
         if achievement["xp_reward"]:
+            # Die XP-Vergabe gehoert zum Modul XP & Level. Erst hier importiert,
+            # weil es umgekehrt ebenfalls hierher zurueckruft (Levelaufstieg ->
+            # Achievement-Pruefung) - ein Import auf oberster Ebene waere ein Kreis.
+            from modul_xp_level import award_xp
+
             award_xp(
                 uid, achievement["xp_reward"], reason=f"achievement:{achievement['id']}",
                 bypass_cooldown=True, _check_achievements=False,
@@ -1929,52 +1496,17 @@ def track_daily_active_user(discord_user_id) -> int:
     return count
 
 
-def track_user_message(discord_user_id):
-    """Erhoeht user_stats.message_count und setzt last_message_at auf jetzt
-    (Spec 1, Phase B4, Ueberwachungs-Uebersicht: "wer ist wann zuletzt aktiv
-    gewesen"). Getrennt von track_daily_active_user() (das ist nur ein
-    Tages-Zaehler fuer Server-Rekorde) und increment_server_stat("messages_count")
-    (das ist nur ein serverweiter Zaehler) - hier steht der EINZELNE User im
-    Mittelpunkt, nicht der Server als Ganzes."""
-    uid = str(discord_user_id)
-    now = datetime.now(timezone.utc).isoformat()
-    with get_connection() as conn:
-        conn.execute(
-            "INSERT INTO user_stats (discord_user_id, message_count, last_message_at) VALUES (?, 1, ?) "
-            "ON CONFLICT(discord_user_id) DO UPDATE SET "
-            "message_count = message_count + 1, last_message_at = excluded.last_message_at",
-            (uid, now),
-        )
-        conn.commit()
-
-
 def get_user_overview(discord_user_id) -> dict:
-    """Buendelt die Aktivitaets-/Nachrichten-/Quiz-Statistik EINES Users fuer die
-    Ueberwachungs-Uebersicht (Spec 1, Phase B4) - ein einzelner Aufruf statt
-    mehrerer Einzelabfragen an jeder Aufrufstelle. Fehlende Zeilen (User hat noch
-    nie interagiert) ergeben saubere Nullwerte statt None/KeyError."""
-    uid = str(discord_user_id)
-    with get_connection() as conn:
-        stats_row = conn.execute(
-            "SELECT message_count, last_message_at, quiz_correct_count, current_streak, best_streak "
-            "FROM user_stats WHERE discord_user_id = ?", (uid,),
-        ).fetchone()
-        xp_row = conn.execute(
-            "SELECT xp, level FROM user_xp WHERE discord_user_id = ?", (uid,),
-        ).fetchone()
-        score_row = conn.execute(
-            "SELECT score FROM players WHERE user_id = ?", (uid,),
-        ).fetchone()
-    return {
-        "message_count": stats_row["message_count"] if stats_row else 0,
-        "last_message_at": stats_row["last_message_at"] if stats_row else None,
-        "quiz_correct_count": stats_row["quiz_correct_count"] if stats_row else 0,
-        "current_streak": stats_row["current_streak"] if stats_row else 0,
-        "best_streak": stats_row["best_streak"] if stats_row else 0,
-        "xp": xp_row["xp"] if xp_row else 0,
-        "level": xp_row["level"] if xp_row else 1,
-        "score": score_row["score"] if score_row else 0,
-    }
+    """Buendelt die Statistik EINER Person fuer die Mitglieder-Uebersicht.
+
+    Die Werte kommen von den MODULEN, nicht von hier. Vorher fragte diese
+    Funktion user_stats, user_xp und players direkt ab - drei Tabellen aus zwei
+    Modulen, die es ohne diese Module gar nicht gibt.
+
+    Fehlt ein Modul, fehlen seine Zahlen; die Standardwerte der uebrigen bleiben,
+    damit die Seite nicht jeden Wert einzeln absichern muss.
+    """
+    return module.REGISTRATUR.uebersicht(discord_user_id)
 
 
 def get_server_stat_today(stat: str) -> int:
@@ -2009,15 +1541,6 @@ def check_and_update_server_record(stat_key: str, current_value: int):
     return {"old_value": old_value, "new_value": current_value}
 
 
-def get_total_quiz_correct_count() -> int:
-    """Serverweite Gesamtzahl je richtig beantworteter Quizfragen - fuer die
-    Server-Meilenstein-Erkennung. Aggregiert die pro-User-Zaehler aus
-    user_stats (Phase 5), statt einen weiteren, redundanten Zaehler zu fuehren."""
-    with get_connection() as conn:
-        row = conn.execute("SELECT COALESCE(SUM(quiz_correct_count), 0) AS total FROM user_stats").fetchone()
-        return row["total"]
-
-
 def check_and_update_milestone(thresholds: list):
     """Prueft, ob die serverweite Gesamtzahl (get_total_quiz_correct_count())
     einen neuen, noch nicht angekuendigten Meilenstein aus `thresholds`
@@ -2025,6 +1548,14 @@ def check_and_update_milestone(thresholds: list):
     den hoechsten bereits angekuendigten Wert, damit derselbe Meilenstein nicht
     bei jedem Heartbeat-Tick erneut angekuendigt wird. Gibt bei einem neuen
     Meilenstein {"threshold", "total"} zurueck, sonst None."""
+    # Meilensteine zaehlen richtige Quizantworten - ohne das Quizmodul gibt es
+    # sie schlicht nicht. Kein Fehler, sondern die richtige Antwort auf eine
+    # Teilinstallation: nichts zu melden.
+    try:
+        from modul_quiz import get_total_quiz_correct_count
+    except ImportError:
+        return None
+
     total = get_total_quiz_correct_count()
     # Falsy-Check VOR dem int()-Parsing, wie bei den anderen bot_state-Lesern in
     # diesem Modul (_apply_community_bonus(), personality.py last_spontaneous_message)
@@ -2041,35 +1572,3 @@ def check_and_update_milestone(thresholds: list):
     set_bot_state("milestone_last_announced", str(highest))
     return {"threshold": highest, "total": total}
 
-
-def update_quiz_streak(discord_user_id, correct: bool) -> dict:
-    """Aktualisiert current_streak/best_streak in user_stats nach einer Quiz-
-    Antwort. Gibt den neuen Zustand zurueck, inkl. ob/wie eine laufende Serie
-    gerade zu Ende gegangen ist (fuer die Streak-Ended-Ankuendigung in
-    cogs/quiz.py) - bei einer richtigen Antwort ist streak_ended immer False."""
-    uid = str(discord_user_id)
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT current_streak, best_streak FROM user_stats WHERE discord_user_id = ?", (uid,)
-        ).fetchone()
-        old_streak = row["current_streak"] if row else 0
-        old_best = row["best_streak"] if row else 0
-
-        new_streak = old_streak + 1 if correct else 0
-        new_best = max(old_best, new_streak)
-
-        conn.execute(
-            "INSERT INTO user_stats (discord_user_id, current_streak, best_streak) VALUES (?, ?, ?) "
-            "ON CONFLICT(discord_user_id) DO UPDATE SET current_streak = excluded.current_streak, "
-            "best_streak = excluded.best_streak",
-            (uid, new_streak, new_best),
-        )
-        conn.commit()
-
-    return {
-        "current_streak": new_streak,
-        "best_streak": new_best,
-        "new_best_streak": new_best > old_best,
-        "streak_ended": (not correct) and old_streak > 0,
-        "ended_streak_length": old_streak if (not correct and old_streak > 0) else 0,
-    }

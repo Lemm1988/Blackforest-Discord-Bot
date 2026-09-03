@@ -21,6 +21,8 @@ import announcements
 from cogs import verdiente_rollen
 import config
 import database
+import modul_xp_level
+import modul_quiz
 import mood
 
 LEET_MAP = str.maketrans({
@@ -224,7 +226,7 @@ class Moderation(commands.Cog):
         # Pro-User Nachrichtenzaehler + letzte Aktivitaet (Spec 1, Phase B4,
         # Ueberwachungs-Uebersicht) - getrennt von den beiden Aufrufen oben,
         # die nur serverweite Aggregate/Tages-Zaehler pflegen.
-        database.track_user_message(message.author.id)
+        modul_quiz.track_user_message(message.author.id)
         await self._award_message_xp(message)
 
     # --- Nachrichten-XP (Spec 1, Phase 7) ---
@@ -237,7 +239,7 @@ class Moderation(commands.Cog):
         # Mal tatsaechlich den generischen xp_cooldown_seconds-Mechanismus aus
         # Phase 4, der genau fuer diesen Zweck vorgesehen war. Das zusaetzliche
         # daily_xp_limit wird zentral innerhalb von award_xp() durchgesetzt.
-        xp_result = database.award_xp(message.author.id, amount, reason="message")
+        xp_result = modul_xp_level.award_xp(message.author.id, amount, reason="message")
         # Dieselbe zentrale Ankuendigungsfunktion wie im Quiz-Cog (Phase 8) -
         # kein eigener Parallel-Mechanismus fuer Level-Aufstiege/Achievements,
         # die durch Nachrichten-XP statt Quiz-Erfolg ausgeloest werden.

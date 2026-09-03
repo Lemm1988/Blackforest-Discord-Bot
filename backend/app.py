@@ -20,6 +20,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 import config
 import database
+import modul_xp_level
+import modul_quiz
 import mood
 import rollenabgleich
 import scheduling
@@ -476,8 +478,8 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     @app.route("/dashboard")
     @require_guild_member
     def dashboard():
-        stats = database.get_question_stats()
-        xp_progress = database.get_user_xp(session["discord_user_id"])
+        stats = modul_quiz.get_question_stats()
+        xp_progress = modul_xp_level.get_user_xp(session["discord_user_id"])
         return render_template("dashboard.html", stats=stats, xp_progress=xp_progress)
 
     # --- Pflanzenquiz: Leaderboard (Basis-Berechtigung) + Einstellungen (manage_game_settings) ---
@@ -521,10 +523,10 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     def quiz_game_page():
         per_page = 20
         page = request.args.get("page", 1, type=int)
-        total_players = database.count_players()
+        total_players = modul_quiz.count_players()
         total_pages = max(1, -(-total_players // per_page))
         page = max(1, min(page, total_pages))
-        leaderboard_rows = database.get_leaderboard_page(per_page, (page - 1) * per_page)
+        leaderboard_rows = modul_quiz.get_leaderboard_page(per_page, (page - 1) * per_page)
 
         async def _get_member_names():
             if not bot.guilds:
@@ -692,8 +694,8 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     @app.route("/dbot")
     @require_guild_member
     def bot_question_insert():
-        user_questions = database.get_questions_by_user(session["discord_user_id"])
-        return render_template("dbot.html", user_questions=user_questions, categories=database.get_categories())
+        user_questions = modul_quiz.get_questions_by_user(session["discord_user_id"])
+        return render_template("dbot.html", user_questions=user_questions, categories=modul_quiz.get_categories())
 
     @app.route("/qinput", methods=["POST"])
     @require_guild_member
@@ -720,7 +722,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             except (TypeError, ValueError):
                 return jsonify({"error": "Ungültige Kategorie."}), 400
 
-        question_id = database.submit_question(
+        question_id = modul_quiz.submit_question(
             question, option_a, option_b, option_c, option_d, correct_option,
             session["discord_user_id"],
             category_id=category_id,
@@ -738,11 +740,11 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             form = request.form
             for key in form:
                 if key.startswith("delete_question_"):
-                    database.delete_question(int(key.split("_")[-1]))
+                    modul_quiz.delete_question(int(key.split("_")[-1]))
                 elif key.startswith("edit_question_"):
                     qid = int(key.split("_")[-1])
                     category_raw = form.get(f"category_{qid}")
-                    database.update_question(
+                    modul_quiz.update_question(
                         qid,
                         form.get(f"question_{qid}"),
                         form.get(f"answer_{qid}[A]"),
@@ -757,11 +759,11 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         page_unverified = request.args.get("page_unverified", 1, type=int)
         page_verified = request.args.get("page_verified", 1, type=int)
 
-        unverified = database.get_questions(False, per_page, (page_unverified - 1) * per_page)
-        verified = database.get_questions(True, per_page, (page_verified - 1) * per_page)
+        unverified = modul_quiz.get_questions(False, per_page, (page_unverified - 1) * per_page)
+        verified = modul_quiz.get_questions(True, per_page, (page_verified - 1) * per_page)
 
-        total_unverified = database.count_questions(False)
-        total_verified = database.count_questions(True)
+        total_unverified = modul_quiz.count_questions(False)
+        total_verified = modul_quiz.count_questions(True)
 
         return render_template(
             "verify_questions.html",
@@ -771,7 +773,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             page_verified=page_verified,
             total_unverified_pages=max(1, -(-total_unverified // per_page)),
             total_verified_pages=max(1, -(-total_verified // per_page)),
-            categories=database.get_categories(),
+            categories=modul_quiz.get_categories(),
         )
 
     # --- Kategorien verwalten (manage_categories) ---
@@ -781,8 +783,8 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     def categories_page():
         return render_template(
             "categories.html",
-            categories=database.get_categories(),
-            question_counts=database.count_questions_by_category(),
+            categories=modul_quiz.get_categories(),
+            question_counts=modul_quiz.count_questions_by_category(),
         )
 
     @app.route("/categories/add", methods=["POST"])
@@ -791,7 +793,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         name = request.form.get("name", "").strip()
         emoji = request.form.get("emoji", "").strip() or None
         if name:
-            database.add_category(name, emoji)
+            modul_quiz.add_category(name, emoji)
         return redirect(url_for("categories_page"))
 
     @app.route("/categories/update", methods=["POST"])
@@ -806,13 +808,13 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
                 name = form.get(f"name_{category_id}", "").strip()
                 emoji = form.get(f"emoji_{category_id}", "").strip() or None
                 if name:
-                    database.update_category(category_id, name, emoji)
+                    modul_quiz.update_category(category_id, name, emoji)
         return redirect(url_for("categories_page"))
 
     @app.route("/categories/delete/<int:category_id>", methods=["POST"])
     @require_permission("manage_categories")
     def categories_delete(category_id):
-        database.delete_category(category_id)
+        modul_quiz.delete_category(category_id)
         return redirect(url_for("categories_page"))
 
     # --- Kanalliste (für Embed-/Giveaway-Formulare + jedes Kanal-Auswahl-Dropdown,
@@ -1726,7 +1728,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             "last_status_change": database.get_bot_state("last_status_change"),
             "last_spontaneous_message": database.get_bot_state("last_spontaneous_message"),
             "last_event_check": database.get_bot_state("last_event_check"),
-            "quiz_total_correct": database.get_total_quiz_correct_count(),
+            "quiz_total_correct": modul_quiz.get_total_quiz_correct_count(),
         }
         return render_template(
             "personality.html",

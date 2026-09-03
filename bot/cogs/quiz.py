@@ -17,6 +17,8 @@ import announcements
 from cogs import verdiente_rollen
 import config
 import database
+import modul_xp_level
+import modul_quiz
 import mood
 
 
@@ -67,17 +69,17 @@ class AnswerView(discord.ui.View):
                 return
 
             self.answered = True
-            database.mark_question_answered(self.author.id, self.question_id)
+            modul_quiz.mark_question_answered(self.author.id, self.question_id)
             correct = option == self.correct_option
             if correct:
-                database.add_points(self.author.id, self.points)
+                modul_quiz.add_points(self.author.id, self.points)
                 # XP separat vom Quiz-Highscore (players.score) vergeben - eigener
                 # Cooldown (xp_cooldown_seconds) gilt hier bewusst NICHT, das regelt
                 # bereits der Quiz-eigene Cooldown zwischen zwei >frage-Aufrufen.
                 xp_amount = int(database.get_setting(
                     "xp_per_quiz", config.DEFAULT_SETTINGS["xp_per_quiz"]
                 ))
-                xp_result = database.award_xp(self.author.id, xp_amount, reason="quiz", bypass_cooldown=True)
+                xp_result = modul_xp_level.award_xp(self.author.id, xp_amount, reason="quiz", bypass_cooldown=True)
                 await announcements.announce_progress(interaction.client, self.author, xp_result)
                 # Zaehler fuer richtige Antworten ist gestiegen - kann eine
                 # verdiente Rolle ausloesen (z.B. 100 richtige Fragen).
@@ -91,7 +93,7 @@ class AnswerView(discord.ui.View):
 
             # Quiz-Serien (Streaks, Phase 11) - fuer beide Ausgaenge (richtig
             # erhoeht, falsch setzt zurueck), daher ausserhalb des if-Zweigs.
-            streak_result = database.update_quiz_streak(self.author.id, correct)
+            streak_result = modul_quiz.update_quiz_streak(self.author.id, correct)
             await self._announce_streak(interaction.client, correct, streak_result)
 
             self._reveal(clicked=option)
@@ -232,12 +234,12 @@ class Quiz(commands.Cog):
         """Zieht eine Frage (ggf. auf eine Kategorie eingeschränkt) und schickt sie
         als Embed mit Antwort-Buttons. `target` ist entweder ein discord.Interaction
         (nach Kategorie-Auswahl) oder ein commands.Context (Fallback ohne Kategorien)."""
-        question = database.get_unanswered_question(author.id, category_id=category_id)
+        question = modul_quiz.get_unanswered_question(author.id, category_id=category_id)
 
         if not question:
-            score = database.get_score(author.id)
+            score = modul_quiz.get_score(author.id)
             if category_id is not None:
-                category = database.get_category(category_id)
+                category = modul_quiz.get_category(category_id)
                 cat_name = category["name"] if category else "dieser Kategorie"
                 text = (
                     f"🎉 {author.mention}, du hast bereits **alle Fragen in der Kategorie "
@@ -264,12 +266,12 @@ class Quiz(commands.Cog):
             "quiz_answer_timeout_seconds", config.DEFAULT_SETTINGS["quiz_answer_timeout_seconds"]
         ))
 
-        total = database.count_questions(True, category_id=category_id)
+        total = modul_quiz.count_questions(True, category_id=category_id)
         # Zählt vor dem Beantworten, schließt also die aktuelle Frage noch ein.
-        remaining_incl_current = database.count_unanswered_for_user(author.id, category_id=category_id)
+        remaining_incl_current = modul_quiz.count_unanswered_for_user(author.id, category_id=category_id)
         question_number = total - remaining_incl_current + 1
 
-        category = database.get_category(category_id) if category_id is not None else None
+        category = modul_quiz.get_category(category_id) if category_id is not None else None
         category_label = f"{category['emoji'] or ''} {category['name']}".strip() if category else "Zufällige Kategorie"
 
         embed = discord.Embed(
@@ -312,7 +314,7 @@ class Quiz(commands.Cog):
             )
             return
 
-        categories = database.get_categories()
+        categories = modul_quiz.get_categories()
         if not categories:
             # Keine Kategorien angelegt: wie gehabt direkt eine zufällige Frage ohne Auswahlmenü.
             await self._send_question(ctx, ctx.author, category_id=None)
@@ -327,7 +329,7 @@ class Quiz(commands.Cog):
     @commands.hybrid_command(name="gamescore", description="Zeigt deine gesammelten Quiz-Punkte",
         extras={"hilfe": "Zeigt, wie viele Punkte du im Pflanzenquiz gesammelt hast. Das ist etwas anderes als deine XP: Quiz-Punkte bekommst du **nur** durchs Quiz, XP auch fürs Schreiben im Chat. Deine XP siehst du mit `/xp`."},)
     async def gamescore(self, ctx: commands.Context):
-        score = database.get_score(ctx.author.id)
+        score = modul_quiz.get_score(ctx.author.id)
         await ctx.send(f"{ctx.author.mention}, dein aktueller Punktestand beträgt **{score}** Punkte! 🌟")
 
     # Am 03.09.2026 von "leaderboard" umbenannt. Der alte Name liess offen, um
@@ -341,7 +343,7 @@ class Quiz(commands.Cog):
         extras={"hilfe": "Zeigt die 15 Personen mit den meisten **Quiz-Punkten**.\nNicht zu verwechseln mit `/serverxp_rangliste` — das ist die Wertung über die Server-XP. Wer viel schreibt, aber selten Quiz spielt, steht dort weit oben und hier vielleicht gar nicht."},
     )
     async def quiz_rangliste(self, ctx: commands.Context):
-        top_players = database.get_leaderboard(15)
+        top_players = modul_quiz.get_leaderboard(15)
         if not top_players:
             await ctx.send("Es hat noch niemand Punkte im Pflanzenquiz gesammelt.")
             return
@@ -436,7 +438,7 @@ class Quiz(commands.Cog):
         """Erfuellt dieselbe Funktion wie das Web-Formular /dbot-/qinput, direkt per
         Discord-Befehl - ohne Umweg uebers Backend. Nutzt bewusst dieselbe zentrale
         Validierung (database.validate_question_submission()) und dieselbe
-        Speicherfunktion (database.submit_question()) wie die /qinput-Route in
+        Speicherfunktion (modul_quiz.submit_question()) wie die /qinput-Route in
         backend/app.py, damit die Regeln nicht an zwei Stellen auseinanderlaufen
         koennen. Discords Literal["A","B","C","D"]-Typ gibt bei der Slash-Variante
         bereits eine Auswahlliste vor; die Prefix-Variante (>frage_einreichen) kann
@@ -447,7 +449,7 @@ class Quiz(commands.Cog):
             await ctx.send(f"⚠️ {error}", ephemeral=True)
             return
 
-        database.submit_question(frage, antwort_a, antwort_b, antwort_c, antwort_d, richtige_antwort, ctx.author.id)
+        modul_quiz.submit_question(frage, antwort_a, antwort_b, antwort_c, antwort_d, richtige_antwort, ctx.author.id)
         await verdiente_rollen.verdiente_rollen_pruefen(
             self.bot, ctx.guild.get_member(ctx.author.id) if ctx.guild else None)
         await ctx.send(

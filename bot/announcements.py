@@ -14,6 +14,7 @@ import discord
 
 import config
 import database
+import modul_xp_level
 
 
 def _get_announcement_channel(bot: discord.Client):
@@ -35,7 +36,7 @@ async def announce_progress(bot: discord.Client, user: discord.abc.User, xp_resu
     """Kurze, sparsame Community-Reaktion auf Levelaufstieg/Achievement-
     Freischaltung (Spec 1: "keine Chat-Flut") - passiert von Natur aus selten,
     daher ohne zusätzlichen Cooldown. xp_result ist der Rückgabewert von
-    database.award_xp() - None, wenn dort z.B. ein Cooldown oder das Tageslimit
+    modul_xp_level.award_xp() - None, wenn dort z.B. ein Cooldown oder das Tageslimit
     (Phase 7) gegriffen hat; dann gibt es nichts anzukündigen."""
     if not xp_result:
         return

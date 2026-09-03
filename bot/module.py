@@ -18,11 +18,17 @@ Was NICHT hierher gehört: Die reine Mechanik. Achievement-Freischaltung,
 Rollenvergabe und die Tabellen, die alle Module gemeinsam nutzen (Einstellungen,
 Audit-Log, Berechtigungen), bleiben im Kern.
 
-Ehrliche Einschränkung, Stand 03.09.2026: Die Abfragefunktionen der Module —
-etwa `get_leaderboard()` oder `award_xp()` — stehen weiterhin in database.py. Sie
-mitzuverschieben wäre ein Umbau von rund 30 Funktionen und ein eigener Schritt.
-Für das Ziel „Datenbank baut sich selbst auf" reicht das Schema; ein entferntes
-Modul liesse aber vorerst seine Abfragefunktionen zurück.
+* **seine Abfragen** — `get_leaderboard()`, `award_xp()` und die übrigen 27
+  Funktionen, die nur seine Tabellen anfassen. Sie standen bis zum 03.09.2026
+  zentral in database.py; ein entferntes Modul hätte dort Funktionen
+  zurückgelassen, die auf Tabellen zugreifen, die es nicht mehr gibt.
+* **seinen Beitrag zur Mitglieder-Übersicht** — samt Standardwerten für den Fall,
+  dass das Modul fehlt.
+
+Damit das Laden der Metadaten ohne die Laufzeitumgebung des Bots funktioniert
+(die CI installiert nur pytest), holen sich die Moduldateien `database` und
+`config` erst beim Aufruf über `_conn()`, `_db()` und `_cfg()` — nie auf
+oberster Ebene.
 """
 from __future__ import annotations
 
@@ -47,6 +53,16 @@ class Modul:
     ereignis_kontext: dict[str, Callable] = field(default_factory=dict)
     """{Ereignisname: Funktion(user_id) -> dict}. Liefert die Zahlen, die die
     Achievements dieses Moduls für dieses Ereignis brauchen."""
+
+    nutzer_uebersicht: Callable | None = None
+    """Funktion(user_id) -> dict. Der Beitrag dieses Moduls zur Übersicht einer
+    Person auf der Mitgliederseite. Ohne das Modul fehlen die Werte einfach,
+    statt dass eine zentrale Abfrage auf fehlende Tabellen läuft."""
+
+    uebersicht_standard: dict = field(default_factory=dict)
+    """Was angezeigt wird, wenn das Modul NICHT installiert ist. Ohne das
+    stünde auf der Seite an dieser Stelle nichts, und die Vorlage müsste jeden
+    Wert einzeln absichern."""
 
 
 class Modulregistratur:
@@ -76,6 +92,24 @@ class Modulregistratur:
             if modul.schema or modul.migrationen:
                 angewendet.append(modul.name)
         return angewendet
+
+    def uebersicht(self, discord_user_id) -> dict:
+        """Die Übersichtswerte aller installierten Module für eine Person.
+
+        Fehlt ein Modul, fehlen seine Werte - deshalb liefert jedes Modul auch
+        Standardwerte mit, die unabhängig davon gelten.
+        """
+        gesammelt: dict = {}
+        for modul in self.alle():
+            gesammelt.update(modul.uebersicht_standard)
+        for modul in self.alle():
+            if modul.nutzer_uebersicht is None:
+                continue
+            try:
+                gesammelt.update(modul.nutzer_uebersicht(discord_user_id))
+            except Exception as exc:
+                print(f"[module] Uebersicht aus {modul.name!r} nicht ermittelbar: {exc}")
+        return gesammelt
 
     def kontext(self, ereignis: str, discord_user_id) -> dict:
         """Sammelt den Kontext aller Module für ein Ereignis.
