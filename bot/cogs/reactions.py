@@ -17,8 +17,22 @@ abgeschaltet - ohne Fehler, ohne Hinweis. Die Regeln arbeiten deshalb mit IDs.
 import discord
 from discord.ext import commands
 
-import config
 import database
+
+
+# Die frühere, fest verdrahtete Regel. Stand bis zum 03.09.2026 als vier
+# Einstellungen in config.DEFAULT_SETTINGS; die sind entfernt, weil sie nach dem
+# Umzug nichts mehr bewirkt hätten - wer sie geändert hätte, hätte geglaubt
+# etwas zu tun, und es wäre nichts passiert.
+#
+# Die Werte bleiben hier als Ausgangspunkt für den einmaligen Umzug stehen,
+# damit eine frisch aufgesetzte Datenbank die Regel weiterhin bekommt. Sobald
+# der Umzug überall gelaufen ist, kann auch das hier weg.
+ALTE_REGEL = {
+    "message_id": "1244268026069651466",
+    "kanal": "§-regeln-§",
+    "rolle": "Member",
+}
 
 
 class Reactions(commands.Cog):
@@ -50,18 +64,10 @@ class Reactions(commands.Cog):
             return
         guild = self.bot.guilds[0]
 
-        message_id = database.get_setting(
-            "rules_message_id", config.DEFAULT_SETTINGS["rules_message_id"]
-        )
-        kanalname = database.get_setting(
-            "rules_channel_name", config.DEFAULT_SETTINGS["rules_channel_name"]
-        )
-        rollenname = database.get_setting(
-            "member_role_name", config.DEFAULT_SETTINGS["member_role_name"]
-        )
-        aktiv = database.get_setting(
-            "role_reaction_enabled", config.DEFAULT_SETTINGS["role_reaction_enabled"]
-        ) == "1"
+        message_id = database.get_setting("rules_message_id", ALTE_REGEL["message_id"])
+        kanalname = database.get_setting("rules_channel_name", ALTE_REGEL["kanal"])
+        rollenname = database.get_setting("member_role_name", ALTE_REGEL["rolle"])
+        aktiv = database.get_setting("role_reaction_enabled", "1") == "1"
 
         kanal = discord.utils.get(guild.text_channels, name=kanalname)
         rolle = discord.utils.get(guild.roles, name=rollenname)

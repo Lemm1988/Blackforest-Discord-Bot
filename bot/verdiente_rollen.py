@@ -14,47 +14,94 @@ werden.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 
 @dataclass(frozen=True)
 class Bedingungsart:
+    """Eine auswählbare Bedingung.
+
+    modul  - zu welchem Funktionsbereich sie gehört. Entscheidend, weil die
+             Module einzeln installierbar sein sollen: Ohne Pflanzenquiz darf
+             „Richtig beantwortete Quizfragen" gar nicht erst zur Auswahl
+             stehen - man könnte sonst eine Regel anlegen, die nie greift, und
+             niemand fände heraus warum.
+    wert   - liefert die Zahl für eine Person. Steht im Modul selbst, nicht in
+             database.py: Die Abfrage greift auf Tabellen zu, die es ohne das
+             Modul womöglich gar nicht gibt. None bedeutet, dass der Wert nicht
+             aus der Datenbank kommt, sondern vom Cog beigesteuert wird (etwa
+             die Tage auf dem Server - das weiss nur Discord).
+    """
+
     schluessel: str
     label: str
     einheit: str
     hinweis: str
+    modul: str
+    wert: Callable[[str], int] | None = None
 
 
-# Die auswählbaren Bedingungen. Jede stützt sich auf einen Wert, den der Bot
-# ohnehin führt - nachvollziehbar für den Nutzer und nicht fälschbar.
-BEDINGUNGSARTEN = {
-    a.schluessel: a
-    for a in (
-        Bedingungsart(
-            "quiz_richtig", "Richtig beantwortete Quizfragen", "Fragen",
-            "Zählt jede richtig beantwortete Quizfrage seit Beginn.",
-        ),
-        Bedingungsart(
-            "level", "Erreichtes Level", "Level",
-            "Level ergibt sich aus den gesammelten XP (Chat, Quiz, Zufallsereignisse).",
-        ),
-        Bedingungsart(
-            "xp", "Gesammelte XP", "XP",
-            "Alle XP zusammen, unabhängig davon, woher sie stammen.",
-        ),
-        Bedingungsart(
-            "fragen_eingereicht", "Eingereichte Quizfragen", "Fragen",
-            "Zählt eingereichte Fragen, auch noch nicht freigegebene.",
-        ),
-        Bedingungsart(
-            "tage_dabei", "Tage auf dem Server", "Tage",
-            "Seit dem Beitritt, unabhängig von der Aktivität.",
-        ),
-    )
-}
+class Bedingungsregistratur:
+    def __init__(self) -> None:
+        self._arten: dict[str, Bedingungsart] = {}
+
+    def eintragen(self, art: Bedingungsart) -> None:
+        if art.schluessel in self._arten:
+            raise ValueError(
+                f"Bedingung {art.schluessel!r} ist doppelt vergeben "
+                f"(Modul {self._arten[art.schluessel].modul} und {art.modul})."
+            )
+        self._arten[art.schluessel] = art
+
+    def alle(self) -> dict[str, Bedingungsart]:
+        return dict(sorted(self._arten.items()))
+
+    def holen(self, schluessel: str) -> Bedingungsart | None:
+        return self._arten.get(schluessel)
+
+    def module(self) -> list[str]:
+        return sorted({a.modul for a in self._arten.values()})
+
+    def werte(self, discord_user_id) -> dict:
+        """Sammelt die Zahlen aller installierten Bedingungen für eine Person.
+
+        Scheitert eine einzelne Abfrage - etwa weil eine Tabelle eines halb
+        entfernten Moduls fehlt -, wird sie übersprungen statt alles
+        mitzureissen. Eine fehlende Zahl gilt in erfuellt() als nicht erfüllt.
+        """
+        gesammelt = {}
+        for schluessel, art in self._arten.items():
+            if art.wert is None:
+                continue
+            try:
+                gesammelt[schluessel] = art.wert(discord_user_id)
+            except Exception as exc:
+                print(f"[verdiente rollen] Wert für {schluessel!r} nicht ermittelbar: {exc}")
+        return gesammelt
+
+
+REGISTRATUR = Bedingungsregistratur()
+
+
+def lade_module(*module: str) -> None:
+    """Lädt die Bedingungen der installierten Module.
+
+    Gleiche Bauart wie bei achievements.lade_module(). Sobald Module wirklich
+    einzeln verkauft werden, kommt die Liste aus der Konfiguration.
+    """
+    import importlib
+
+    for name in module:
+        importlib.import_module(f"bedingungen_{name}")
+
+
+def BEDINGUNGSARTEN() -> dict:
+    """Für das Backend: alle installierten Bedingungen."""
+    return REGISTRATUR.alle()
 
 
 def ist_gueltige_art(art: str) -> bool:
-    return art in BEDINGUNGSARTEN
+    return REGISTRATUR.holen(art) is not None
 
 
 def erfuellt(art: str, schwelle: int, werte: dict) -> bool:

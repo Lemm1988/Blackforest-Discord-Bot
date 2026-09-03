@@ -957,32 +957,6 @@ def mark_earned_role_granted(regel_id: int, discord_user_id) -> None:
         conn.commit()
 
 
-def werte_fuer_bedingungen(discord_user_id) -> dict:
-    """Die Zahlen einer Person, auf die sich Bedingungen stuetzen koennen.
-
-    An EINER Stelle gesammelt, damit die Bedingungslogik selbst ohne Datenbank
-    auskommt und einzeln testbar bleibt. "tage_dabei" fehlt hier bewusst - das
-    weiss nur Discord, der Cog ergaenzt es.
-    """
-    uid = str(discord_user_id)
-    with get_connection() as conn:
-        quiz = conn.execute(
-            "SELECT quiz_correct_count FROM user_stats WHERE discord_user_id = ?", (uid,)
-        ).fetchone()
-        xp = conn.execute(
-            "SELECT xp, level FROM user_xp WHERE discord_user_id = ?", (uid,)
-        ).fetchone()
-        fragen = conn.execute(
-            "SELECT COUNT(*) c FROM questions WHERE submitted_by = ?", (uid,)
-        ).fetchone()
-    return {
-        "quiz_richtig": quiz["quiz_correct_count"] if quiz else 0,
-        "xp": xp["xp"] if xp else 0,
-        "level": xp["level"] if xp else 0,
-        "fragen_eingereicht": fragen["c"] if fragen else 0,
-    }
-
-
 def get_reaction_roles(nur_aktive: bool = False):
     """Alle Reaktionsrollen-Regeln."""
     with get_connection() as conn:

@@ -24,6 +24,8 @@ sys.path.insert(0, str(REPO / "bot"))
 
 import verdiente_rollen as vr  # noqa: E402
 
+vr.lade_module("kern", "quiz", "xp_level")
+
 COG = REPO / "bot" / "cogs" / "verdiente_rollen.py"
 DATABASE_PY = REPO / "bot" / "database.py"
 APP_PY = REPO / "backend" / "app.py"
@@ -67,8 +69,92 @@ def test_alle_angebotenen_arten_funktionieren(art):
 def test_jede_art_hat_label_und_hinweis():
     """Im Backend steht nur der Schlüssel, wenn das Label fehlt - „quiz_richtig"
     sagt einem Admin wenig."""
-    for schluessel, art in vr.BEDINGUNGSARTEN.items():
+    for schluessel, art in vr.BEDINGUNGSARTEN().items():
         assert art.label and art.einheit and art.hinweis, f"{schluessel} unvollständig"
+
+
+# --------------------------------------------------------------------------
+# Modultrennung (Vorgabe Patrick, 03.09.2026)
+#
+# „die einstellung quizfragen richtig beantwortet hat man nur wenn man auch das
+# Quizmodul später installiert und muss mit dem Pflanzenquiz konform sein."
+#
+# Ohne diese Trennung könnte man ohne Quizmodul eine Regel auf Quizfragen
+# anlegen - sie griffe nie, und niemand fände heraus warum.
+# --------------------------------------------------------------------------
+
+def test_jede_bedingung_gehoert_einem_modul():
+    for schluessel, art in vr.BEDINGUNGSARTEN().items():
+        assert art.modul, f"{schluessel} gehört keinem Modul an."
+
+
+@pytest.mark.parametrize("schluessel, modul", [
+    ("quiz_richtig", "quiz"),
+    ("fragen_eingereicht", "quiz"),
+    ("level", "xp_level"),
+    ("xp", "xp_level"),
+    ("tage_dabei", "kern"),
+])
+def test_bedingungen_sind_richtig_einsortiert(schluessel, modul):
+    assert vr.BEDINGUNGSARTEN()[schluessel].modul == modul
+
+
+def test_ohne_quizmodul_gibt_es_keine_quizbedingungen():
+    """Der eigentliche Punkt: Eine frische Registratur, in der nur der Kern
+    geladen ist, darf keine Quizbedingung kennen."""
+    nur_kern = vr.Bedingungsregistratur()
+    nur_kern.eintragen(vr.Bedingungsart(
+        schluessel="tage_dabei", label="Tage", einheit="Tage", hinweis="x", modul="kern",
+    ))
+    assert "quiz_richtig" not in nur_kern.alle()
+    assert nur_kern.holen("quiz_richtig") is None
+
+
+def test_bedingungsabfragen_stehen_in_den_modulen():
+    """Die Abfragen gehören in die Modul-Dateien. Stünden sie zentral in
+    database.py, wäre user_stats dort fest verdrahtet - und ein entferntes
+    Quizmodul liesse eine Abfrage auf eine Tabelle zurück, die es nicht gibt.
+
+    Geprüft wird der Sammler: Es darf keine zentrale Funktion mehr geben, die
+    die Werte ALLER Bedingungen kennt. Jede Bedingung bringt ihre eigene mit.
+    """
+    assert "werte_fuer_bedingungen" not in DATABASE_PY.read_text(), (
+        "Der zentrale Werte-Sammler ist zurück - er kannte die Quiz-Tabellen."
+    )
+    quiz = (REPO / "bot" / "bedingungen_quiz.py").read_text()
+    assert "user_stats" in quiz and "questions" in quiz, (
+        "Die Quiz-Abfragen stehen nicht im Quiz-Modul."
+    )
+
+
+def test_jede_bedingung_bringt_ihre_abfrage_selbst_mit():
+    """Ausnahme ist tage_dabei - das weiss nur Discord, nicht die Datenbank."""
+    for schluessel, art in vr.BEDINGUNGSARTEN().items():
+        if schluessel == "tage_dabei":
+            assert art.wert is None
+        else:
+            assert callable(art.wert), f"{schluessel} hat keine eigene Abfrage."
+
+
+def test_doppelte_bedingung_faellt_sofort_auf():
+    """Zwei Module mit demselben Schlüssel würden sich gegenseitig
+    überschreiben - die Regeln in der Datenbank zeigten dann auf die falsche."""
+    r = vr.Bedingungsregistratur()
+    art = vr.Bedingungsart(schluessel="x", label="X", einheit="", hinweis="", modul="a")
+    r.eintragen(art)
+    with pytest.raises(ValueError, match="doppelt"):
+        r.eintragen(vr.Bedingungsart(schluessel="x", label="X", einheit="", hinweis="", modul="b"))
+
+
+def test_werte_sammeln_ueberlebt_eine_kaputte_abfrage():
+    """Fehlt die Tabelle eines halb entfernten Moduls, darf das nicht alles
+    mitreissen - die anderen Bedingungen sollen weiter funktionieren."""
+    r = vr.Bedingungsregistratur()
+    r.eintragen(vr.Bedingungsart("gut", "Gut", "", "", "a", wert=lambda uid: 42))
+    r.eintragen(vr.Bedingungsart("kaputt", "Kaputt", "", "", "b",
+                                 wert=lambda uid: (_ for _ in ()).throw(RuntimeError("keine Tabelle"))))
+    werte = r.werte("123")
+    assert werte == {"gut": 42}
 
 
 # --------------------------------------------------------------------------

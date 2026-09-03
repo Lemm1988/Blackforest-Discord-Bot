@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))  # damit "backend" importi
 import config
 import database
 import fehler
+import verdiente_rollen
 from backend.app import create_app
 from backend.internal_app import create_internal_app
 
@@ -52,6 +53,12 @@ _flask_started = False
 
 
 async def load_cogs():
+    # Bedingungen fuer verdiente Rollen der installierten Module laden.
+    # Gleiche Liste und gleicher Gedanke wie bei achievements.lade_module():
+    # Ohne Quizmodul steht "Richtig beantwortete Quizfragen" gar nicht erst zur
+    # Auswahl, statt eine Regel zu erlauben, die nie greift.
+    verdiente_rollen.lade_module("kern", "quiz", "xp_level")
+
     for extension in ("hilfe", "quiz", "xp_level", "plants", "fun", "moderation", "reactions", "verdiente_rollen", "giveaway", "admin", "personality"):
         await bot.load_extension(f"cogs.{extension}")
 

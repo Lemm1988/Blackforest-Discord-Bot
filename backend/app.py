@@ -1308,14 +1308,14 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         for r in regeln:
             r["rollenname"] = rollennamen.get(r["role_id"], f"unbekannt ({r['role_id']})")
             r["vergebbar"] = r["role_id"] in verwaltbare
-            art = verdiente_rollen.BEDINGUNGSARTEN.get(r["bedingung_art"])
+            art = verdiente_rollen.BEDINGUNGSARTEN().get(r["bedingung_art"])
             r["bedingung_label"] = art.label if art else r["bedingung_art"]
             r["einheit"] = art.einheit if art else ""
         return render_template(
             "earned_roles.html",
             regeln=regeln,
             rollen=rollen,
-            bedingungsarten=verdiente_rollen.BEDINGUNGSARTEN,
+            bedingungsarten=verdiente_rollen.BEDINGUNGSARTEN(),
         )
 
     @app.route("/earned-roles/add", methods=["POST"])
@@ -2384,29 +2384,12 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             ),
         }
 
-    def _role_settings():
-        return {
-            "role_reaction_enabled": database.get_setting(
-                "role_reaction_enabled", config.DEFAULT_SETTINGS["role_reaction_enabled"]
-            ),
-            "member_role_name": database.get_setting(
-                "member_role_name", config.DEFAULT_SETTINGS["member_role_name"]
-            ),
-            "rules_channel_name": database.get_setting(
-                "rules_channel_name", config.DEFAULT_SETTINGS["rules_channel_name"]
-            ),
-            "rules_message_id": database.get_setting(
-                "rules_message_id", config.DEFAULT_SETTINGS["rules_message_id"]
-            ),
-        }
-
     @app.route("/server-setup")
     @require_permission("manage_badword_filter")
     def server_setup_page():
         return render_template(
             "server_setup.html",
             welcome_settings=_welcome_settings(),
-            role_settings=_role_settings(),
             morning_settings=_morning_settings(),
         )
 
@@ -2469,30 +2452,6 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             "morning_greeting_grace_minutes": str(nachlauf),
         })
         flash("Guten-Morgen-Nachricht gespeichert.", "success")
-        return redirect(url_for("server_setup_page"))
-
-    @app.route("/server-setup/role_settings", methods=["POST"])
-    @require_permission("manage_badword_filter")
-    def server_setup_role_settings():
-        form = request.form
-        old_values = _role_settings()
-        role_reaction_enabled = "1" if form.get("role_reaction_enabled") == "1" else "0"
-        member_role_name = (form.get("member_role_name") or "").strip() or config.DEFAULT_SETTINGS["member_role_name"]
-        rules_channel_name = (form.get("rules_channel_name") or "").strip() or config.DEFAULT_SETTINGS["rules_channel_name"]
-        rules_message_id = (form.get("rules_message_id") or "").strip()
-        if rules_message_id and not rules_message_id.isdigit():
-            rules_message_id = old_values["rules_message_id"]
-
-        database.set_setting("role_reaction_enabled", role_reaction_enabled)
-        database.set_setting("member_role_name", member_role_name)
-        database.set_setting("rules_channel_name", rules_channel_name)
-        database.set_setting("rules_message_id", rules_message_id)
-        _log_settings_change("config_change", old_values, {
-            "role_reaction_enabled": role_reaction_enabled,
-            "member_role_name": member_role_name,
-            "rules_channel_name": rules_channel_name,
-            "rules_message_id": rules_message_id,
-        })
         return redirect(url_for("server_setup_page"))
 
     return app

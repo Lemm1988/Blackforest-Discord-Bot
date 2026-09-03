@@ -84,10 +84,6 @@ DEFAULT_SETTINGS = {
     # (Rollenvergabe per 👍) - jede Hintergrund-Funktion des Bots soll einzeln
     # abschaltbar sein, nicht nur die grossen Features wie Quiz/Automod.
     "welcome_message_enabled": "1",
-    "role_reaction_enabled": "1",
-    "rules_message_id": "1244268026069651466",
-    "rules_channel_name": "§-regeln-§",
-    "member_role_name": "Member",
     # Schimpfwortfilter-Verhalten, einstellbar über die Backend-Seite "/moderation".
     "badword_filter_enabled": "1",
     "badword_filter_action": "delete_warn",  # delete_only | delete_warn | delete_warn_timeout

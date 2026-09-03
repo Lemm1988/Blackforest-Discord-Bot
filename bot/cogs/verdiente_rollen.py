@@ -36,7 +36,9 @@ class VerdienteRollen(commands.Cog):
         if not regeln:
             return
 
-        werte = database.werte_fuer_bedingungen(member.id)
+        werte = vr.REGISTRATUR.werte(member.id)
+        # "tage_dabei" kennt nur Discord - die Registratur kann es nicht selbst
+        # holen (siehe Bedingungsart.wert=None in bedingungen_kern.py).
         if member.joined_at:
             werte["tage_dabei"] = (discord.utils.utcnow() - member.joined_at).days
 
@@ -137,7 +139,9 @@ class VerdienteRollen(commands.Cog):
 
         # Beim Klick nochmal prüfen: Zwischen Ankündigung und Klick können
         # Stunden liegen, und die Regel könnte inzwischen geändert worden sein.
-        werte = database.werte_fuer_bedingungen(member.id)
+        werte = vr.REGISTRATUR.werte(member.id)
+        # "tage_dabei" kennt nur Discord - die Registratur kann es nicht selbst
+        # holen (siehe Bedingungsart.wert=None in bedingungen_kern.py).
         if member.joined_at:
             werte["tage_dabei"] = (discord.utils.utcnow() - member.joined_at).days
         if not vr.erfuellt(regel["bedingung_art"], regel["schwelle"], werte):

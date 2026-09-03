@@ -28,7 +28,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 13. Umgesetzte Sicherheitsmaßnahmen
 14. Unterschiede zum alten Bot
 15. Den Bot erweitern
-16. Testsuite (`tests/`, 539 Tests)
+16. Testsuite (`tests/`, 550 Tests)
 17. Offene Punkte (Stand 03.09.2026)
 
 ---
@@ -642,7 +642,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 16. Testsuite (`tests/`, 539 Tests)
+## 16. Testsuite (`tests/`, 550 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -672,7 +672,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | Datei | Tests | Sichert ab |
 |---|---|---|
 | `test_discord_limits.py` | 76 | Alle acht Embed-Grenzen gegen die offizielle Dokumentation, jeweils genau am Limit erlaubt und ein Zeichen darüber abgelehnt; die 6000-Zeichen-Gesamtsumme; Farbwerte; Zeitzonenbehandlung |
-| `test_verdiente_rollen.py` | 36 | Verdiente Rollen: Schwellen, Abhol-Knopf (an eine Person gebunden, übersteht Neustarts) und der Merker gegen wiederholte Ankündigungen |
+| `test_verdiente_rollen.py` | 47 | Verdiente Rollen: Schwellen, Abhol-Knopf (an eine Person gebunden, übersteht Neustarts) und der Merker gegen wiederholte Ankündigungen |
 | `test_reaktionsrollen.py` | 15 | Reaktionsrollen: Schema-Zusagen, Umzug der alten Regel, und dass Kanal und Rolle über IDs statt Namen angesprochen werden |
 | `test_rollenabgleich.py` | 15 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten |
 | `test_nutzertexte.py` | 103 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
