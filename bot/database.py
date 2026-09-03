@@ -47,6 +47,22 @@ CREATE TABLE IF NOT EXISTS earned_role_grants (
     PRIMARY KEY (rule_id, discord_user_id)
 );
 
+-- Welche Rollen der Bot wegen einer BERECHTIGUNG vergeben hat (03.09.2026).
+--
+-- Der Grund fuer diese Tabelle: Der Bot soll nur wegnehmen, was er selbst
+-- vergeben hat. Ohne diesen Merker wuerde beim ersten Abgleich jedem die
+-- Moderator-Rolle entzogen, der sie von Hand bekommen hat - auch dem Besitzer.
+--
+-- Verdiente Rollen (earned_role_grants) und Reaktionsrollen sind bewusst NICHT
+-- hier vermerkt: Sie haben eigene Zustaendigkeiten, und der
+-- Berechtigungs-Abgleich darf sie nicht anfassen.
+CREATE TABLE IF NOT EXISTS permission_role_grants (
+    discord_user_id TEXT NOT NULL,
+    role_id TEXT NOT NULL,
+    vergeben_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (discord_user_id, role_id)
+);
+
 -- Reaktionsrollen (03.09.2026): Wer auf eine bestimmte Nachricht mit einem
 -- bestimmten Emoji reagiert, bekommt eine Rolle. Loest die frueher fest
 -- verdrahtete Regel-Reaktion ab, die als vier einzelne Settings existierte
@@ -962,6 +978,35 @@ def update_reaction_role(regel_id: int, *, enabled=None, entzug_erlaubt=None, dm
 def delete_reaction_role(regel_id: int) -> None:
     with get_connection() as conn:
         conn.execute("DELETE FROM reaction_roles WHERE id = ?", (int(regel_id),))
+        conn.commit()
+
+
+def bot_vergebene_rollen(discord_user_id) -> set:
+    """Welche Rollen hat der Bot dieser Person wegen einer Berechtigung gegeben?"""
+    with get_connection() as conn:
+        return {
+            row["role_id"] for row in conn.execute(
+                "SELECT role_id FROM permission_role_grants WHERE discord_user_id = ?",
+                (str(discord_user_id),),
+            )
+        }
+
+
+def merke_rollenvergabe(discord_user_id, role_id) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO permission_role_grants (discord_user_id, role_id) "
+            "VALUES (?, ?)", (str(discord_user_id), str(role_id)),
+        )
+        conn.commit()
+
+
+def vergiss_rollenvergabe(discord_user_id, role_id) -> None:
+    with get_connection() as conn:
+        conn.execute(
+            "DELETE FROM permission_role_grants WHERE discord_user_id = ? AND role_id = ?",
+            (str(discord_user_id), str(role_id)),
+        )
         conn.commit()
 
 

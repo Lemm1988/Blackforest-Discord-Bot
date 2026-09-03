@@ -1488,6 +1488,140 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         flash("Regel gelöscht. Bereits vergebene Rollen bleiben bestehen.", "success")
         return redirect(url_for("reaction_roles_page"))
 
+    def _rollen_anwenden(user_id, massnahme, rollennamen, grund: str) -> list[str]:
+        """Fuehrt die Massnahme fuer EINE Person aus. Gibt aus, was passiert ist.
+
+        Der Bot-Owner ist ausgenommen - wie bei den Moderationsaktionen. Und
+        jede Vergabe wird vermerkt, damit der Bot spaeter nur wegnimmt, was er
+        selbst gegeben hat.
+        """
+        if config.BOT_OWNER_ID and str(user_id) == config.BOT_OWNER_ID:
+            return []
+
+        async def _tun():
+            guild = bot.guilds[0]
+            member = guild.get_member(int(user_id))
+            if member is None:
+                return ["nicht mehr auf dem Server"]
+            geschehen = []
+            for role_id in massnahme.vergeben:
+                rolle = guild.get_role(int(role_id))
+                if rolle is None:
+                    continue
+                await member.add_roles(rolle, reason=f"Backend-Berechtigung ({grund})")
+                database.merke_rollenvergabe(user_id, role_id)
+                geschehen.append(f"+{rolle.name}")
+            for role_id in massnahme.entziehen:
+                rolle = guild.get_role(int(role_id))
+                if rolle is None:
+                    continue
+                await member.remove_roles(rolle, reason=f"Backend-Berechtigung entzogen ({grund})")
+                database.vergiss_rollenvergabe(user_id, role_id)
+                geschehen.append(f"-{rolle.name}")
+            return geschehen
+
+        try:
+            return run_on_bot(_tun())
+        except Exception:
+            log.exception("Rollenabgleich fuer %s fehlgeschlagen", user_id)
+            return [f"Fehler bei {rollennamen.get(r, r)}" for r in
+                    massnahme.vergeben + massnahme.entziehen]
+
+    def _massnahme_fuer(user_id, zuordnung, verwaltbare, mitglieder_rollen):
+        return rollenabgleich.massnahmen(
+            rechte=set(database.get_user_permissions(user_id)),
+            rollen=mitglieder_rollen.get(str(user_id), set()),
+            zuordnung=zuordnung,
+            verwaltbare_rollen=verwaltbare,
+            vom_bot_vergeben=database.bot_vergebene_rollen(user_id),
+        )
+
+    def _mitglieder_rollen():
+        async def _holen():
+            if not bot.guilds:
+                return {}
+            return {
+                str(m.id): {str(r.id) for r in m.roles if r.name != "@everyone"}
+                for m in bot.guilds[0].members
+            }
+        return run_on_bot(_holen())
+
+    def _rollen_nachziehen(user_id, grund: str) -> None:
+        """Nach einer Rechteaenderung die Rollen sofort angleichen.
+
+        Still im Hintergrund: Wer im Backend ein Recht vergibt, soll nicht noch
+        einen zweiten Knopf druecken muessen. Ist keine Zuordnung eingerichtet,
+        passiert nichts.
+        """
+        zuordnung = database.get_permission_role_map()
+        if not zuordnung:
+            return
+        _, verwaltbare = _discord_rollen()
+        massnahme = _massnahme_fuer(user_id, zuordnung, verwaltbare, _mitglieder_rollen())
+        if massnahme.leer:
+            return
+        geschehen = _rollen_anwenden(user_id, massnahme, {}, grund)
+        if geschehen:
+            database.log_audit(
+                session["discord_user_id"], "rollen_angeglichen", target_id=user_id,
+                detail=", ".join(geschehen),
+            )
+            flash("Discord-Rollen angepasst: " + ", ".join(geschehen), "success")
+
+    @app.route("/roles-mapping/sync", methods=["POST"])
+    @require_permission("is_admin")
+    def roles_mapping_sync():
+        """Abgleich fuer ALLE - erst als Vorschau, dann nach Bestaetigung.
+
+        Bewusst zweistufig: Ein Knopf, der auf einen Schlag Rollen bei allen
+        Mitgliedern aendert, muss vorher zeigen, was er tut.
+        """
+        zuordnung = database.get_permission_role_map()
+        if not zuordnung:
+            flash("Es ist noch keine Rollen-Zuordnung eingerichtet.", "error")
+            return redirect(url_for("roles_mapping_page"))
+
+        rollen, verwaltbare = _discord_rollen()
+        rollennamen = {r["id"]: r["name"] for r in rollen}
+        mitglieder = _mitglieder_rollen()
+
+        # Alle mit Berechtigungen, plus alle, die eine zugeordnete Rolle tragen
+        betroffene = {u["discord_user_id"] for u in database.get_all_permissioned_users()}
+        zugeordnet = set(zuordnung.values())
+        betroffene |= {uid for uid, r in mitglieder.items() if r & zugeordnet}
+
+        plan = []
+        for uid in sorted(betroffene):
+            if config.BOT_OWNER_ID and uid == config.BOT_OWNER_ID:
+                continue
+            m = _massnahme_fuer(uid, zuordnung, verwaltbare, mitglieder)
+            if not m.leer:
+                plan.append((uid, m))
+
+        if request.form.get("bestaetigt") != "1":
+            return render_template(
+                "roles_sync_preview.html",
+                plan=[{
+                    "user_id": uid,
+                    "vergeben": [rollennamen.get(r, r) for r in m.vergeben],
+                    "entziehen": [rollennamen.get(r, r) for r in m.entziehen],
+                } for uid, m in plan],
+                anzahl=len(plan),
+            )
+
+        gesamt = []
+        for uid, m in plan:
+            geschehen = _rollen_anwenden(uid, m, rollennamen, "Abgleich")
+            if geschehen:
+                gesamt.append(f"{uid}: {', '.join(geschehen)}")
+        if gesamt:
+            database.log_audit(
+                session["discord_user_id"], "rollen_abgleich", detail="; ".join(gesamt))
+            flash(f"{len(gesamt)} Personen angepasst.", "success")
+        else:
+            flash("Es gab nichts anzugleichen.", "success")
+        return redirect(url_for("users_page"))
+
     @app.route("/roles-mapping")
     @require_permission("is_admin")
     def roles_mapping_page():
@@ -1610,6 +1744,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             return redirect(url_for("users_page"))
         selected = [p for p in request.form.getlist("permissions") if p in database.ALL_PERMISSIONS]
         database.set_user_permissions(user_id, selected, granted_by=session["discord_user_id"])
+        _rollen_nachziehen(user_id, "Rechte geaendert")
         return redirect(url_for("users_page"))
 
     @app.route("/users/revoke_one", methods=["POST"])
@@ -1626,6 +1761,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             return redirect(url_for("users_page"))
         if user_id and permission in database.ALL_PERMISSIONS:
             database.revoke_user_permission(user_id, permission, actor_id=session["discord_user_id"])
+            _rollen_nachziehen(user_id, f"Recht {permission} entzogen")
         return redirect(url_for("users_page"))
 
     # --- Audit-Log (nur is_admin/Owner - reine Ansicht, keine Aenderungen moeglich) ---

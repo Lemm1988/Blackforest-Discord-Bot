@@ -97,3 +97,55 @@ def zusammenfassung(abgleich: Abgleich, rollennamen: dict[str, str]) -> str:
             + ", ".join(rollennamen.get(r, r) for r in abgleich.ueberzaehlig)
         )
     return " · ".join(teile)
+
+
+# --------------------------------------------------------------------------
+# Vom Anzeigen zum Handeln (Plan 11, Teil A — 03.09.2026)
+# --------------------------------------------------------------------------
+
+@dataclass
+class Massnahme:
+    """Was der Bot bei einer Person tun würde."""
+
+    vergeben: list[str] = field(default_factory=list)
+    entziehen: list[str] = field(default_factory=list)
+
+    @property
+    def leer(self) -> bool:
+        return not (self.vergeben or self.entziehen)
+
+
+def massnahmen(
+    *,
+    rechte: set[str],
+    rollen: set[str],
+    zuordnung: dict[str, str],
+    verwaltbare_rollen: set[str],
+    vom_bot_vergeben: set[str],
+) -> Massnahme:
+    """Was zu tun wäre — bewusst getrennt vom Ausführen, damit man es vorher
+    ansehen kann.
+
+    Zwei Regeln, die den Unterschied zwischen brauchbar und gefährlich machen:
+
+    **Der Bot nimmt nur weg, was er selbst vergeben hat.** Ohne das würde beim
+    ersten Abgleich jedem die Moderator-Rolle entzogen, der sie von Hand
+    bekommen hat — auch dem Besitzer. `vom_bot_vergeben` ist der Merker dafür.
+
+    **Er fasst nur an, was er auch kann.** Rollen über der Bot-Rolle bleiben
+    unberührt; sie erscheinen in der Übersicht als „nur von Hand" und nicht als
+    Aufgabe, an der er scheitern würde.
+    """
+    zustehend = {rolle for recht, rolle in zuordnung.items() if recht in rechte}
+    zugeordnet = set(zuordnung.values())
+
+    massnahme = Massnahme()
+    massnahme.vergeben = sorted(
+        (zustehend - rollen) & verwaltbare_rollen
+    )
+    massnahme.entziehen = sorted(
+        # Nur zugeordnete Rollen, nur solche ohne passendes Recht,
+        # nur selbst vergebene, und nur verwaltbare.
+        ((rollen & zugeordnet) - zustehend) & vom_bot_vergeben & verwaltbare_rollen
+    )
+    return massnahme

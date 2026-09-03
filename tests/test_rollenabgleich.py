@@ -175,3 +175,137 @@ def test_unbekannte_berechtigung_wird_abgelehnt():
     block = quelle[quelle.index("def set_permission_role"):]
     block = block[: block.index("def get_all_permissioned_users")]
     assert "ALL_PERMISSIONS" in block and "raise ValueError" in block
+
+
+# --------------------------------------------------------------------------
+# Vom Anzeigen zum Handeln (Plan 11, Teil A — 03.09.2026)
+#
+# Hier wird es ernst: Der Bot ändert jetzt wirklich Rollen. Die beiden
+# Regeln, die den Unterschied zwischen brauchbar und gefährlich ausmachen,
+# stehen deshalb im Mittelpunkt.
+# --------------------------------------------------------------------------
+
+from rollenabgleich import massnahmen  # noqa: E402
+
+
+def _plan(rechte, rollen, vom_bot=(), zuordnung=None):
+    return massnahmen(
+        rechte=set(rechte),
+        rollen=set(rollen),
+        zuordnung=zuordnung if zuordnung is not None else ZUORDNUNG,
+        verwaltbare_rollen=VERWALTBAR,
+        vom_bot_vergeben=set(vom_bot),
+    )
+
+
+def test_fehlende_rolle_wird_vergeben():
+    p = _plan({"moderate_members"}, set())
+    assert p.vergeben == [MODERATOR]
+    assert p.entziehen == []
+
+
+def test_der_bot_nimmt_nur_weg_was_er_selbst_gab():
+    """Die wichtigste Regel überhaupt. Ohne sie würde beim ersten Abgleich
+    jedem die Moderator-Rolle entzogen, der sie von Hand bekommen hat."""
+    von_hand = _plan(set(), {MODERATOR}, vom_bot=set())
+    assert von_hand.entziehen == [], "Eine von Hand vergebene Rolle wurde entzogen."
+
+    vom_bot = _plan(set(), {MODERATOR}, vom_bot={MODERATOR})
+    assert vom_bot.entziehen == [MODERATOR]
+
+
+def test_unverwaltbare_rollen_werden_nicht_angefasst():
+    """Manager steht über dem Bot. Ihn einzuplanen hiesse, an einer
+    Discord-Ablehnung zu scheitern - und zwar bei jedem Abgleich erneut."""
+    p = _plan({"is_admin"}, set())
+    assert MANAGER not in p.vergeben
+    assert p.vergeben == []
+
+    # Auch nicht beim Entziehen, selbst wenn er als selbst vergeben gilt
+    p2 = _plan(set(), {MANAGER}, vom_bot={MANAGER})
+    assert p2.entziehen == []
+
+
+def test_nicht_zugeordnete_rollen_bleiben_unberuehrt():
+    """Member und Server Booster gehen den Abgleich nichts an - auch dann
+    nicht, wenn der Bot sie selbst vergeben hat (etwa per Reaktionsrolle)."""
+    p = _plan(set(), {MEMBER, "999"}, vom_bot={MEMBER, "999"})
+    assert p.entziehen == []
+
+
+def test_passender_zustand_ergibt_keine_massnahme():
+    p = _plan({"moderate_members"}, {MODERATOR}, vom_bot={MODERATOR})
+    assert p.leer
+
+
+def test_vergeben_und_entziehen_gleichzeitig():
+    """Jemand verliert ein Recht und bekommt ein anderes - beides in einem Zug."""
+    p = _plan({"create_embed"}, {MODERATOR}, vom_bot={MODERATOR})
+    assert p.vergeben == [SUPPORTER]
+    assert p.entziehen == [MODERATOR]
+
+
+def test_ohne_zuordnung_passiert_nichts():
+    p = _plan({"is_admin", "moderate_members"}, {MANAGER, MODERATOR},
+              vom_bot={MANAGER, MODERATOR}, zuordnung={})
+    assert p.leer
+
+
+def test_planen_veraendert_nichts():
+    """Es ist eine Vorschau. Würde sie ihre Eingaben verändern, zeigte die
+    Seite je nach Reihenfolge etwas anderes an."""
+    rechte, rollen, vom_bot = {"moderate_members"}, {MODERATOR}, {MODERATOR}
+    massnahmen(rechte=rechte, rollen=rollen, zuordnung=ZUORDNUNG,
+               verwaltbare_rollen=VERWALTBAR, vom_bot_vergeben=vom_bot)
+    assert (rechte, rollen, vom_bot) == ({"moderate_members"}, {MODERATOR}, {MODERATOR})
+
+
+# --------------------------------------------------------------------------
+# Die Absicherungen im Backend
+# --------------------------------------------------------------------------
+
+def test_der_owner_wird_uebergangen():
+    """Wie bei den Moderationsaktionen - der Bot-Besitzer bleibt unangetastet."""
+    quelle = (REPO / "backend" / "app.py").read_text()
+    block = quelle[quelle.index("def _rollen_anwenden"):]
+    block = block[: block.index("def _massnahme_fuer")]
+    assert "BOT_OWNER_ID" in block
+
+
+def test_der_abgleich_zeigt_erst_und_handelt_dann():
+    """Ein Knopf, der auf einen Schlag Rollen bei allen Mitgliedern ändert,
+    muss vorher zeigen, was er tut."""
+    quelle = (REPO / "backend" / "app.py").read_text()
+    block = quelle[quelle.index("def roles_mapping_sync"):]
+    block = block[: block.index("@app.route(\"/roles-mapping\")")]
+    assert 'request.form.get("bestaetigt")' in block
+    vorschau = block.index("roles_sync_preview.html")
+    handeln = block.index("_rollen_anwenden")
+    assert vorschau < handeln, "Erst die Vorschau, dann das Handeln."
+
+
+def test_jede_vergabe_wird_vermerkt():
+    """Ohne Merker könnte der Bot beim nächsten Abgleich nicht unterscheiden,
+    was er selbst gab und was von Hand kam."""
+    quelle = (REPO / "backend" / "app.py").read_text()
+    block = quelle[quelle.index("def _rollen_anwenden"):]
+    block = block[: block.index("def _massnahme_fuer")]
+    assert "merke_rollenvergabe" in block
+    assert "vergiss_rollenvergabe" in block
+
+
+def test_aenderungen_landen_im_audit_log():
+    quelle = (REPO / "backend" / "app.py").read_text()
+    for funktion in ("_rollen_nachziehen", "roles_mapping_sync"):
+        block = quelle[quelle.index(f"def {funktion}"):]
+        block = block[:block.index("\n    @app.route") if "\n    @app.route" in block else 3000]
+        assert "log_audit" in block, f"{funktion} protokolliert nicht."
+
+
+def test_ohne_zuordnung_tut_das_nachziehen_nichts():
+    """Solange nichts eingerichtet ist, darf eine Rechtevergabe keine
+    Discord-Rolle anfassen."""
+    quelle = (REPO / "backend" / "app.py").read_text()
+    block = quelle[quelle.index("def _rollen_nachziehen"):]
+    block = block[: block.index("roles-mapping/sync")]
+    assert "if not zuordnung:" in block and "return" in block

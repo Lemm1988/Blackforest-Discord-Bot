@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Abgleich – Vorschau{% endblock %}
+{% block content %}
+<h3 class="h4">Rollen abgleichen — Vorschau</h3>
+
+{% if not plan %}
+<div class="alert alert-success">
+    Es gibt nichts anzugleichen. Backend-Berechtigungen und Discord-Rollen passen zusammen.
+</div>
+<a href="{{ url_for('users_page') }}" class="btn btn-secondary">Zurück</a>
+{% else %}
+<p class="text-muted">
+    Das würde passieren. Es ist noch <strong>nichts</strong> geändert worden.
+</p>
+
+<div class="alert alert-warning small">
+    Der Bot nimmt nur Rollen weg, die er selbst wegen einer Berechtigung vergeben hat.
+    Von Hand vergebene Rollen bleiben unangetastet — ebenso alles, was über der Bot-Rolle
+    steht, und der Bot-Besitzer.
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><h5 class="h6 mb-0">{{ anzahl }} Person(en) betroffen</h5></div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead><tr><th>Nutzer</th><th>Bekommt</th><th>Verliert</th></tr></thead>
+                <tbody>
+                    {% for eintrag in plan %}
+                    <tr>
+                        <td class="text-nowrap small">{{ eintrag.user_id }}</td>
+                        <td class="small text-success">
+                            {% if eintrag.vergeben %}+ {{ eintrag.vergeben | join(", ") }}{% else %}—{% endif %}
+                        </td>
+                        <td class="small text-danger">
+                            {% if eintrag.entziehen %}− {{ eintrag.entziehen | join(", ") }}{% else %}—{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<form method="POST" action="{{ url_for('roles_mapping_sync') }}" class="d-inline"
+      onsubmit="return confirm('{{ anzahl }} Person(en) werden jetzt geändert. Fortfahren?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="bestaetigt" value="1">
+    <button type="submit" class="btn btn-primary">Ja, jetzt abgleichen</button>
+</form>
+<a href="{{ url_for('users_page') }}" class="btn btn-secondary">Abbrechen</a>
+{% endif %}
+{% endblock %}

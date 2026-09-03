@@ -50,6 +50,21 @@
     </div>
 </div>
 
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Bestand angleichen</h5></div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Neue und entzogene Berechtigungen wirken sofort auf die Discord-Rollen. Für den
+            <strong>Bestand</strong> — alle, die schon vorher Rechte hatten — gibt es diesen Knopf.
+            Er zeigt erst, was er tun würde.
+        </p>
+        <form method="POST" action="{{ url_for('roles_mapping_sync') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-primary">Jetzt abgleichen (Vorschau)</button>
+        </form>
+    </div>
+</div>
+
 <div class="card">
     <div class="card-header"><h5 class="h6 mb-0">Rollen auf dem Server</h5></div>
     <div class="card-body">
