@@ -681,6 +681,23 @@ wiederhergestellt.
 
 ---
 
+### Rollenhierarchie: die Bot-Rolle steht absichtlich unten
+
+Die Rolle des Bots („Blackforest´s Helper", Position 4) steht **unter** Moderator (5) und
+Manager (6). Der Bot kann Träger dieser Rollen daher nicht kicken, bannen oder
+stummschalten — Discords Rollenhierarchie ist eine eigene Schranke, die das
+Administrator-Recht nicht aufhebt.
+
+**Das ist kein Konfigurationsfehler, sondern eine bewusste Sicherheitsgrenze**
+(Entscheidung Patrick, 03.09.2026): Das Moderationsteam soll nicht durch den Bot entfernt
+werden können — auch nicht durch jemanden, der sich Zugang zum Backend verschafft. Gegen
+Moderatoren vorzugehen bleibt Sache eines Menschen mit Administratorrechten.
+
+Schlägt eine Moderationsaktion gegen ein Teammitglied fehl, ist das also das gewünschte
+Verhalten. Die Bot-Rolle darf **nicht** nach oben gezogen werden.
+
+---
+
 ## 17. Offene Punkte (Stand 03.09.2026)
 
 - ~~**`ERR_TIMED_OUT` in der Android-App**~~ — **am 02.09.2026 gelöst.** Die hier

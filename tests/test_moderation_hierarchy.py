@@ -60,11 +60,38 @@ def test_server_owner_can_never_be_moderated():
     assert "Eigentümer" in grund
 
 
-def test_message_names_the_cause_and_the_fix():
-    """Die Meldung muss den Grund benennen UND sagen, was zu tun ist - der
-    urspruengliche Text ('Mir fehlt die Berechtigung') schickte auf die falsche
-    Faehrte, weil die Berechtigungen tatsaechlich vollstaendig waren."""
+def test_message_names_the_cause():
+    """Die Meldung muss den Grund benennen - der urspruengliche Text ('Mir fehlt
+    die Berechtigung') schickte auf die falsche Faehrte, weil die Berechtigungen
+    tatsaechlich vollstaendig waren."""
     grund = _reason(target_pos=5, bot_pos=4)
     assert "Administrator" in grund, "muss klarstellen, dass Administrator nicht hilft"
-    assert "Servereinstellungen" in grund, "muss den Loesungsweg nennen"
     assert "Moderator" in grund and "Bot-Rolle" in grund, "muss beide Rollen benennen"
+
+
+def test_message_raet_nicht_zum_hochziehen_der_bot_rolle():
+    """Frueher endete die Meldung mit dem Rat, die Bot-Rolle in den
+    Servereinstellungen ueber die Zielrolle zu schieben. Dieser Rat ist auf
+    diesem Server FALSCH: Die Bot-Rolle steht absichtlich unter Moderator und
+    Manager, damit das Moderationsteam nicht ueber den Bot entfernt werden kann
+    (Entscheidung Patrick, 03.09.2026).
+
+    Ein fehlgeschlagener Kick gegen ein Teammitglied ist also das gewuenschte
+    Verhalten. Wer der Meldung folgte, wuerde genau die Schutzgrenze aufheben,
+    die hier beabsichtigt ist."""
+    grund = _reason(target_pos=5, bot_pos=4)
+    assert "Servereinstellungen" not in grund, (
+        "Die Meldung raet wieder dazu, die Rollen umzusortieren - das hebt eine "
+        "absichtliche Sicherheitsgrenze auf."
+    )
+    assert "schieben" not in grund and "hochziehen" not in grund
+    assert "gewollt" in grund or "geschützt" in grund, (
+        "Die Meldung muss erklaeren, dass die Sperre beabsichtigt ist - sonst "
+        "sucht der Moderator nach einem Fehler, den es nicht gibt."
+    )
+
+
+def test_message_nennt_den_richtigen_weg():
+    """Statt die Rollen umzubauen: Ein Administrator handelt direkt in Discord."""
+    grund = _reason(target_pos=5, bot_pos=4)
+    assert "Administrator" in grund and "Discord" in grund

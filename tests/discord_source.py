@@ -101,11 +101,16 @@ def load_from_app(*namen: str) -> dict:
         )
 
     from datetime import datetime, timezone
+    from urllib.parse import quote
 
+    # Die Namen, die der ausgeschnittene Code aus dem Modulkopf von app.py
+    # erwartet. Fehlt einer, scheitert der Test mit einem NameError, der wie ein
+    # Fehler im Produktivcode aussieht - deshalb hier vollstaendig halten.
     namensraum: dict = {
         "discord": _FakeDiscordModule,
         "datetime": datetime,
         "timezone": timezone,
+        "quote": quote,
         "__name__": "app_ausschnitt",
     }
     modul = ast.Module(body=knoten, type_ignores=[])

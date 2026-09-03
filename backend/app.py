@@ -11,6 +11,7 @@ import logging
 import math
 import secrets
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 import discord
 from flask import Flask, flash, redirect, render_template, request, session, url_for, jsonify
@@ -38,6 +39,57 @@ EMBED_LIMITS = {
     "fields_max": 25,
     "total": 6000,
 }
+
+
+# Discord schreibt den Grund einer Moderationsaktion ueber den HTTP-Header
+# X-Audit-Log-Reason ins Audit-Log des Servers. Die Dokumentation dazu ist
+# eindeutig (nachgeschlagen am 03.09.2026 unter
+# https://docs.discord.com/developers/resources/audit-log):
+#
+#     "The X-Audit-Log-Reason header supports 1-512 URL-encoded UTF-8 characters."
+#
+# Entscheidend ist "URL-encoded": Gezaehlt wird NACH der Kodierung. Ein "a"
+# bleibt ein Zeichen, ein "ü" wird zu %C3%BC und belegt sechs. Ein deutscher
+# Text reisst die Grenze also frueher, als das Zaehlen der Buchstaben vermuten
+# laesst. Ohne Begrenzung antwortet Discord mit einer 400, die im Backend als
+# "Kick fehlgeschlagen: 400 Bad Request" landet - und man sucht den Fehler bei
+# den Rechten oder der Rollenhierarchie statt beim Begruendungstext.
+AUDIT_REASON_MAX = 512
+
+
+def _kuerze_audit_grund(text: str) -> tuple[str, bool]:
+    """Kuerzt den Grund so, dass er URL-kodiert unter Discords Grenze bleibt.
+
+    Rueckgabe: (gekuerzter Text, wurde_gekuerzt).
+
+    Bewusst kuerzen statt ablehnen: Die Alternative waere, dass ein Bann an
+    einem zu langen Begruendungstext scheitert - in dem Moment, in dem man
+    jemanden bannen will, ist das die falsche Prioritaet. Der VOLLSTAENDIGE Text
+    wird ohnehin im eigenen Audit-Log (database.log_audit) abgelegt, das diese
+    Beschraenkung nicht hat.
+
+    Zeichenweise statt text[:512], weil sonst mitten in einem Mehrbyte-Zeichen
+    geschnitten wuerde.
+    """
+    if len(quote(text, safe="")) <= AUDIT_REASON_MAX:
+        return text, False
+
+    # Die Reserve fuer das Auslassungszeichen muss ebenfalls KODIERT gerechnet
+    # werden: "…" ist ein Zeichen im Text, aber %E2%80%A6 und damit neun im
+    # Header. Mit einer Reserve von 1 lief das Ergebnis um acht Zeichen ueber
+    # die Grenze - gefunden vom Test test_kein_schnitt_mitten_im_zeichen.
+    ELLIPSE = "…"
+    reserve = len(quote(ELLIPSE, safe=""))
+
+    ergebnis = []
+    laenge = 0
+    for zeichen in text:
+        kodiert = len(quote(zeichen, safe=""))
+        if laenge + kodiert > AUDIT_REASON_MAX - reserve:
+            break
+        ergebnis.append(zeichen)
+        laenge += kodiert
+    return "".join(ergebnis).rstrip() + ELLIPSE, True
 
 
 def _parse_embed_color(value):
@@ -1776,7 +1828,15 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             return redirect(url_for("members_overview"))
         if _member_action_guard(user_id):
             return redirect(url_for("member_detail", user_id=user_id))
-        reason = (request.form.get("reason") or "").strip() or "Kein Grund angegeben"
+        reason_voll = (request.form.get("reason") or "").strip() or "Kein Grund angegeben"
+        reason, gekuerzt = _kuerze_audit_grund(reason_voll)
+        if gekuerzt:
+            flash(
+                "Der Grund war für Discords Audit-Log zu lang und wurde gekürzt "
+                f"(Grenze: {AUDIT_REASON_MAX} URL-kodierte Zeichen, Umlaute zählen sechsfach). "
+                "Im Audit-Log des Bots steht der vollständige Text.",
+                "warning",
+            )
 
         async def _kick():
             guild = bot.guilds[0]
@@ -1788,12 +1848,12 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         try:
             run_on_bot(_kick())
         except discord.Forbidden:
-            flash("Discord hat den Kick abgelehnt. Häufigste Ursache ist die Rollenhierarchie: Die Bot-Rolle muss ÜBER der höchsten Rolle des Nutzers stehen — Berechtigungen allein genügen nicht, auch Administrator nicht.", "error")
+            flash("Discord hat den Kick abgelehnt. Die Person trägt eine Rolle, die nicht unter der Bot-Rolle liegt — auf diesem Server ist das Moderationsteam bewusst vor Aktionen des Bots geschützt. Berechtigungen ändern daran nichts, auch Administrator nicht. Gegen diese Person kann nur ein Administrator direkt in Discord vorgehen.", "error")
         except Exception as exc:
             log.exception("Kick fehlgeschlagen (user_id=%s)", user_id)
             flash(f"Kick fehlgeschlagen: {exc}", "error")
         else:
-            database.log_audit(session["discord_user_id"], "member_kick", target_id=user_id, detail=f"Grund: {reason}")
+            database.log_audit(session["discord_user_id"], "member_kick", target_id=user_id, detail=f"Grund: {reason_voll}")
             flash("Nutzer wurde gekickt.", "success")
         return redirect(url_for("members_overview"))
 
@@ -1804,7 +1864,15 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             return redirect(url_for("members_overview"))
         if _member_action_guard(user_id):
             return redirect(url_for("member_detail", user_id=user_id))
-        reason = (request.form.get("reason") or "").strip() or "Kein Grund angegeben"
+        reason_voll = (request.form.get("reason") or "").strip() or "Kein Grund angegeben"
+        reason, gekuerzt = _kuerze_audit_grund(reason_voll)
+        if gekuerzt:
+            flash(
+                "Der Grund war für Discords Audit-Log zu lang und wurde gekürzt "
+                f"(Grenze: {AUDIT_REASON_MAX} URL-kodierte Zeichen, Umlaute zählen sechsfach). "
+                "Im Audit-Log des Bots steht der vollständige Text.",
+                "warning",
+            )
 
         async def _ban():
             guild = bot.guilds[0]
@@ -1813,12 +1881,12 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         try:
             run_on_bot(_ban())
         except discord.Forbidden:
-            flash("Discord hat den Bann abgelehnt. Häufigste Ursache ist die Rollenhierarchie: Die Bot-Rolle muss ÜBER der höchsten Rolle des Nutzers stehen — Berechtigungen allein genügen nicht, auch Administrator nicht.", "error")
+            flash("Discord hat den Bann abgelehnt. Die Person trägt eine Rolle, die nicht unter der Bot-Rolle liegt — auf diesem Server ist das Moderationsteam bewusst vor Aktionen des Bots geschützt. Berechtigungen ändern daran nichts, auch Administrator nicht. Gegen diese Person kann nur ein Administrator direkt in Discord vorgehen.", "error")
         except Exception as exc:
             log.exception("Ban fehlgeschlagen (user_id=%s)", user_id)
             flash(f"Ban fehlgeschlagen: {exc}", "error")
         else:
-            database.log_audit(session["discord_user_id"], "member_ban", target_id=user_id, detail=f"Grund: {reason}")
+            database.log_audit(session["discord_user_id"], "member_ban", target_id=user_id, detail=f"Grund: {reason_voll}")
             flash("Nutzer wurde gebannt.", "success")
         return redirect(url_for("members_overview"))
 
@@ -1855,7 +1923,15 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             return redirect(url_for("members_overview"))
         if _member_action_guard(user_id):
             return redirect(url_for("member_detail", user_id=user_id))
-        reason = (request.form.get("reason") or "").strip() or "Kein Grund angegeben"
+        reason_voll = (request.form.get("reason") or "").strip() or "Kein Grund angegeben"
+        reason, gekuerzt = _kuerze_audit_grund(reason_voll)
+        if gekuerzt:
+            flash(
+                "Der Grund war für Discords Audit-Log zu lang und wurde gekürzt "
+                f"(Grenze: {AUDIT_REASON_MAX} URL-kodierte Zeichen, Umlaute zählen sechsfach). "
+                "Im Audit-Log des Bots steht der vollständige Text.",
+                "warning",
+            )
         try:
             duration_minutes = max(1, min(40320, int(request.form.get("duration_minutes", "10"))))
         except (TypeError, ValueError):
@@ -1871,14 +1947,14 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         try:
             run_on_bot(_timeout())
         except discord.Forbidden:
-            flash("Discord hat den Timeout abgelehnt. Häufigste Ursache ist die Rollenhierarchie: Die Bot-Rolle muss ÜBER der höchsten Rolle des Nutzers stehen — Berechtigungen allein genügen nicht, auch Administrator nicht.", "error")
+            flash("Discord hat den Timeout abgelehnt. Die Person trägt eine Rolle, die nicht unter der Bot-Rolle liegt — auf diesem Server ist das Moderationsteam bewusst vor Aktionen des Bots geschützt. Berechtigungen ändern daran nichts, auch Administrator nicht. Gegen diese Person kann nur ein Administrator direkt in Discord vorgehen.", "error")
         except Exception as exc:
             log.exception("Timeout fehlgeschlagen (user_id=%s)", user_id)
             flash(f"Timeout fehlgeschlagen: {exc}", "error")
         else:
             database.log_audit(
                 session["discord_user_id"], "member_timeout", target_id=user_id,
-                detail=f"{duration_minutes} Minuten, Grund: {reason}",
+                detail=f"{duration_minutes} Minuten, Grund: {reason_voll}",
             )
             flash(f"Nutzer wurde für {duration_minutes} Minuten stummgeschaltet.", "success")
         return redirect(url_for("member_detail", user_id=user_id))

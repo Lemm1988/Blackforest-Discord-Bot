@@ -145,3 +145,76 @@ def test_whitelists_sind_nicht_leer():
         assert all(isinstance(w, str) and w.isidentifier() for w in werte), (
             f"{name} enthaelt einen Wert, der kein gueltiger Spaltenname ist."
         )
+
+
+# --------------------------------------------------------------------------
+# Laenge des Moderationsgrundes (Plan 02, umgesetzt 03.09.2026)
+#
+# Der Grund landet bei Discord im HTTP-Header X-Audit-Log-Reason, und der
+# erlaubt "1-512 URL-encoded UTF-8 characters". Das Tueckische ist das
+# "URL-encoded": Gezaehlt wird NACH der Kodierung. Ein "a" bleibt ein Zeichen,
+# ein "ü" wird zu %C3%BC und belegt sechs. Ein deutscher Text reisst die Grenze
+# also viel frueher, als das Zaehlen der Buchstaben vermuten laesst - und wer
+# nur len(text) prueft, baut genau diesen Fehler ein.
+# --------------------------------------------------------------------------
+
+from urllib.parse import quote  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def kuerzen():
+    from discord_source import load_from_app
+    return load_from_app("AUDIT_REASON_MAX", "_kuerze_audit_grund")
+
+
+def test_grenze_entspricht_der_dokumentation(kuerzen):
+    assert kuerzen["AUDIT_REASON_MAX"] == 512
+
+
+def test_kurzer_grund_bleibt_unveraendert(kuerzen):
+    text = "Werbung im Chat, dritte Verwarnung."
+    assert kuerzen["_kuerze_audit_grund"](text) == (text, False)
+
+
+def test_langer_grund_wird_gekuerzt(kuerzen):
+    gekuerzt, wurde = kuerzen["_kuerze_audit_grund"]("a" * 600)
+    assert wurde is True
+    assert len(quote(gekuerzt, safe="")) <= 512
+
+
+def test_umlaute_zaehlen_sechsfach(kuerzen):
+    """200 Umlaute sind 200 Zeichen, aber 1200 kodierte - muessen also gekuerzt
+    werden. Eine Pruefung ueber len(text) wuerde sie durchlassen und Discord
+    antwortete mit einer nichtssagenden 400."""
+    text = "ü" * 200
+    assert len(text) < 512, "Rohlaenge liegt unter der Grenze - genau die Falle"
+    assert len(quote(text, safe="")) > 512, "kodiert aber darueber"
+    gekuerzt, wurde = kuerzen["_kuerze_audit_grund"](text)
+    assert wurde is True
+    assert len(quote(gekuerzt, safe="")) <= 512
+
+
+@pytest.mark.parametrize("zeichen", ["ü", "ß", "é", "🌱", "„", "—"])
+def test_kein_schnitt_mitten_im_zeichen(kuerzen, zeichen):
+    """text[:512] wuerde ein Mehrbyte-Zeichen zerteilen. Hier wird zeichenweise
+    gezaehlt, das Ergebnis muss also weiterhin gueltiger Text sein."""
+    gekuerzt, _ = kuerzen["_kuerze_audit_grund"](zeichen * 400)
+    gekuerzt.encode("utf-8").decode("utf-8")  # wuerfe UnicodeDecodeError bei kaputtem Schnitt
+    assert len(quote(gekuerzt, safe="")) <= 512
+
+
+def test_gekuerzter_text_ist_erkennbar(kuerzen):
+    """Ein Auslassungszeichen am Ende - sonst sieht der abgeschnittene Grund im
+    Audit-Log wie ein vollstaendiger Satz aus, der mitten im Wort endet."""
+    gekuerzt, _ = kuerzen["_kuerze_audit_grund"]("Spam " * 200)
+    assert gekuerzt.endswith("…")
+
+
+def test_genau_an_der_grenze_wird_nicht_angefasst(kuerzen):
+    text = "a" * 512
+    assert len(quote(text, safe="")) == 512
+    assert kuerzen["_kuerze_audit_grund"](text) == (text, False)
+
+
+def test_ein_zeichen_darueber_wird_gekuerzt(kuerzen):
+    assert kuerzen["_kuerze_audit_grund"]("a" * 513)[1] is True

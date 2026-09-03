@@ -17,6 +17,30 @@ import config
 import database
 
 
+# --- Sichtbarkeit im Discord-/-Menue (03.09.2026) ---
+#
+# @app_commands.default_permissions(...) ist NUR ein Anzeigefilter: Discord
+# zeichnet das Befehlsmenue, ohne den Bot zu fragen, und kann dabei
+# ausschliesslich seine EIGENEN Serverrechte beruecksichtigen - von den
+# Berechtigungen in unserer Datenbank weiss es nichts. Die echte Schranke
+# bleiben deshalb is_admin() und has_permission_check() weiter unten.
+#
+# Die Zuordnung wurde am 03.09.2026 gegen den echten Server geprueft:
+#   grant_access/revoke_access -> is_admin  -> Discord "Administrator".
+#       Deckt sich exakt: Die einzige Person mit is_admin ist der
+#       Server-Eigentuemer, der Administrator ohnehin hat.
+#   dm -> send_dm -> Discord "Mitglieder timeouten" (moderate_members).
+#       BEWUSST NICHT Administrator: send_dm ist eine Berechtigung, die an
+#       Moderatoren vergeben wird, und die Rollen Moderator (Position 5) und
+#       Manager (6) haben auf diesem Server kein Adminrecht. Hinter
+#       "Administrator" versteckt waere der Befehl fuer genau die Leute
+#       unsichtbar, fuer die er gedacht ist. moderate_members haben auf diesem
+#       Server genau Moderator und Manager.
+#
+# Ueberschreibbar bleibt das ohnehin: Servereinstellungen -> Integrationen,
+# pro Befehl und Rolle.
+
+
 def is_admin():
     async def predicate(ctx: commands.Context) -> bool:
         if not database.has_permission(ctx.author.id, "is_admin"):
@@ -42,6 +66,7 @@ class Admin(commands.Cog):
     @commands.hybrid_command(name="grant_access", description="Vergibt einem Nutzer eine Backend-Berechtigung.")
     @app_commands.describe(user="Der Discord-Nutzer", permission="Die zu vergebende Berechtigung")
     @app_commands.choices(permission=[app_commands.Choice(name=p, value=p) for p in database.ALL_PERMISSIONS])
+    @app_commands.default_permissions(administrator=True)
     @is_admin()
     async def grant_access(self, ctx: commands.Context, user: discord.User, permission: str):
         if config.BOT_OWNER_ID and str(user.id) == config.BOT_OWNER_ID:
@@ -60,6 +85,7 @@ class Admin(commands.Cog):
     @commands.hybrid_command(name="revoke_access", description="Entzieht einem Nutzer eine Backend-Berechtigung.")
     @app_commands.describe(user="Der Discord-Nutzer", permission="Die zu entziehende Berechtigung")
     @app_commands.choices(permission=[app_commands.Choice(name=p, value=p) for p in database.ALL_PERMISSIONS])
+    @app_commands.default_permissions(administrator=True)
     @is_admin()
     async def revoke_access(self, ctx: commands.Context, user: discord.User, permission: str):
         if config.BOT_OWNER_ID and str(user.id) == config.BOT_OWNER_ID:
@@ -86,6 +112,7 @@ class Admin(commands.Cog):
 
     @commands.hybrid_command(name="dm", description="Sendet einem Nutzer eine private Nachricht im Namen des Bots.")
     @app_commands.describe(user="Der Discord-Nutzer", nachricht="Der Nachrichtentext")
+    @app_commands.default_permissions(moderate_members=True)
     @has_permission_check("send_dm")
     async def dm(self, ctx: commands.Context, user: discord.User, *, nachricht: str):
         try:
