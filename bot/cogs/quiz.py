@@ -317,36 +317,29 @@ class Quiz(commands.Cog):
         score = database.get_score(ctx.author.id)
         await ctx.send(f"{ctx.author.mention}, dein aktueller Punktestand beträgt **{score}** Punkte! 🌟")
 
-    @commands.hybrid_command(name="xp", description="Zeigt deinen aktuellen XP-Stand und dein Level.")
-    async def xp(self, ctx: commands.Context):
-        progress = database.get_user_xp(ctx.author.id)
-        await ctx.send(
-            f"{ctx.author.mention}, du bist **Level {progress['level']}** mit **{progress['xp']} XP**. "
-            f"Noch **{int(progress['xp_to_next'])} XP** bis Level {progress['level'] + 1}! 📈"
-        )
-
-    @commands.hybrid_command(name="achievements", description="Zeigt deine Achievements.")
-    async def achievements(self, ctx: commands.Context):
-        overview = database.get_achievements_overview(ctx.author.id)
-        embed = discord.Embed(title="🏅 Deine Achievements", color=discord.Color.gold())
-        for entry in overview:
-            if entry["unlocked"]:
-                status = f"✅ Freigeschaltet am {entry['unlocked_at']} (+{entry['xp_reward']} XP)"
-            elif entry["secret"]:
-                status = "🔒 Geheimes Achievement - noch nicht freigeschaltet"
-            else:
-                status = f"🔒 Noch nicht freigeschaltet ({entry['description']})"
-            embed.add_field(name=entry["name"], value=status, inline=False)
-        await ctx.send(embed=embed, ephemeral=True)
-
-    @commands.hybrid_command(name="leaderboard", description="Zeigt die Top 15 Spieler.")
-    async def leaderboard(self, ctx: commands.Context):
+    # Am 03.09.2026 von "leaderboard" umbenannt. Der alte Name liess offen, um
+    # welche Wertung es geht - gezeigt wurden immer schon die QUIZ-Punkte aus der
+    # Tabelle players, nie die serverweiten XP. Seit es mit
+    # /serverxp_rangliste eine zweite Rangliste gibt, waere das nicht mehr nur
+    # ungenau, sondern irrefuehrend.
+    @commands.hybrid_command(
+        name="quiz_rangliste",
+        description="Zeigt die Top 15 nach Punkten im Pflanzenquiz.",
+    )
+    async def quiz_rangliste(self, ctx: commands.Context):
         top_players = database.get_leaderboard(15)
         if not top_players:
-            await ctx.send("Es gibt noch keine Spieler im Leaderboard!")
+            await ctx.send("Es hat noch niemand Punkte im Pflanzenquiz gesammelt.")
             return
 
-        embed = discord.Embed(title="🏆 Leaderboard: Top 15 Spieler 🏆", color=discord.Color.gold())
+        embed = discord.Embed(
+            title="🏆 Pflanzenquiz: Top 15",
+            description=(
+                "Punkte gibt es ausschliesslich fuer richtige Quizantworten. "
+                "Die serverweiten XP stehen getrennt davon in `/serverxp_rangliste`."
+            ),
+            color=discord.Color.gold(),
+        )
         for idx, player in enumerate(top_players, start=1):
             user_id = int(player["user_id"])
             user = self.bot.get_user(user_id) or await self.bot.fetch_user(user_id)

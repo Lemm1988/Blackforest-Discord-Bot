@@ -28,7 +28,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 13. Umgesetzte Sicherheitsmaßnahmen
 14. Unterschiede zum alten Bot
 15. Den Bot erweitern
-16. Testsuite (`tests/`, 207 Tests)
+16. Testsuite (`tests/`, 265 Tests)
 17. Offene Punkte (Stand 03.09.2026)
 
 ---
@@ -113,12 +113,27 @@ insgesamt.**
 |---|---|
 | `frage` | Zieht eine zufällige, verifizierte, unbeantwortete Frage. Antwort über vier Buttons (A–D). |
 | `frage_einreichen` | **Neu:** Frage+4 Antworten+korrekte Antwort direkt per Discord-Befehl einreichen (Slash-Variante: A/B/C/D-Dropdown), ohne Web-Formular. Nutzt dieselbe Validierung wie `/qinput` (`database.validate_question_submission()`, nicht dupliziert). |
-| `gamescore` | Eigener Punktestand. |
-| `xp` | Eigener XP-Stand, Level, verbleibende XP. |
-| `achievements` | Alle Achievements als Embed. |
-| `leaderboard` | Top 15 Spieler. |
+| `gamescore` | Eigener Punktestand im Quiz. |
+| `quiz_rangliste` | Top 15 nach **Quiz-Punkten**. Bis 03.09.2026 `leaderboard` — der alte Name ließ offen, um welche Wertung es geht. |
 | `rules` | Spielregeln als Embed. |
 | `botgame` | Ausführliche Quiz-Infos per DM. |
+
+### XP & Level (`cogs/xp_level.py`, neu 03.09.2026)
+
+Am 03.09.2026 aus `cogs/quiz.py` herausgelöst. Der Grund ist inhaltlich: **XP ist kein
+Quiz-Feature.** Es entsteht an drei Stellen, von denen nur eine das Quiz ist — Chat
+(`cogs/moderation.py`), Quizantworten (`cogs/quiz.py`) und Zufallsereignisse
+(`cogs/personality.py`). Solange `/xp` im Quiz-Cog lag, hätte wer nur das Quiz-Modul
+installiert einen Befehl bekommen, der überwiegend Chat-Fortschritt anzeigt; und wer nur
+XP & Level installiert, hätte gar keine Möglichkeit gehabt, seine XP zu sehen. Im Backend
+war die Trennung längst vollzogen (`/xp-level`), nur die Bot-Befehle waren nicht
+mitgezogen.
+
+| Befehl | Beschreibung |
+|---|---|
+| `xp` | Eigener XP-Stand, Level, verbleibende XP bis zum nächsten. |
+| `serverxp_rangliste` | Top 15 nach **Server-XP**. Getrennt von `quiz_rangliste`: Es sind zwei Wertungen mit zwei Datentöpfen (`user_xp` bzw. `players`) — jemand kann in der einen ganz oben stehen und in der anderen gar nicht auftauchen. |
+| `achievements` | Alle Achievements mit Freischaltstatus (nur für den Aufrufer sichtbar). |
 
 ### Pflanzen (`cogs/plants.py`)
 
@@ -623,7 +638,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 16. Testsuite (`tests/`, 207 Tests)
+## 16. Testsuite (`tests/`, 265 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -655,9 +670,10 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_discord_limits.py` | 55 | Alle acht Embed-Grenzen gegen die offizielle Dokumentation, jeweils genau am Limit erlaubt und ein Zeichen darüber abgelehnt; die 6000-Zeichen-Gesamtsumme; Farbwerte; Zeitzonenbehandlung |
 | `test_csrf_coverage.py` | 71 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
-| `test_moderation_limits.py` | 12 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
-| `test_moderation_hierarchy.py` | 5 | Rollenhierarchie als eigene Schranke neben den Berechtigungen |
+| `test_moderation_limits.py` | 25 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
+| `test_moderation_hierarchy.py` | 7 | Rollenhierarchie als eigene Schranke neben den Berechtigungen |
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
+| `test_achievements_module.py` | 43 | Modultrennung der Achievements und alle Auslöseschwellen; prüft ausdrücklich, dass `database.py` keinen Achievement-Namen mehr kennt |
 | `test_morning_greeting.py` | 38 | Zeitlogik der täglichen Guten-Morgen-Nachricht: Fenster, Tagesmerker gegen doppelte Grüße nach einem Neustart, Randuhrzeiten um Mitternacht, unbrauchbare Eingaben |
 | `test_mood.py` | 5 | Mood-Texte, Häufigkeitsgrenzen, Nachtstunden über Mitternacht |
 | `test_webview_dialogs.py` | 3 | `WebChromeClient` in der App — ohne ihn schlucken WebViews `confirm()` und Kick/Ban/Timeout bleiben wirkungslos |
@@ -695,6 +711,42 @@ Moderatoren vorzugehen bleibt Sache eines Menschen mit Administratorrechten.
 
 Schlägt eine Moderationsaktion gegen ein Teammitglied fehl, ist das also das gewünschte
 Verhalten. Die Bot-Rolle darf **nicht** nach oben gezogen werden.
+
+---
+
+### Modultrennung (Grundsatz seit 03.09.2026)
+
+Patrick verfolgt das Ziel, einzelne Funktionsbereiche später als kostenpflichtige Module
+anzubieten. Jedes Modul muss sich deshalb **einzeln installieren lassen**, und für jede
+Änderung gilt: Erst klären, zu welchem Modul eine Funktion gehört, dann dort ablegen.
+
+**Achievements sind entsprechend aufgeteilt.** Vorher standen alle acht samt ihren
+Auslösebedingungen zusammen in `database.py`, in einer if/elif-Kette. Wer das Quiz-Modul
+entfernt hätte, hätte dort sechs tote Definitionen zurückgelassen und eine Bedingung, die
+auf eine Quiz-Statistik zugreift, die es nicht mehr gibt.
+
+| Datei | Rolle |
+|---|---|
+| `bot/achievements.py` | Nur die Mechanik — Registratur, Datenklasse, Kandidatensuche. Kennt **keinen** Achievement-Namen. |
+| `bot/achievements_quiz.py` | Die sechs Quiz-Achievements (richtige Antworten, Uhrzeiten, erste eingereichte Frage). |
+| `bot/achievements_xp_level.py` | Die zwei Level-Achievements. |
+| `bot/database.py` | Verdrahtung mit der Datenbank und XP-Belohnung — ohne Kenntnis einzelner Achievements. |
+
+Zwei Entwurfsentscheidungen dabei:
+
+**Die Bedingungen sind reine Funktionen** über ein Kontext-Dictionary, ohne
+Datenbankzugriff. Vorher zählte die Quiz-Bedingung als Nebenwirkung einen Zähler hoch —
+eine Prüfung veränderte also Daten, was beim Lesen niemand erwartet. Jetzt besorgt
+`check_and_unlock_achievements()` die nötigen Zahlen und gibt sie mit.
+
+**`achievements.lade_module("quiz", "xp_level")`** in `init_db()` macht an einer Stelle
+sichtbar, welche Module aktiv sind. Sobald Module tatsächlich einzeln verkauft werden,
+kommt diese Liste aus der Konfiguration. Achievements eines entfernten Moduls bleiben als
+Datenzeile stehen — wer sie freigeschaltet hat, verliert sie nicht.
+
+Abgesichert durch `tests/test_achievements_module.py` (43 Tests), darunter eine Prüfung,
+dass `database.py` keinen Achievement-Namen mehr nennt — auch nicht im Kommentar, denn ein
+solcher Kommentar wäre ein Zeichen für veraltete Dokumentation.
 
 ---
 

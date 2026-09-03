@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+import achievements
 import config
 import mood
 
@@ -316,24 +317,25 @@ def _cleanup_veraltetes(conn):
 # Feste Achievement-Definitionen (Spec 1, Phase 6). INSERT OR IGNORE macht das
 # idempotent - ein spaeterer manueller Eingriff an einer Zeile (z.B. via SQL)
 # wird bei jedem Neustart NICHT ueberschrieben, nur fehlende IDs werden ergaenzt.
-_ACHIEVEMENT_DEFINITIONS = [
-    # (id, name, description, xp_reward, secret)
-    ("FIRST_QUIZ", "Erste Schritte", "Deine erste Quizfrage richtig beantwortet.", 20, 0),
-    ("QUIZ_10", "Wissbegierig", "10 Quizfragen insgesamt richtig beantwortet.", 50, 0),
-    ("QUIZ_100", "Pflanzenexperte", "100 Quizfragen insgesamt richtig beantwortet.", 100, 0),
-    ("LEVEL_10", "Aufsteiger", "Level 10 erreicht.", 50, 0),
-    ("LEVEL_25", "Veteran", "Level 25 erreicht.", 150, 0),
-    ("NIGHT_OWL", "Nachteule", "Eine Quizfrage zwischen 0 und 4 Uhr nachts richtig beantwortet.", 30, 1),
-    ("EARLY_BIRD", "Frühaufsteher", "Eine Quizfrage zwischen 5 und 7 Uhr morgens richtig beantwortet.", 30, 1),
-    ("COMMUNITY_MEMBER", "Community-Mitglied", "Deine erste eigene Quizfrage eingereicht.", 20, 0),
-]
-
-
 def _seed_achievements(conn):
-    for achievement_id, name, description, xp_reward, secret in _ACHIEVEMENT_DEFINITIONS:
+    """Traegt die Achievements der INSTALLIERTEN Module in die Datenbank ein.
+
+    Die Definitionen stehen nicht mehr hier, sondern in den Modulen selbst
+    (achievements_quiz.py, achievements_xp_level.py) - siehe achievements.py
+    fuer die Begruendung. Diese Funktion kennt keinen einzigen
+    Achievement-Namen mehr, nur noch den Weg in die Tabelle.
+
+    INSERT OR IGNORE macht es idempotent: Ein spaeter von Hand geaenderter
+    Eintrag wird bei jedem Neustart NICHT ueberschrieben, nur fehlende IDs
+    kommen dazu. Achievements eines entfernten Moduls bleiben als Datenzeile
+    stehen - wer sie frueher freigeschaltet hat, verliert sie also nicht.
+    """
+    for achievement in achievements.REGISTRATUR.alle():
         conn.execute(
-            "INSERT OR IGNORE INTO achievements (id, name, description, xp_reward, secret) VALUES (?, ?, ?, ?, ?)",
-            (achievement_id, name, description, xp_reward, secret),
+            "INSERT OR IGNORE INTO achievements (id, name, description, xp_reward, secret) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (achievement.id, achievement.name, achievement.beschreibung,
+             achievement.xp_belohnung, int(achievement.geheim)),
         )
 
 
@@ -508,6 +510,10 @@ def init_db():
             "CREATE INDEX IF NOT EXISTS idx_personality_texts_pool "
             "ON personality_texts (pool)"
         )
+        # Achievements der installierten Module laden, BEVOR sie geseedet
+        # werden. Sobald Module einzeln verkauft werden, kommt diese Liste aus
+        # der Konfiguration - bis dahin steht hier an einer Stelle, was aktiv ist.
+        achievements.lade_module("quiz", "xp_level")
         _cleanup_veraltetes(conn)
         _migrate_link_filter_mode(conn)
         _seed_achievements(conn)
@@ -868,6 +874,26 @@ def get_leaderboard(limit: int = 15):
     with get_connection() as conn:
         return conn.execute(
             "SELECT user_id, score FROM players ORDER BY score DESC LIMIT ?", (limit,)
+        ).fetchall()
+
+
+def get_xp_leaderboard(limit: int = 15):
+    """Rangliste ueber die SERVERWEITEN XP - Modul "XP & Level".
+
+    Bewusst getrennt von get_leaderboard(), das die Quiz-Punkte aus der Tabelle
+    players liefert. Es sind zwei verschiedene Wertungen mit zwei verschiedenen
+    Datentoepfen: Quiz-Punkte bekommt man nur durchs Quiz, XP dagegen auch durch
+    Chatnachrichten und Zufallsereignisse. Jemand kann in der einen Liste ganz
+    oben und in der anderen gar nicht auftauchen.
+
+    Sortiert nach XP, bei Gleichstand nach Level - damit die Reihenfolge stabil
+    bleibt und nicht bei jedem Aufruf wechselt.
+    """
+    with get_connection() as conn:
+        return conn.execute(
+            "SELECT discord_user_id, xp, level FROM user_xp "
+            "ORDER BY xp DESC, level DESC, discord_user_id ASC LIMIT ?",
+            (limit,),
         ).fetchall()
 
 
@@ -1414,11 +1440,14 @@ def award_xp(discord_user_id, amount: int, reason: str = "generic", bypass_coold
 
     Zentrale Achievement-Anbindung (Spec 1, Phase 6, "keine unabhaengigen
     Parallelmechanismen"): statt dass jeder Aufrufer separat an Achievements
-    denken muss, prueft award_xp() selbst zwei der drei Achievement-Ausloeser
-    zentral mit - "nach jedem award_xp()-Levelaufstieg" (LEVEL_10/LEVEL_25) IMMER,
-    und "nach jeder richtigen Quiz-Antwort" (FIRST_QUIZ/QUIZ_10/QUIZ_100/NIGHT_OWL/
-    EARLY_BIRD) wenn reason=="quiz" ist. Der dritte Ausloeser (COMMUNITY_MEMBER,
-    Frageneinreichung) sitzt aus denselben Gruenden zentral in submit_question().
+    denken muss, meldet award_xp() selbst zwei der drei Ereignisse - "level_up"
+    nach jedem Levelaufstieg, und "quiz_correct", wenn reason=="quiz" ist. Das
+    dritte Ereignis ("question_submitted") meldet submit_question().
+
+    WELCHE Achievements auf diese Ereignisse reagieren, weiss diese Datei seit
+    dem 03.09.2026 bewusst NICHT mehr - das steht in den Modulen selbst
+    (achievements_quiz.py, achievements_xp_level.py), damit sich ein Modul
+    entfernen laesst, ohne hier Reste zu hinterlassen. Siehe achievements.py.
     _check_achievements=False wird NUR intern von check_and_unlock_achievements()
     selbst gesetzt, wenn es die xp_reward eines gerade freigeschalteten
     Achievements gutschreibt - verhindert, dass ein Achievement-Bonus rekursiv
@@ -1553,49 +1582,42 @@ def count_questions_by_user(discord_user_id) -> int:
 # --- Achievements (Spec 1, Phase 6) ---
 
 def check_and_unlock_achievements(discord_user_id, event: str, **context) -> list:
-    """Zentrale Freischalt-Pruefung fuer ALLE Achievement-Bedingungen - bewusst an
-    einer einzigen Stelle gehalten statt in jedem Cog verstreut (Spec 1: keine
-    unabhaengigen Parallelmechanismen). "event" waehlt aus, welche Bedingungen
-    ueberhaupt in Frage kommen, "context" liefert die dafuer noetigen Zusatzdaten.
+    """Zentrale Freischalt-Pruefung - die MECHANIK, nicht die Bedingungen.
 
-    Gibt die Liste der JETZT NEU freigeschalteten Achievement-Definitionen (als
-    dict) zurueck - leer, wenn keine dazugekommen ist. Die eigentliche Discord-
-    Ankuendigung ist NICHT Teil dieser Funktion, nur die Vorbereitung dafuer
-    (analog zum leveled_up-Rueckgabewert von award_xp() aus Phase 4).
+    Welche Achievements es gibt und wann sie fallen, steht seit dem 03.09.2026
+    in den Modulen (achievements_quiz.py, achievements_xp_level.py). Hier wird
+    nur noch der Kontext zusammengestellt, den die Bedingungen brauchen, und das
+    Ergebnis in die Datenbank geschrieben.
 
-    Mehrfachauswertung derselben Bedingung ist unschaedlich: INSERT OR IGNORE
-    gegen den UNIQUE(discord_user_id, achievement_id)-Constraint verhindert eine
-    doppelte Freischaltung strukturell auf DB-Ebene, nicht nur durch diese
-    Funktion selbst."""
+    Der Kontext wird BEWUSST hier besorgt und nicht in den Bedingungen: Die
+    Bedingungen sind reine Funktionen ohne Datenbankzugriff, damit sie einzeln
+    testbar sind. Vorher zaehlte die Quiz-Bedingung als Nebenwirkung den Zaehler
+    hoch - eine Pruefung veraenderte also Daten, was beim Lesen nicht zu erwarten
+    ist.
+
+    Gibt die JETZT NEU freigeschalteten Achievements als dicts zurueck. Die
+    Discord-Ankuendigung ist nicht Teil dieser Funktion (analog zum
+    leveled_up-Rueckgabewert von award_xp()).
+
+    Mehrfachauswertung ist unschaedlich: INSERT OR IGNORE gegen den
+    UNIQUE(discord_user_id, achievement_id)-Constraint verhindert eine doppelte
+    Freischaltung strukturell auf DB-Ebene, nicht nur durch diese Funktion.
+    """
     uid = str(discord_user_id)
-    candidates = []
 
+    # Kontext je Ereignis. Nur hier wird die Datenbank angefasst.
+    kontext = dict(context)
     if event == "quiz_correct":
-        count = increment_user_stat(uid, "quiz_correct_count")
-        if count >= 1:
-            candidates.append("FIRST_QUIZ")
-        if count >= 10:
-            candidates.append("QUIZ_10")
-        if count >= 100:
-            candidates.append("QUIZ_100")
-        hour = context.get("hour")
-        if hour is not None:
-            if 0 <= hour < 4:
-                candidates.append("NIGHT_OWL")
-            elif 5 <= hour < 7:
-                candidates.append("EARLY_BIRD")
-
+        # Zaehlt hoch UND liefert den neuen Stand - der Zaehler gehoert zum
+        # Ereignis, nicht zur Bedingung.
+        kontext["richtige_antworten"] = increment_user_stat(uid, "quiz_correct_count")
+        kontext["stunde"] = context.get("hour")
     elif event == "level_up":
-        new_level = context.get("new_level", 0)
-        if new_level >= 10:
-            candidates.append("LEVEL_10")
-        if new_level >= 25:
-            candidates.append("LEVEL_25")
-
+        kontext["neues_level"] = context.get("new_level", 0)
     elif event == "question_submitted":
-        if count_questions_by_user(uid) >= 1:
-            candidates.append("COMMUNITY_MEMBER")
+        kontext["eingereichte_fragen"] = count_questions_by_user(uid)
 
+    candidates = achievements.REGISTRATUR.kandidaten(event, kontext)
     if not candidates:
         return []
 
