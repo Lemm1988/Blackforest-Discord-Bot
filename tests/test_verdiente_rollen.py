@@ -22,9 +22,10 @@ import pytest
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "bot"))
 
+import module  # noqa: E402
 import verdiente_rollen as vr  # noqa: E402
 
-vr.lade_module("kern", "quiz", "xp_level")
+module.laden()
 
 COG = REPO / "bot" / "cogs" / "verdiente_rollen.py"
 DATABASE_PY = REPO / "bot" / "database.py"
@@ -121,7 +122,7 @@ def test_bedingungsabfragen_stehen_in_den_modulen():
     assert "werte_fuer_bedingungen" not in DATABASE_PY.read_text(), (
         "Der zentrale Werte-Sammler ist zurück - er kannte die Quiz-Tabellen."
     )
-    quiz = (REPO / "bot" / "bedingungen_quiz.py").read_text()
+    quiz = (REPO / "bot" / "modul_quiz.py").read_text()
     assert "user_stats" in quiz and "questions" in quiz, (
         "Die Quiz-Abfragen stehen nicht im Quiz-Modul."
     )

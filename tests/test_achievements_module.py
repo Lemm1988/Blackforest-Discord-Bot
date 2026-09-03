@@ -26,8 +26,9 @@ REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "bot"))
 
 import achievements  # noqa: E402
+import module  # noqa: E402
 
-achievements.lade_module("quiz", "xp_level")
+module.laden()
 R = achievements.REGISTRATUR
 
 

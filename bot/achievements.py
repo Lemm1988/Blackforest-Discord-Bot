@@ -13,7 +13,8 @@ zugreift, die es nicht mehr gibt.
 Aufteilung jetzt:
 
 * Dieses Modul kennt die Mechanik und keinen einzigen Achievement-Namen.
-* achievements_quiz.py und achievements_xp_level.py bringen die Inhalte mit.
+* modul_quiz.py und modul_xp_level.py bringen die Inhalte mit - zusammen mit
+  ihrem Schema und ihren Bedingungen, damit ein Modul aus EINER Datei besteht.
 * database.py verdrahtet beides mit der Datenbank und vergibt die XP-Belohnung.
 
 Die Bedingungen sind REINE Funktionen ueber ein Kontext-Dictionary — kein
@@ -89,20 +90,3 @@ class Registratur:
 
 
 REGISTRATUR = Registratur()
-
-
-def lade_module(*module: str) -> None:
-    """Laedt die Achievement-Inhalte der genannten Module.
-
-    Der Aufruf steht in database.init_db(), also VOR dem Laden der Cogs — die
-    Definitionen muessen in der Datenbank stehen, bevor irgendetwas sie
-    freischalten kann.
-
-    Sobald Module tatsaechlich einzeln verkauft werden, kommt die Liste aus der
-    Konfiguration statt aus dem Aufruf. Bis dahin macht dieser Parameter
-    wenigstens an einer Stelle sichtbar, welche Module aktiv sind.
-    """
-    import importlib
-
-    for name in module:
-        importlib.import_module(f"achievements_{name}")

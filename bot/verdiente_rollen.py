@@ -83,18 +83,6 @@ class Bedingungsregistratur:
 REGISTRATUR = Bedingungsregistratur()
 
 
-def lade_module(*module: str) -> None:
-    """Lädt die Bedingungen der installierten Module.
-
-    Gleiche Bauart wie bei achievements.lade_module(). Sobald Module wirklich
-    einzeln verkauft werden, kommt die Liste aus der Konfiguration.
-    """
-    import importlib
-
-    for name in module:
-        importlib.import_module(f"bedingungen_{name}")
-
-
 def BEDINGUNGSARTEN() -> dict:
     """Für das Backend: alle installierten Bedingungen."""
     return REGISTRATUR.alle()

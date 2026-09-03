@@ -92,37 +92,43 @@ def test_dm_meldet_geschlossene_direktnachrichten_verstaendlich():
 # Spaltennamen in SQL
 # --------------------------------------------------------------------------
 
+# (Datei, Funktion, Whitelist). Die Quiz-Zaehlfunktion ist am 03.09.2026 mit dem
+# Rest des Moduls nach modul_quiz.py gewandert - die Regel gilt dort genauso:
+# Spaltennamen lassen sich nicht parametrisieren, also MUSS eine feste Liste
+# davorstehen.
 WHITELIST_FUNKTIONEN = [
-    ("increment_user_stat", "_VALID_USER_STATS"),
-    ("increment_server_stat", "_VALID_SERVER_STATS"),
-    ("get_server_stat_today", "_VALID_SERVER_STATS"),
+    (DATABASE_PY, "increment_server_stat", "_VALID_SERVER_STATS"),
+    (DATABASE_PY, "get_server_stat_today", "_VALID_SERVER_STATS"),
+    (REPO / "bot" / "modul_quiz.py", "_stat_erhoehen", "_ERLAUBTE_STATS"),
 ]
 
 
-@pytest.mark.parametrize("funktion, whitelist", WHITELIST_FUNKTIONEN)
-def test_spaltenname_wird_vor_dem_einsetzen_geprueft(funktion, whitelist):
+@pytest.mark.parametrize("datei, funktion, whitelist", WHITELIST_FUNKTIONEN,
+                         ids=lambda x: getattr(x, "name", str(x)))
+def test_spaltenname_wird_vor_dem_einsetzen_geprueft(datei, funktion, whitelist):
     """Diese drei Funktionen setzen einen Spaltennamen per String in SQL ein -
     parametrisieren geht bei Spaltennamen nicht. Das ist genau dann sicher, wenn
     der Name vorher gegen eine feste Liste geprueft wird. Faellt die Pruefung
     weg, entsteht eine SQL-Injection, sobald der Wert je aus einer Anfrage
     stammt.
     """
-    quelle = DATABASE_PY.read_text()
+    quelle = datei.read_text()
     fn = _funktion(quelle, funktion)
     text = ast.get_source_segment(quelle, fn) or ""
     assert whitelist in text, (
-        f"{funktion}() prueft den Spaltennamen nicht gegen {whitelist}."
+        f"{funktion}() in {datei.name} prueft den Spaltennamen nicht gegen {whitelist}."
     )
     assert "raise" in text, (
         f"{funktion}() lehnt unbekannte Spaltennamen nicht ab, sondern setzt sie ein."
     )
 
 
-@pytest.mark.parametrize("funktion, whitelist", WHITELIST_FUNKTIONEN)
-def test_pruefung_steht_vor_dem_ersten_sql(funktion, whitelist):
+@pytest.mark.parametrize("datei, funktion, whitelist", WHITELIST_FUNKTIONEN,
+                         ids=lambda x: getattr(x, "name", str(x)))
+def test_pruefung_steht_vor_dem_ersten_sql(datei, funktion, whitelist):
     """Reihenfolge zaehlt: Eine Whitelist, die erst nach dem execute() greift,
     schuetzt nichts."""
-    quelle = DATABASE_PY.read_text()
+    quelle = datei.read_text()
     text = ast.get_source_segment(quelle, _funktion(quelle, funktion)) or ""
     assert text.index(whitelist) < text.index("execute"), (
         f"In {funktion}() steht die Whitelist-Pruefung nach dem ersten SQL-Aufruf."
@@ -132,12 +138,12 @@ def test_pruefung_steht_vor_dem_ersten_sql(funktion, whitelist):
 def test_whitelists_sind_nicht_leer():
     """Eine leere Whitelist wuerde jeden Aufruf ablehnen - die Zaehler liefen
     still nicht mehr mit, ohne dass etwas auffaellt."""
-    baum = ast.parse(DATABASE_PY.read_text())
+    baum = ast.parse(DATABASE_PY.read_text() + "\n" + (REPO / "bot" / "modul_quiz.py").read_text())
     gefunden = {}
     for node in baum.body:
         if isinstance(node, ast.Assign):
             for ziel in node.targets:
-                if isinstance(ziel, ast.Name) and ziel.id.startswith("_VALID_"):
+                if isinstance(ziel, ast.Name) and (ziel.id.startswith("_VALID_") or ziel.id == "_ERLAUBTE_STATS"):
                     gefunden[ziel.id] = ast.literal_eval(node.value)
     assert gefunden, "Keine _VALID_-Whitelists in database.py gefunden."
     for name, werte in gefunden.items():

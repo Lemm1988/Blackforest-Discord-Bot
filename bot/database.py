@@ -7,34 +7,14 @@ from pathlib import Path
 
 import achievements
 import config
+import module
 import mood
 
 DB_PATH = Path(__file__).parent / "data" / "bot.db"
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS questions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    question TEXT NOT NULL,
-    option_a TEXT NOT NULL,
-    option_b TEXT NOT NULL,
-    option_c TEXT NOT NULL,
-    option_d TEXT NOT NULL,
-    correct_option TEXT NOT NULL,
-    submitted_by TEXT,
-    timestamp TEXT DEFAULT (datetime('now')),
-    verified INTEGER DEFAULT 0
-);
 
-CREATE TABLE IF NOT EXISTS players (
-    user_id TEXT PRIMARY KEY,
-    score INTEGER DEFAULT 0
-);
 
-CREATE TABLE IF NOT EXISTS answered_questions (
-    user_id TEXT NOT NULL,
-    question_id INTEGER NOT NULL,
-    PRIMARY KEY (user_id, question_id)
-);
 
 -- Verdiente Rollen (03.09.2026): Wer eine Bedingung erfuellt, bekommt die Rolle
 -- angeboten. Anders als bei den Reaktionsrollen ist der Ausloeser kein Klick,
@@ -175,12 +155,6 @@ CREATE TABLE IF NOT EXISTS link_filter_exempt_channels (
     added_at TEXT DEFAULT (datetime('now'))
 );
 
--- Quiz-Fragen-Kategorien, frei verwaltbar über das Backend.
-CREATE TABLE IF NOT EXISTS categories (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    emoji TEXT
-);
 
 -- Granulares Berechtigungssystem: ein Flag pro (User, Fähigkeit) statt fester Rollen.
 -- Ersetzt die alte "permissions"-Tabelle (role admin/moderator/bot_user), die zur
@@ -207,15 +181,6 @@ CREATE TABLE IF NOT EXISTS audit_log (
     timestamp TEXT DEFAULT (datetime('now'))
 );
 
--- XP/Level-System (Spec 1), bewusst getrennt von players.score (Quiz-Highscore).
--- Kein fester Levelaufstieg pro Zeile - level wird bei jedem award_xp()-Aufruf
--- aus xp neu berechnet und hier nur zur schnellen Anzeige mitgespeichert.
-CREATE TABLE IF NOT EXISTS user_xp (
-    discord_user_id TEXT PRIMARY KEY,
-    xp INTEGER DEFAULT 0,
-    level INTEGER DEFAULT 1,
-    updated_at TEXT
-);
 
 -- Achievements (Spec 1, Phase 6). Definitionen werden per Code vorbefuellt
 -- (siehe _seed_achievements()), nicht ueber die UI verwaltet - das waere ein
@@ -238,16 +203,6 @@ CREATE TABLE IF NOT EXISTS user_achievements (
     UNIQUE(discord_user_id, achievement_id)
 );
 
--- Zaehler, die ausschliesslich fuer Achievement-Bedingungen gebraucht werden
--- (z.B. Anzahl richtig beantworteter Quizfragen insgesamt) - bewusst getrennt
--- von players.score (Punktestand) und user_xp (XP/Level), da keines der beiden
--- zuverlaessig als Anzahl-richtiger-Antworten interpretierbar ist (Punkte pro
--- Frage sind konfigurierbar und koennen sich rueckwirkend nicht rekonstruieren
--- lassen; answered_questions zaehlt auch falsche Antworten mit).
-CREATE TABLE IF NOT EXISTS user_stats (
-    discord_user_id TEXT PRIMARY KEY,
-    quiz_correct_count INTEGER DEFAULT 0
-);
 
 -- Server-Statistik-Tracking (Spec 1, Phase 4 "Server-Gedaechtnis" + Phase 11:
 -- erweiterte Community-Reaktionen). Tages-Aggregate statt Einzelereignis-Log,
@@ -524,32 +479,32 @@ def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with get_connection() as conn:
         conn.executescript(SCHEMA)
+
+        # Danach die Tabellen der installierten Module. MUSS vor den
+        # Migrationen unten stehen: Die greifen auf Tabellen zu, die es sonst
+        # noch nicht gibt.
+        angewendet = module.REGISTRATUR.schema_anwenden(conn)
+        if angewendet:
+            print(f"[module] Schema angewendet fuer: {', '.join(angewendet)}")
         # Bestehende questions-Tabelle um category_id erweitern, ohne Daten zu
         # verlieren. ON DELETE SET NULL sorgt dafür, dass beim Löschen einer
         # Kategorie die zugehörigen Fragen nur ihre Zuordnung verlieren, nicht
         # gelöscht werden (zusätzlich in delete_category() auch explizit gesetzt,
         # falls PRAGMA foreign_keys in einer Verbindung mal nicht aktiv sein sollte).
-        _ensure_column(conn, "questions", "category_id", "INTEGER REFERENCES categories(id) ON DELETE SET NULL")
         # Bestehende badword_violations-Zeilen (aus der Zeit vor Spam-/Link-Filter)
         # bekommen automatisch 'badword' als Typ - SQLite füllt bei ALTER TABLE ADD
         # COLUMN mit einem konstanten DEFAULT alle bestehenden Zeilen damit auf.
         _ensure_column(conn, "badword_violations", "violation_type", "TEXT DEFAULT 'badword'")
         # Tages-Zaehler fuer Nachrichten-XP (Spec 1: daily_xp_limit) - persistent
         # statt In-Memory, da er einen ganzen Tag und Bot-Neustarts ueberstehen muss.
-        _ensure_column(conn, "user_xp", "daily_message_xp", "INTEGER DEFAULT 0")
-        _ensure_column(conn, "user_xp", "daily_xp_date", "TEXT")
         # Quiz-Serien (Streaks, Phase 11) - im bereits vorhandenen user_stats
         # mitgefuehrt statt einer eigenen Tabelle, da es thematisch genau dort
         # hingehoert (Zaehler fuer Achievement-/Reaktions-Bedingungen).
-        _ensure_column(conn, "user_stats", "current_streak", "INTEGER DEFAULT 0")
-        _ensure_column(conn, "user_stats", "best_streak", "INTEGER DEFAULT 0")
         # Pro-User Nachrichten-Zaehler + letzte Aktivitaet (Spec 1, Phase B4,
         # Ueberwachungs-Uebersicht) - server_stats_daily/daily_active_users
         # (Phase 11) kennen nur serverweite Tages-Aggregate, keine Werte pro
         # einzelnem User. Im bereits vorhandenen user_stats mitgefuehrt statt
         # einer eigenen Tabelle, aus demselben Grund wie die Quiz-Serien oben.
-        _ensure_column(conn, "user_stats", "message_count", "INTEGER DEFAULT 0")
-        _ensure_column(conn, "user_stats", "last_message_at", "TEXT")
         # Sicherheits-Fix (Android-Folgeauftrag): jeder Tunnel-Zugang wird jetzt an
         # eine konkrete Discord-User-ID gebunden statt nur an einen freien Namen,
         # damit ein Widerruf gezielt die Session GENAU dieser Person invalidieren
@@ -576,17 +531,15 @@ def init_db():
             "ON badword_violations (discord_user_id)"
         )
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_questions_category "
-            "ON questions (category_id)"
-        )
-        conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_personality_texts_pool "
             "ON personality_texts (pool)"
         )
         # Achievements der installierten Module laden, BEVOR sie geseedet
         # werden. Sobald Module einzeln verkauft werden, kommt diese Liste aus
         # der Konfiguration - bis dahin steht hier an einer Stelle, was aktiv ist.
-        achievements.lade_module("quiz", "xp_level")
+        # Die Tabellen der installierten Module anlegen, falls sie fehlen.
+        # Damit baut sich die Datenbank selbst auf, wenn ein Modul spaeter
+        # dazukommt - niemand muss von Hand etwas anlegen.
         _cleanup_veraltetes(conn)
         _migrate_link_filter_mode(conn)
         _seed_achievements(conn)
@@ -1810,27 +1763,6 @@ def award_xp(discord_user_id, amount: int, reason: str = "generic", bypass_coold
 
 # --- Zaehler fuer Achievement-Bedingungen ---
 
-_VALID_USER_STATS = ("quiz_correct_count",)
-
-
-def increment_user_stat(discord_user_id, stat: str, by: int = 1) -> int:
-    """Erhoeht einen Zaehler in user_stats um "by" und gibt den NEUEN Gesamtwert
-    zurueck. "stat" wird gegen eine feste Whitelist geprueft (kein Nutzer-Input),
-    die Verwendung von str.format() fuer den Spaltennamen ist dadurch sicher."""
-    if stat not in _VALID_USER_STATS:
-        raise ValueError(f"Unbekannter user_stats-Schluessel: {stat}")
-    uid = str(discord_user_id)
-    with get_connection() as conn:
-        conn.execute(
-            "INSERT INTO user_stats (discord_user_id, {0}) VALUES (?, ?) "
-            "ON CONFLICT(discord_user_id) DO UPDATE SET {0} = {0} + excluded.{0}".format(stat),
-            (uid, by),
-        )
-        conn.commit()
-        row = conn.execute(f"SELECT {stat} FROM user_stats WHERE discord_user_id = ?", (uid,)).fetchone()
-        return row[stat]
-
-
 def count_questions_by_user(discord_user_id) -> int:
     with get_connection() as conn:
         return conn.execute(
@@ -1864,17 +1796,19 @@ def check_and_unlock_achievements(discord_user_id, event: str, **context) -> lis
     """
     uid = str(discord_user_id)
 
-    # Kontext je Ereignis. Nur hier wird die Datenbank angefasst.
+    # Der Kontext kommt von den MODULEN, nicht von hier. Bis zum 03.09.2026
+    # stand an dieser Stelle eine if/elif-Kette mit Quiz-Wissen darin
+    # (increment_user_stat(uid, "quiz_correct_count")) - ohne das Quizmodul
+    # haette sie auf eine Tabelle gezeigt, die es gar nicht gibt.
+    #
+    # Was der Aufrufer schon weiss, wird durchgereicht und dabei auf die Namen
+    # gebracht, die die Bedingungen erwarten.
     kontext = dict(context)
-    if event == "quiz_correct":
-        # Zaehlt hoch UND liefert den neuen Stand - der Zaehler gehoert zum
-        # Ereignis, nicht zur Bedingung.
-        kontext["richtige_antworten"] = increment_user_stat(uid, "quiz_correct_count")
-        kontext["stunde"] = context.get("hour")
-    elif event == "level_up":
-        kontext["neues_level"] = context.get("new_level", 0)
-    elif event == "question_submitted":
-        kontext["eingereichte_fragen"] = count_questions_by_user(uid)
+    if "hour" in context:
+        kontext["stunde"] = context["hour"]
+    if "new_level" in context:
+        kontext["neues_level"] = context["new_level"]
+    kontext.update(module.REGISTRATUR.kontext(event, uid))
 
     candidates = achievements.REGISTRATUR.kandidaten(event, kontext)
     if not candidates:
