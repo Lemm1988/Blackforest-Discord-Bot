@@ -77,33 +77,18 @@
 </div>
 
 <div class="card mb-4">
-    <div class="card-header"><h5 class="h6 mb-0">✅ Regel-Rolle (👍-Reaktion)</h5></div>
+    <div class="card-header"><h5 class="h6 mb-0">✅ Rollen per Reaktion</h5></div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('server_setup_role_settings') }}">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" role="switch" id="roleReactionEnabled"
-                       name="role_reaction_enabled" value="1" {% if role_settings.role_reaction_enabled == "1" %}checked{% endif %}>
-                <label class="form-check-label" for="roleReactionEnabled">👍-Regel-Reaktion aktiv (vergibt die Mitglieder-Rolle)</label>
-            </div>
-            <div class="row g-3">
-                <div class="col-12 col-md-4">
-                    <label for="member_role_name" class="form-label">Rollenname</label>
-                    <input type="text" class="form-control" id="member_role_name" name="member_role_name" value="{{ role_settings.member_role_name }}" required>
-                </div>
-                <div class="col-12 col-md-4">
-                    <label for="rules_channel_name" class="form-label">Regel-Kanalname</label>
-                    <input type="text" class="form-control" id="rules_channel_name" name="rules_channel_name" value="{{ role_settings.rules_channel_name }}" required>
-                    <div class="form-text">Die 👍-Reaktion zählt nur, wenn sie in genau diesem Kanal gesetzt wird.</div>
-                </div>
-                <div class="col-12 col-md-4">
-                    <label for="rules_message_id" class="form-label">Regel-Nachrichten-ID</label>
-                    <input type="text" class="form-control" id="rules_message_id" name="rules_message_id" value="{{ role_settings.rules_message_id }}" placeholder="numerische Discord-Nachrichten-ID">
-                    <div class="form-text">Nur die 👍-Reaktion auf genau diese Nachricht vergibt die Rolle.</div>
-                </div>
-            </div>
-            <button type="submit" class="btn btn-primary btn-sm mt-3">Speichern</button>
-        </form>
+        <p class="mb-2">
+            Wer im Regelkanal mit 👍 reagiert, bekommt die Mitglieder-Rolle. Diese Regel und
+            beliebig viele weitere verwaltest du unter
+            <a href="{{ url_for('reaction_roles_page') }}">Reaktionsrollen</a>.
+        </p>
+        <p class="text-muted small mb-0">
+            Dort legst du für jede Regel Kanal, Nachricht, Emoji und Rolle fest — und ob die
+            Rolle wieder weggenommen wird, wenn jemand seine Reaktion entfernt.
+        </p>
     </div>
 </div>
+
 {% endblock %}

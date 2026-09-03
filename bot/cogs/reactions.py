@@ -1,7 +1,18 @@
-"""Regel-Reaktion: 👍 auf die Regel-Nachricht vergibt/entzieht die Member-Rolle.
+"""Reaktionsrollen: Wer auf eine Nachricht mit einem Emoji reagiert, bekommt eine Rolle.
 
-Bewusst getrennt vom Giveaway-Cog (im alten Bot waren beide Aufgaben in einer
-on_raw_reaction_add-Funktion vermischt).
+Bis zum 03.09.2026 gab es genau EINE solche Regel, und sie steckte fest im Code:
+Nachricht aus `rules_message_id`, Emoji 👍, Rolle aus `member_role_name`, Kanal
+über `rules_channel_name`. Vier einzelne Einstellungen - also nicht vermehrbar.
+
+Jetzt eine Liste beliebig vieler Regeln in der Tabelle reaction_roles, im
+Backend unter Bot-Setup pflegbar. Die alte Regel zieht beim ersten Start von
+selbst um und verhält sich danach unverändert.
+
+Ein Detail, das dabei besser geworden ist: Die alte Fassung suchte den Kanal
+über seinen NAMEN (`channel.name != rules_channel_name`) und die Rolle über
+`discord.utils.get(guild.roles, name=...)`. Wer den Regelkanal umbenennt oder die
+Rolle "Member" in "Mitglied" ändert, hätte die Rollenvergabe stillschweigend
+abgeschaltet - ohne Fehler, ohne Hinweis. Die Regeln arbeiten deshalb mit IDs.
 """
 import discord
 from discord.ext import commands
@@ -14,39 +25,135 @@ class Reactions(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
+    # ------------------------------------------------------------------
+    # Einmaliger Umzug der alten, fest verdrahteten Regel
+    # ------------------------------------------------------------------
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        try:
+            await self._alte_regel_uebernehmen()
+        except Exception as exc:
+            print(f"[reaktionsrollen] Umzug der alten Regel fehlgeschlagen: {exc}")
+
+    async def _alte_regel_uebernehmen(self):
+        """Überführt die frühere Regel-Reaktion in die neue Tabelle.
+
+        Läuft in on_ready und nicht in init_db(), weil Kanal- und Rollennamen
+        erst zu IDs aufgelöst werden können, wenn der Bot mit Discord verbunden
+        ist. Der Merker in bot_state sorgt dafür, dass das genau einmal passiert -
+        sonst käme die Regel nach jedem Löschen im Backend wieder zurück.
+        """
+        if database.get_bot_state("reaction_roles_migriert") == "1":
+            return
+        if not self.bot.guilds:
+            return
+        guild = self.bot.guilds[0]
+
+        message_id = database.get_setting(
+            "rules_message_id", config.DEFAULT_SETTINGS["rules_message_id"]
+        )
+        kanalname = database.get_setting(
+            "rules_channel_name", config.DEFAULT_SETTINGS["rules_channel_name"]
+        )
+        rollenname = database.get_setting(
+            "member_role_name", config.DEFAULT_SETTINGS["member_role_name"]
+        )
+        aktiv = database.get_setting(
+            "role_reaction_enabled", config.DEFAULT_SETTINGS["role_reaction_enabled"]
+        ) == "1"
+
+        kanal = discord.utils.get(guild.text_channels, name=kanalname)
+        rolle = discord.utils.get(guild.roles, name=rollenname)
+
+        # Nichts erfinden: Findet sich der Kanal oder die Rolle nicht, wird der
+        # Umzug NICHT als erledigt vermerkt. Beim naechsten Start wird es erneut
+        # versucht - vielleicht wurde nur etwas umbenannt.
+        if not kanal or not rolle:
+            print(f"[reaktionsrollen] Alte Regel nicht uebernommen: "
+                  f"Kanal {kanalname!r} {'gefunden' if kanal else 'NICHT gefunden'}, "
+                  f"Rolle {rollenname!r} {'gefunden' if rolle else 'NICHT gefunden'}.")
+            return
+
+        if not database.find_reaction_role(message_id, "👍"):
+            neu_id = database.add_reaction_role(
+                channel_id=kanal.id, message_id=message_id, emoji="👍", role_id=rolle.id,
+                entzug_erlaubt=True,
+                dm_text=("{mention}, du hast die Regeln akzeptiert und die Rolle "
+                         "**{rolle}** erhalten!"),
+            )
+            if not aktiv:
+                database.update_reaction_role(neu_id, enabled=False)
+            print(f"[reaktionsrollen] Alte Regel-Reaktion uebernommen: "
+                  f"👍 auf {message_id} -> {rolle.name} (aktiv={aktiv}).")
+
+        database.set_bot_state("reaction_roles_migriert", "1")
+
+    # ------------------------------------------------------------------
+    # Der eigentliche Ablauf
+    # ------------------------------------------------------------------
+
     async def _handle(self, payload: discord.RawReactionActionEvent, adding: bool):
-        if database.get_setting("role_reaction_enabled", config.DEFAULT_SETTINGS["role_reaction_enabled"]) != "1":
-            return
-        rules_message_id = int(database.get_setting("rules_message_id", config.DEFAULT_SETTINGS["rules_message_id"]))
-        if payload.message_id != rules_message_id or str(payload.emoji) != "👍":
+        regel = database.find_reaction_role(payload.message_id, str(payload.emoji))
+        if not regel:
             return
 
-        guild = self.bot.get_guild(payload.guild_id)
+        # Reaktion entfernt, aber die Regel gibt die Rolle nicht wieder her.
+        if not adding and not regel["entzug_erlaubt"]:
+            return
+
+        guild = self.bot.get_guild(payload.guild_id) if payload.guild_id else None
         if not guild:
-            return
-
-        channel = guild.get_channel(payload.channel_id)
-        rules_channel_name = database.get_setting("rules_channel_name", config.DEFAULT_SETTINGS["rules_channel_name"])
-        if not channel or channel.name != rules_channel_name:
             return
 
         member = guild.get_member(payload.user_id)
         if not member or member.bot:
             return
 
-        role_name = database.get_setting("member_role_name", config.DEFAULT_SETTINGS["member_role_name"])
-        role = discord.utils.get(guild.roles, name=role_name)
-        if not role:
+        rolle = guild.get_role(int(regel["role_id"]))
+        if not rolle:
+            print(f"[reaktionsrollen] Regel {regel['id']}: Rolle {regel['role_id']} "
+                  f"gibt es nicht mehr.")
+            return
+
+        # Vorher pruefen statt an einer nichtssagenden Discord-Ablehnung zu
+        # scheitern: Ein Bot kann nur Rollen unterhalb seiner eigenen vergeben.
+        if rolle.position >= guild.me.top_role.position:
+            print(f"[reaktionsrollen] Regel {regel['id']}: Rolle {rolle.name} steht über "
+                  f"der Bot-Rolle und kann nicht vergeben werden.")
             return
 
         try:
             if adding:
-                await member.add_roles(role)
-                await member.send(f"{member.mention}, du hast die Regeln akzeptiert und die Rolle **{role_name}** erhalten!")
+                await member.add_roles(rolle, reason="Reaktionsrolle")
             else:
-                await member.remove_roles(role)
-                await member.send(f"{member.mention}, du hast die Regeln widerrufen und die Rolle **{role_name}** wurde entfernt!")
+                await member.remove_roles(rolle, reason="Reaktionsrolle entfernt")
         except discord.Forbidden:
+            print(f"[reaktionsrollen] Regel {regel['id']}: Discord hat die Rollenänderung "
+                  f"für {member} abgelehnt.")
+            return
+        except discord.HTTPException as exc:
+            print(f"[reaktionsrollen] Regel {regel['id']}: {exc}")
+            return
+
+        await self._benachrichtigen(member, rolle, regel, adding)
+
+    async def _benachrichtigen(self, member, rolle, regel, adding: bool):
+        """Direktnachricht, falls für die Regel ein Text hinterlegt ist.
+
+        Scheitert bewusst still: Wer seine DMs zu hat, soll die Rolle trotzdem
+        bekommen - die Nachricht ist Beiwerk, die Rolle ist der Zweck.
+        """
+        text = (regel.get("dm_text") or "").strip()
+        if not text:
+            return
+        if adding:
+            nachricht = text.replace("{mention}", member.mention).replace("{rolle}", rolle.name)
+        else:
+            nachricht = f"{member.mention}, die Rolle **{rolle.name}** wurde wieder entfernt."
+        try:
+            await member.send(nachricht)
+        except discord.HTTPException:
             pass
 
     @commands.Cog.listener()

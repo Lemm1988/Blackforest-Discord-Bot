@@ -1296,6 +1296,109 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
 
         return run_on_bot(_holen())
 
+    # --- Reaktionsrollen (Bot-Setup) ---
+
+    @app.route("/reaction-roles")
+    @require_permission("manage_badword_filter")
+    def reaction_roles_page():
+        rollen, verwaltbare = _discord_rollen()
+        rollennamen = {r["id"]: r["name"] for r in rollen}
+
+        async def _kanalnamen():
+            if not bot.guilds:
+                return {}
+            return {str(c.id): c.name for c in bot.guilds[0].text_channels}
+
+        kanalnamen = run_on_bot(_kanalnamen())
+
+        regeln = database.get_reaction_roles()
+        for r in regeln:
+            r["rollenname"] = rollennamen.get(r["role_id"], f"unbekannt ({r['role_id']})")
+            r["kanalname"] = kanalnamen.get(r["channel_id"], f"unbekannt ({r['channel_id']})")
+            # Eine Regel kann durch eine Hierarchie-Aenderung unwirksam werden,
+            # ohne dass jemand sie anfasst. Das muss man sehen.
+            r["vergebbar"] = r["role_id"] in verwaltbare
+        return render_template(
+            "reaction_roles.html",
+            regeln=regeln,
+            rollen=rollen,
+        )
+
+    @app.route("/reaction-roles/add", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def reaction_roles_add():
+        form = request.form
+        _, verwaltbare = _discord_rollen()
+
+        channel_id = (form.get("channel_id") or "").strip()
+        message_id = (form.get("message_id") or "").strip()
+        emoji = (form.get("emoji") or "").strip()
+        role_id = (form.get("role_id") or "").strip()
+
+        if not (channel_id.isdigit() and message_id.isdigit() and role_id.isdigit() and emoji):
+            flash("Bitte Kanal, Nachrichten-ID, Emoji und Rolle vollständig angeben.", "error")
+            return redirect(url_for("reaction_roles_page"))
+        if role_id not in verwaltbare:
+            flash("Diese Rolle steht über der Bot-Rolle — der Bot könnte sie nicht vergeben.", "error")
+            return redirect(url_for("reaction_roles_page"))
+        if database.find_reaction_role(message_id, emoji):
+            flash("Für diese Nachricht und dieses Emoji gibt es bereits eine Regel.", "error")
+            return redirect(url_for("reaction_roles_page"))
+
+        # Pruefen, ob es die Nachricht ueberhaupt gibt - und die Reaktion gleich
+        # setzen. Sonst muesste jemand als Erster von Hand reagieren, damit
+        # andere ueberhaupt draufklicken koennen.
+        async def _reaktion_setzen():
+            kanal = bot.get_channel(int(channel_id))
+            if kanal is None:
+                raise ValueError("Kanal nicht gefunden.")
+            nachricht = await kanal.fetch_message(int(message_id))
+            await nachricht.add_reaction(emoji)
+
+        try:
+            run_on_bot(_reaktion_setzen())
+        except discord.NotFound:
+            flash("In diesem Kanal gibt es keine Nachricht mit dieser ID.", "error")
+            return redirect(url_for("reaction_roles_page"))
+        except Exception as exc:
+            log.exception("Reaktionsrolle anlegen fehlgeschlagen")
+            flash(f"Die Reaktion konnte nicht gesetzt werden: {exc}", "error")
+            return redirect(url_for("reaction_roles_page"))
+
+        neu_id = database.add_reaction_role(
+            channel_id=channel_id, message_id=message_id, emoji=emoji, role_id=role_id,
+            entzug_erlaubt=form.get("entzug_erlaubt") == "1",
+            dm_text=form.get("dm_text", ""),
+        )
+        database.log_audit(
+            session["discord_user_id"], "reaction_role_add", target_id=neu_id,
+            detail=f"{emoji} auf {message_id} -> Rolle {role_id}",
+        )
+        flash("Regel angelegt — die Reaktion wurde unter die Nachricht gesetzt.", "success")
+        return redirect(url_for("reaction_roles_page"))
+
+    @app.route("/reaction-roles/<int:regel_id>/update", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def reaction_roles_update(regel_id):
+        form = request.form
+        database.update_reaction_role(
+            regel_id,
+            enabled=form.get("enabled") == "1",
+            entzug_erlaubt=form.get("entzug_erlaubt") == "1",
+            dm_text=form.get("dm_text", ""),
+        )
+        database.log_audit(session["discord_user_id"], "reaction_role_update", target_id=regel_id)
+        flash("Regel gespeichert.", "success")
+        return redirect(url_for("reaction_roles_page"))
+
+    @app.route("/reaction-roles/<int:regel_id>/delete", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def reaction_roles_delete(regel_id):
+        database.delete_reaction_role(regel_id)
+        database.log_audit(session["discord_user_id"], "reaction_role_delete", target_id=regel_id)
+        flash("Regel gelöscht. Bereits vergebene Rollen bleiben bestehen.", "success")
+        return redirect(url_for("reaction_roles_page"))
+
     @app.route("/roles-mapping")
     @require_permission("is_admin")
     def roles_mapping_page():

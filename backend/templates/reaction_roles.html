@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Reaktionsrollen - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">Reaktionsrollen</h3>
+<p class="text-muted">
+    Wer auf eine bestimmte Nachricht mit einem bestimmten Emoji reagiert, bekommt eine Rolle.
+    So funktioniert die Regel-Zustimmung im Regelkanal — und genauso kannst du beliebig viele
+    weitere Regeln anlegen.
+</p>
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Neue Regel</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('reaction_roles_add') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="channel_id" class="form-label">Kanal</label>
+                    <select class="form-select channel-picker" id="channel_id" name="channel_id"></select>
+                </div>
+                <div class="col-md-4">
+                    <label for="message_id" class="form-label">Nachrichten-ID</label>
+                    <input type="text" class="form-control" id="message_id" name="message_id"
+                           inputmode="numeric" placeholder="1244268026069651466" required>
+                    <div class="form-text">
+                        In Discord: Rechtsklick auf die Nachricht &rarr; „ID kopieren".
+                        Dafür muss der Entwicklermodus in deinen Discord-Einstellungen an sein.
+                    </div>
+                </div>
+                <div class="col-md-2">
+                    <label for="emoji" class="form-label">Emoji</label>
+                    <input type="text" class="form-control" id="emoji" name="emoji"
+                           value="👍" maxlength="32" required>
+                </div>
+                <div class="col-md-2">
+                    <label for="role_id" class="form-label">Rolle</label>
+                    <select class="form-select" id="role_id" name="role_id" required>
+                        {% for r in rollen %}
+                        <option value="{{ r.id }}" {% if not r.verwaltbar %}disabled{% endif %}>
+                            {{ r.name }}{% if not r.verwaltbar %} — steht über dem Bot{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="mt-3">
+                <label for="dm_text" class="form-label">Direktnachricht beim Vergeben <span class="text-muted small fw-normal">(optional)</span></label>
+                <input type="text" class="form-control" id="dm_text" name="dm_text"
+                       placeholder="{mention}, du hast die Rolle **{rolle}** erhalten!">
+                <div class="form-text">
+                    Platzhalter: <code>{mention}</code> für die Person, <code>{rolle}</code> für den
+                    Rollennamen. Leer lassen, wenn niemand angeschrieben werden soll.
+                </div>
+            </div>
+            <div class="form-check form-switch mt-3">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       id="entzug_erlaubt" name="entzug_erlaubt" value="1" checked>
+                <label class="form-check-label" for="entzug_erlaubt">
+                    Reaktion entfernen nimmt die Rolle wieder weg
+                </label>
+                <div class="form-text">
+                    Aus lassen bei Rollen, die man sich verdient hat und behalten soll.
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary mt-3">Regel anlegen</button>
+            <div class="form-text mt-2">
+                Der Bot setzt die Reaktion anschließend selbst unter die Nachricht — es muss also
+                niemand als Erster klicken.
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><h5 class="h6 mb-0">Bestehende Regeln</h5></div>
+    <div class="card-body">
+        {% if not regeln %}
+        <p class="text-muted mb-0">Noch keine Regeln angelegt.</p>
+        {% else %}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr><th>Emoji</th><th>Kanal</th><th>Nachricht</th><th>Rolle</th><th>Einstellungen</th><th></th></tr>
+                </thead>
+                <tbody>
+                    {% for r in regeln %}
+                    <tr {% if not r.enabled %}class="opacity-50"{% endif %}>
+                        <td class="fs-5">{{ r.emoji }}</td>
+                        <td class="small">#{{ r.kanalname }}</td>
+                        <td class="small text-muted">{{ r.message_id }}</td>
+                        <td class="small">
+                            {{ r.rollenname }}
+                            {% if not r.vergebbar %}
+                            <div class="text-danger small">⚠️ steht über der Bot-Rolle — wird nicht vergeben</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <form method="POST" action="{{ url_for('reaction_roles_update', regel_id=r.id) }}"
+                                  class="d-flex flex-column gap-1">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" name="enabled" value="1"
+                                           id="enabled_{{ r.id }}" {% if r.enabled %}checked{% endif %}>
+                                    <label class="form-check-label small" for="enabled_{{ r.id }}">aktiv</label>
+                                </div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" name="entzug_erlaubt" value="1"
+                                           id="entzug_{{ r.id }}" {% if r.entzug_erlaubt %}checked{% endif %}>
+                                    <label class="form-check-label small" for="entzug_{{ r.id }}">Rolle bei Entfernen wegnehmen</label>
+                                </div>
+                                <input type="text" name="dm_text" class="form-control form-control-sm"
+                                       value="{{ r.dm_text or '' }}" placeholder="Keine Direktnachricht">
+                                <button type="submit" class="btn btn-outline-primary btn-sm">Speichern</button>
+                            </form>
+                        </td>
+                        <td>
+                            <form method="POST" action="{{ url_for('reaction_roles_delete', regel_id=r.id) }}"
+                                  onsubmit="return confirm('Regel wirklich löschen?\n\nBereits vergebene Rollen bleiben bestehen — der Bot vergibt über diese Nachricht nur nichts mehr.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-outline-danger btn-sm">Löschen</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

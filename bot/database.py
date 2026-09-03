@@ -36,6 +36,35 @@ CREATE TABLE IF NOT EXISTS answered_questions (
     PRIMARY KEY (user_id, question_id)
 );
 
+-- Reaktionsrollen (03.09.2026): Wer auf eine bestimmte Nachricht mit einem
+-- bestimmten Emoji reagiert, bekommt eine Rolle. Loest die frueher fest
+-- verdrahtete Regel-Reaktion ab, die als vier einzelne Settings existierte
+-- (role_reaction_enabled, rules_message_id, rules_channel_name,
+-- member_role_name) und deshalb genau EINMAL vorkommen konnte.
+--
+-- Kanal und Rolle als ID, nicht als Name: Namen aendern sich (jemand benennt
+-- den Regelkanal um), IDs nicht. Die alte Loesung suchte den Kanal ueber
+-- channel.name und die Rolle ueber discord.utils.get(name=...) - beides
+-- zerbricht still bei einer Umbenennung.
+--
+-- UNIQUE(message_id, emoji): Ein Emoji auf einer Nachricht kann nur fuer eine
+-- Rolle stehen. Zwei Regeln dafuer waeren nicht aufloesbar.
+CREATE TABLE IF NOT EXISTS reaction_roles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    role_id TEXT NOT NULL,
+    -- 1 = Reaktion entfernen nimmt die Rolle wieder weg (Verhalten der alten
+    -- Regel-Reaktion). 0 = einmal vergeben, bleibt.
+    entzug_erlaubt INTEGER NOT NULL DEFAULT 1,
+    -- Optionale Direktnachricht beim Vergeben. Leer = keine.
+    dm_text TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(message_id, emoji)
+);
+
 -- Zuordnung Backend-Recht -> Discord-Rolle (03.09.2026). Damit spiegelt der Bot
 -- vergebene Rechte auf dem Server wider. Bewusst eine eigene Tabelle statt eines
 -- Settings-Eintrags: Es sind mehrere Zeilen mit Beziehung zueinander, und der
@@ -800,6 +829,64 @@ def get_user_permissions(discord_user_id):
             (str(discord_user_id),),
         ).fetchall()
         return [r["permission_key"] for r in rows]
+
+
+def get_reaction_roles(nur_aktive: bool = False):
+    """Alle Reaktionsrollen-Regeln."""
+    with get_connection() as conn:
+        sql = "SELECT * FROM reaction_roles"
+        if nur_aktive:
+            sql += " WHERE enabled = 1"
+        return [dict(r) for r in conn.execute(sql + " ORDER BY id")]
+
+
+def find_reaction_role(message_id, emoji: str):
+    """Die Regel zu genau dieser Nachricht und diesem Emoji, oder None.
+
+    Nur aktive Regeln - eine abgeschaltete soll sich verhalten, als gaebe es sie
+    nicht, statt weiter Rollen zu vergeben.
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT * FROM reaction_roles WHERE message_id = ? AND emoji = ? AND enabled = 1",
+            (str(message_id), emoji),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def add_reaction_role(channel_id, message_id, emoji: str, role_id,
+                      entzug_erlaubt: bool = True, dm_text: str = "") -> int:
+    with get_connection() as conn:
+        cur = conn.execute(
+            "INSERT INTO reaction_roles (channel_id, message_id, emoji, role_id, "
+            "entzug_erlaubt, dm_text) VALUES (?, ?, ?, ?, ?, ?)",
+            (str(channel_id), str(message_id), emoji, str(role_id),
+             1 if entzug_erlaubt else 0, (dm_text or "").strip()),
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def update_reaction_role(regel_id: int, *, enabled=None, entzug_erlaubt=None, dm_text=None):
+    felder, werte = [], []
+    if enabled is not None:
+        felder.append("enabled = ?"); werte.append(1 if enabled else 0)
+    if entzug_erlaubt is not None:
+        felder.append("entzug_erlaubt = ?"); werte.append(1 if entzug_erlaubt else 0)
+    if dm_text is not None:
+        felder.append("dm_text = ?"); werte.append((dm_text or "").strip())
+    if not felder:
+        return
+    with get_connection() as conn:
+        conn.execute(f"UPDATE reaction_roles SET {', '.join(felder)} WHERE id = ?",
+                     (*werte, int(regel_id)))
+        conn.commit()
+
+
+def delete_reaction_role(regel_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM reaction_roles WHERE id = ?", (int(regel_id),))
+        conn.commit()
 
 
 def get_permission_role_map() -> dict:

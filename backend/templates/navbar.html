@@ -61,6 +61,7 @@
                         <li><a class="dropdown-item" href="{{ url_for('create_giveaway_page') }}">Giveaway starten</a></li>
                         {% endif %}
                         {% if has_permission('manage_game_settings') %}
+                        <li><a class="dropdown-item" href="{{ url_for('reaction_roles_page') }}">Reaktionsrollen</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('personality_page') }}">Personality</a></li>
                         {% endif %}
                     </ul>
