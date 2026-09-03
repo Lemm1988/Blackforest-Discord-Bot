@@ -8,6 +8,7 @@ from pathlib import Path
 import achievements
 import config
 import module
+import schema_helfer
 import mood
 
 DB_PATH = Path(__file__).parent / "data" / "bot.db"
@@ -307,13 +308,9 @@ ALL_PERMISSIONS = [
     "moderate_members",
 ]
 
-def _ensure_column(conn, table: str, column: str, coldef: str):
-    """Fügt eine Spalte idempotent hinzu (ALTER TABLE ADD COLUMN ist in SQLite nicht
-    von sich aus wiederholbar wie CREATE TABLE IF NOT EXISTS - hier wird vorher
-    geprüft, ob die Spalte schon existiert)."""
-    existing = [row["name"] for row in conn.execute(f"PRAGMA table_info({table})")]
-    if column not in existing:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coldef}")
+# Liegt seit dem 03.09.2026 in schema_helfer.py, damit die Moduldateien es
+# benutzen koennen, ohne database (und damit config und dotenv) zu laden.
+_ensure_column = schema_helfer.ensure_column
 
 
 def _cleanup_veraltetes(conn):

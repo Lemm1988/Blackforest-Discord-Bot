@@ -232,3 +232,57 @@ def test_kaputtes_modul_reisst_die_anderen_nicht_mit():
 def test_unbekanntes_ereignis_liefert_leeren_kontext():
     module.laden()
     assert module.REGISTRATUR.kontext("gibtsnicht", "123") == {}
+
+
+# --------------------------------------------------------------------------
+# Die Moduldateien müssen ohne die Laufzeitumgebung ladbar sein
+#
+# Am 03.09.2026 lief die Testsuite lokal grün und die CI rot:
+# `ModuleNotFoundError: No module named 'dotenv'`. Die Kette war
+# modul_quiz.py → database → config → dotenv.
+#
+# Die CI installiert absichtlich nur pytest. Das Laden der Modul-METADATEN
+# (Schema, Achievements, Bedingungen) darf deshalb nichts voraussetzen, was nur
+# der laufende Bot hat. Lokal fällt so etwas nie auf, weil dort alles
+# installiert ist — also braucht es einen Test dafür.
+# --------------------------------------------------------------------------
+
+@pytest.mark.parametrize("datei", MODUL_DATEIEN, ids=lambda p: p.name)
+def test_moduldatei_laedt_ohne_laufzeitumgebung(datei):
+    """Kein `import database` auf oberster Ebene: Das zieht config und damit
+    dotenv sowie einen gesetzten DISCORD_TOKEN nach sich.
+
+    Innerhalb einer Funktion ist es in Ordnung — dann wird es erst gebraucht,
+    wenn der Bot ohnehin läuft.
+    """
+    import ast
+
+    baum = ast.parse(datei.read_text())
+    verboten = {"database", "config", "discord", "dotenv"}
+    for node in baum.body:  # nur oberste Ebene
+        namen = set()
+        if isinstance(node, ast.Import):
+            namen = {a.name.split(".")[0] for a in node.names}
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            namen = {node.module.split(".")[0]}
+        treffer = namen & verboten
+        assert not treffer, (
+            f"{datei.name} importiert {sorted(treffer)} auf oberster Ebene. "
+            "Damit lässt sich das Modul nicht mehr laden, ohne die Laufzeitumgebung "
+            "des Bots zu haben - die CI installiert nur pytest."
+        )
+
+
+def test_schema_helfer_bleibt_abhaengigkeitsfrei():
+    """Er ist der Grund, warum die Migrationen in den Modulen ohne database
+    auskommen. Zöge er selbst etwas nach, wäre nichts gewonnen."""
+    import ast
+
+    quelle = (REPO / "bot" / "schema_helfer.py").read_text()
+    for node in ast.parse(quelle).body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            namen = ({a.name.split(".")[0] for a in node.names}
+                     if isinstance(node, ast.Import) else {(node.module or "").split(".")[0]})
+            assert namen <= {"sqlite3", "__future__"}, (
+                f"schema_helfer.py importiert {sorted(namen)} - er soll nur sqlite3 brauchen."
+            )

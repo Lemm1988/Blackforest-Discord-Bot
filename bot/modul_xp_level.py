@@ -4,8 +4,8 @@ XP entsteht aus drei Quellen (Chat, Quizantworten, Zufallsereignisse), gehoert
 aber diesem Modul und nicht dem Quiz: Wer nur im Chat schreibt, sammelt genauso.
 """
 import achievements
-import database
 import module
+import schema_helfer
 import verdiente_rollen
 from achievements import Achievement
 from verdiente_rollen import Bedingungsart
@@ -27,11 +27,12 @@ CREATE TABLE IF NOT EXISTS user_xp (
 
 def _migrationen(conn):
     """Tageszaehler fuer das XP-Limit, nachtraeglich hinzugekommen."""
-    database._ensure_column(conn, "user_xp", "daily_message_xp", "INTEGER DEFAULT 0")
-    database._ensure_column(conn, "user_xp", "daily_xp_date", "TEXT")
+    schema_helfer.ensure_column(conn, "user_xp", "daily_message_xp", "INTEGER DEFAULT 0")
+    schema_helfer.ensure_column(conn, "user_xp", "daily_xp_date", "TEXT")
 
 
 def _xp(discord_user_id) -> int:
+    import database
     with database.get_connection() as conn:
         row = conn.execute(
             "SELECT xp FROM user_xp WHERE discord_user_id = ?", (str(discord_user_id),)
@@ -40,6 +41,7 @@ def _xp(discord_user_id) -> int:
 
 
 def _level(discord_user_id) -> int:
+    import database
     with database.get_connection() as conn:
         row = conn.execute(
             "SELECT level FROM user_xp WHERE discord_user_id = ?", (str(discord_user_id),)

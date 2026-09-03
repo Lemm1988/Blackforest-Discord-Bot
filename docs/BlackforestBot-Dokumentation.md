@@ -28,7 +28,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 13. Umgesetzte Sicherheitsmaßnahmen
 14. Unterschiede zum alten Bot
 15. Den Bot erweitern
-16. Testsuite (`tests/`, 564 Tests)
+16. Testsuite (`tests/`, 568 Tests)
 17. Offene Punkte (Stand 03.09.2026)
 
 ---
@@ -642,7 +642,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 16. Testsuite (`tests/`, 564 Tests)
+## 16. Testsuite (`tests/`, 568 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -686,7 +686,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_achievements_module.py` | 43 | Modultrennung der Achievements und alle Auslöseschwellen; prüft ausdrücklich, dass `database.py` keinen Achievement-Namen mehr kennt |
 | `test_morning_greeting.py` | 38 | Zeitlogik der täglichen Guten-Morgen-Nachricht: Fenster, Tagesmerker gegen doppelte Grüße nach einem Neustart, Randuhrzeiten um Mitternacht, unbrauchbare Eingaben |
 | `test_doku.py` | 4 | Die Testzahlen in dieser Tabelle stimmen mit der Wirklichkeit überein — eine Doku mit falschen Zahlen ist schlimmer als eine ohne |
-| `test_module.py` | 14 | Module bringen ihr Schema selbst mit: ohne Modul keine Tabellen, nachträgliche Installation legt sie an, bestehende Daten bleiben unberührt |
+| `test_module.py` | 18 | Module bringen ihr Schema selbst mit: ohne Modul keine Tabellen, nachträgliche Installation legt sie an, bestehende Daten bleiben unberührt |
 | `test_mood.py` | 5 | Mood-Texte, Häufigkeitsgrenzen, Nachtstunden über Mitternacht |
 | `test_webview_dialogs.py` | 3 | `WebChromeClient` in der App — ohne ihn schlucken WebViews `confirm()` und Kick/Ban/Timeout bleiben wirkungslos |
 

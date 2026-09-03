@@ -8,8 +8,8 @@ Umgekehrt gilt: Kommt das Modul später dazu, legt es seine Tabellen beim
 nächsten Start selbst an (module.Modulregistratur.schema_anwenden).
 """
 import achievements
-import database
 import module
+import schema_helfer
 import verdiente_rollen
 from achievements import Achievement
 from verdiente_rollen import Bedingungsart
@@ -71,13 +71,13 @@ CREATE TABLE IF NOT EXISTS user_stats (
 # --------------------------------------------------------------------------
 
 def _migrationen(conn):
-    database._ensure_column(
+    schema_helfer.ensure_column(
         conn, "questions", "category_id",
         "INTEGER REFERENCES categories(id) ON DELETE SET NULL")
-    database._ensure_column(conn, "user_stats", "current_streak", "INTEGER DEFAULT 0")
-    database._ensure_column(conn, "user_stats", "best_streak", "INTEGER DEFAULT 0")
-    database._ensure_column(conn, "user_stats", "message_count", "INTEGER DEFAULT 0")
-    database._ensure_column(conn, "user_stats", "last_message_at", "TEXT")
+    schema_helfer.ensure_column(conn, "user_stats", "current_streak", "INTEGER DEFAULT 0")
+    schema_helfer.ensure_column(conn, "user_stats", "best_streak", "INTEGER DEFAULT 0")
+    schema_helfer.ensure_column(conn, "user_stats", "message_count", "INTEGER DEFAULT 0")
+    schema_helfer.ensure_column(conn, "user_stats", "last_message_at", "TEXT")
     # Muss NACH der Spalte stehen, der Index setzt sie voraus.
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_questions_category ON questions (category_id)")
@@ -94,6 +94,7 @@ _ERLAUBTE_STATS = ("quiz_correct_count",)
 
 def _stat_erhoehen(discord_user_id, spalte: str, um: int = 1) -> int:
     """Erhoeht einen Zaehler in user_stats und gibt den NEUEN Stand zurueck."""
+    import database
     if spalte not in _ERLAUBTE_STATS:
         raise ValueError(f"Unbekannte user_stats-Spalte: {spalte}")
     uid = str(discord_user_id)
@@ -111,6 +112,7 @@ def _stat_erhoehen(discord_user_id, spalte: str, um: int = 1) -> int:
 
 
 def _richtige_antworten(discord_user_id) -> int:
+    import database
     with database.get_connection() as conn:
         row = conn.execute(
             "SELECT quiz_correct_count FROM user_stats WHERE discord_user_id = ?",
@@ -120,6 +122,7 @@ def _richtige_antworten(discord_user_id) -> int:
 
 
 def _eingereichte_fragen(discord_user_id) -> int:
+    import database
     with database.get_connection() as conn:
         row = conn.execute(
             "SELECT COUNT(*) c FROM questions WHERE submitted_by = ?",
