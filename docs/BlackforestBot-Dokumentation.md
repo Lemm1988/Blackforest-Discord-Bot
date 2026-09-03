@@ -14,22 +14,24 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 ## Inhaltsverzeichnis
 
 1. Architektur-Überblick (Bot-Ökosystem, vier Teile)
-2. Vollständige Befehlsliste (alle 8 Cogs)
+2. Vollständige Befehlsliste (16 Slash-Befehle)
 3. Backend-Routen (`backend/app.py` + `backend/internal_app.py`)
-4. Komplettes Datenbankschema (25 Tabellen)
+4. Komplettes Datenbankschema (29 Tabellen)
 5. Berechtigungssystem (Owner, `is_admin`, 9 Flags, Basis-Rechte)
 6. Vollständige Settings-Referenz (74 Einstellungen)
 7. Menü-/Modul-Struktur im Backend
-8. Sicherheitsfundament (Owner-Schutz, Audit-Log, Backup, Session-Invalidierung)
-9. Personality/Mood/Events-System
-10. Bot Connect App (Android) + Bot Connect Dashboard
-11. OAuth-Setup
-12. Start / Stop / Logs
-13. Umgesetzte Sicherheitsmaßnahmen
-14. Unterschiede zum alten Bot
-15. Den Bot erweitern
-16. Testsuite (`tests/`, 594 Tests)
-17. Offene Punkte (Stand 03.09.2026)
+8. Rollenvergabe (Reaktionsrollen, verdiente Rollen, Rechte spiegeln)
+9. Sicherheitsfundament (Owner-Schutz, Audit-Log, Backup, Session-Invalidierung)
+10. Personality/Mood/Events-System
+11. Bot Connect App (Android) + Bot Connect Dashboard
+12. OAuth-Setup
+13. Start / Stop / Logs
+14. Umgesetzte Sicherheitsmaßnahmen
+15. Unterschiede zum alten Bot
+16. Den Bot erweitern
+17. Testsuite (`tests/`, 594 Tests)
+18. Offene Punkte (Stand 03.09.2026, abends)
+19. Chronik des 03.09.2026
 
 ---
 
@@ -247,6 +249,18 @@ genau dieses Flag oder `is_admin`. `require_any_permission(...)` = mindestens ei
 | `/audit_log` | `is_admin` | Reine Ansicht, insert-only |
 | `/tunnel_access` | `is_admin` | **Neu, rein lesend:** App-Zugänge-Übersicht (Name, Discord-ID, Status). Erstellen/Widerrufen NUR über das lokale Dashboard/CLI, nicht hier. |
 
+### Rollenvergabe (neu 03.09.2026)
+
+| Route | Wer darf? | Zweck |
+|---|---|---|
+| `/roles-mapping` | `is_admin` | Zuordnung Berechtigung → Discord-Rolle |
+| `/roles-mapping/save` | `is_admin` | Zuordnung speichern |
+| `/roles-mapping/sync` | `is_admin` | Bestand abgleichen — erst Vorschau, dann Bestätigung |
+| `/reaction-roles` | `manage_badword_filter` | Reaktionsrollen anlegen und bearbeiten |
+| `/reaction-roles/add`, `/<id>/update`, `/<id>/delete` | dito | |
+| `/earned-roles` | `manage_badword_filter` | Verdiente Rollen (Bedingung → Rolle) |
+| `/earned-roles/add`, `/<id>/update`, `/<id>/delete` | dito | |
+
 ### Interner Endpunkt (`backend/internal_app.py`, Port 5052, NICHT getunnelt)
 
 | Route | Berechtigung | Zweck |
@@ -287,6 +301,16 @@ zusätzlich mit `message_count`/`last_message_at` für die Überwachungs-Übersi
 ### Personality / Mood / Events / Server-Statistik
 `bot_state`, `server_stats_daily`, `daily_active_users`, `server_records`,
 `personality_texts` (Admin-editierbare Text-Varianten, seit Phase B3) — unverändert.
+
+### Rollenvergabe (neu 03.09.2026)
+
+| Tabelle | Inhalt |
+|---|---|
+| `permission_roles` | Zuordnung Backend-Recht → Discord-Rolle. `PRIMARY KEY` auf dem Recht verhindert strukturell zwei Rollen pro Recht; umgekehrt **darf** eine Rolle mehreren Rechten zugeordnet sein, deshalb kein `UNIQUE` auf `role_id`. |
+| `permission_role_grants` | Welche Rolle der Bot wegen einer Berechtigung vergeben hat. **Der Merker, ohne den der erste Abgleich jedem die von Hand vergebene Rolle entzogen hätte.** |
+| `reaction_roles` | Regeln „Emoji auf Nachricht → Rolle". Kanal und Rolle als **ID**, nicht als Name — Namen ändern sich, IDs nicht. `UNIQUE(message_id, emoji)`, weil ein Emoji auf einer Nachricht nur für eine Rolle stehen kann. |
+| `earned_roles` | Regeln „Bedingung erfüllt → Rolle anbieten": Bedingungsart, Schwelle, Ankündigungstext, Kanal, ob automatisch vergeben wird. |
+| `earned_role_grants` | Wem wurde eine verdiente Rolle schon angekündigt bzw. gegeben. Ohne das käme die Ankündigung bei **jeder** weiteren Quizantwort erneut. |
 
 ### App-Zugänge (neu, Android-App-Ökosystem)
 | Tabelle | Zweck |
@@ -399,9 +423,12 @@ ohne Admin-Eingriff). Text-Varianten-Pools liegen in der Tabelle `personality_te
 
 ## 7. Menü-/Modul-Struktur im Backend
 
-Vorbereitung auf eine spätere echte Modularisierung (Module einzeln
-hinzufügbar/entfernbar) — aktuell nur Navigation/Menü sauber nach dieser Logik getrennt,
-Code/Ordner bleiben technisch wo sie sind:
+**Seit dem 03.09.2026 ist die Modularisierung echt**, nicht mehr nur eine Menüstruktur:
+Jedes Modul besteht aus einer Datei (`bot/modul_*.py`) und bringt Schema, Migrationen,
+Achievements, Bedingungen, Abfragen und seinen Beitrag zur Mitglieder-Übersicht selbst
+mit. `module.INSTALLIERT` sagt an einer Stelle, was aktiv ist; ein nachträglich
+hinzugefügtes Modul legt seine Tabellen beim nächsten Start selbst an. Siehe Abschnitt
+„Modultrennung".
 
 | Navbar-Punkt | Enthält |
 |---|---|
@@ -411,10 +438,12 @@ Code/Ordner bleiben technisch wo sie sind:
 | **Moderation → Aktionen & Überwachung** | Kick/Ban/Timeout, Überwachungs-Dashboard |
 | **Moderation → Embed senden** | Ansagen als Embed in einen Kanal (vorher unter Admin-Werkzeuge) |
 | **Moderation → DM senden** | Private Nachricht im Namen des Bots, z.B. Verwarnung (vorher unter Admin-Werkzeuge) |
-| **Bot-Setup → Willkommen & Regeln** | Willkommensnachricht, Rollen-Reaktion |
+| **Bot-Setup → Willkommen & Regeln** | Willkommensnachricht, Guten-Morgen-Nachricht, Verweis auf die Reaktionsrollen |
 | **Bot-Setup → Giveaway starten** | Giveaway anlegen |
-| **Bot-Setup → Personality** | Haupt-Settings, Text-Varianten, Mood-Schwellen (vorher eigener Menüpunkt) |
-| **Admin-Werkzeuge** | Benutzerverwaltung, Audit-Log, App-Zugänge — Kernsystem, kein Modul |
+| **Bot-Setup → Reaktionsrollen** | Regeln „Emoji auf Nachricht → Rolle" (neu 03.09.2026) |
+| **Bot-Setup → Verdiente Rollen** | Regeln „Bedingung erfüllt → Rolle anbieten" (neu 03.09.2026) |
+| **Bot-Setup → Personality** | Haupt-Settings, Text-Varianten, Mood-Schwellen |
+| **Admin-Werkzeuge** | Benutzerverwaltung, Rollen-Zuordnung, Audit-Log, App-Zugänge — Kernsystem, kein Modul |
 
 **Umbenennung und Umsortierung (02.09.2026):** „Server-Setup" heißt jetzt **Bot-Setup**,
 weil dort das Verhalten des *Bots* eingerichtet wird und nicht der Discord-Server.
@@ -426,7 +455,145 @@ verbreiterten.
 
 ---
 
-## 8. Sicherheitsfundament
+## 8. Rollenvergabe (neu 03.09.2026)
+
+Der Bot kann Discord-Rollen auf **drei** Wegen vergeben. Sie sind bewusst getrennt und
+fassen sich gegenseitig nicht an — jeder merkt sich, was er selbst getan hat.
+
+### Voraussetzung: die Hierarchie
+
+Discord erlaubt einem Bot nur, Rollen **unterhalb seiner eigenen höchsten Rolle** zu
+vergeben. Alle drei Wege prüfen das vorher und melden es verständlich, statt an einer
+nichtssagenden Ablehnung zu scheitern. In den Auswahllisten im Backend sind zu hohe Rollen
+gesperrt. Zum aktuellen Stand siehe Abschnitt „Rollenhierarchie".
+
+### Weg 1 — Reaktionsrollen (`/reaction-roles`)
+
+Wer auf eine bestimmte Nachricht mit einem bestimmten Emoji reagiert, bekommt eine Rolle.
+Beliebig viele Regeln, jede mit Kanal, Nachricht, Emoji, Rolle, optionaler Direktnachricht
+und dem Schalter, ob das Entfernen der Reaktion die Rolle zurücknimmt.
+
+Bis zum 03.09.2026 gab es genau **eine** solche Regel, fest im Code verdrahtet als vier
+Einstellungen. Sie ist beim ersten Start automatisch in die neue Tabelle umgezogen und
+verhält sich unverändert. Nebenbei verschwand dabei eine stille Fehlerquelle: Die alte
+Fassung suchte Kanal und Rolle über ihren **Namen** — eine Umbenennung hätte die
+Rollenvergabe ohne Fehlermeldung abgeschaltet.
+
+Beim Anlegen setzt der Bot die Reaktion selbst unter die Nachricht und prüft, ob es diese
+überhaupt gibt.
+
+### Weg 2 — Verdiente Rollen (`/earned-roles`)
+
+Bedingung erfüllt → der Bot meldet sich → die Person holt die Rolle per Knopf ab.
+
+Fünf Bedingungen, alle auf Zahlen gestützt, die der Bot ohnehin führt: richtig
+beantwortete Quizfragen, Level, XP, eingereichte Fragen, Tage auf dem Server. **Welche
+davon zur Auswahl stehen, hängt an den installierten Modulen** — ohne Pflanzenquiz gibt es
+keine Quiz-Bedingungen.
+
+Der Abhol-Knopf trägt Regel **und** Nutzer-ID in seiner Kennung: Ohne diese Bindung könnte
+sich jeder, der die Ankündigung im Kanal sieht, die Rolle holen. Er ist dauerhaft
+(`timeout=None`, feste `custom_id`) und übersteht Neustarts — sonst wäre die Ankündigung
+von gestern tot, der Knopf sähe aus wie immer und täte nichts. Beim Klick wird die
+Bedingung **erneut** geprüft.
+
+Ein Merker verhindert wiederholte Ankündigungen: Der Auslöser feuert bei jeder Quizantwort.
+Vermerkt wird erst **nach** dem Senden — eine Ankündigung, die niemand gesehen hat, als
+erledigt zu buchen, wäre der schlechteste Ausgang.
+
+### Weg 3 — Rechte spiegeln (`/roles-mapping`)
+
+Wer im Backend eine Berechtigung bekommt, bekommt die zugeordnete Discord-Rolle. Wird sie
+entzogen, geht die Rolle wieder weg. Sofort bei jeder Änderung; für den **Bestand** gibt es
+„Jetzt abgleichen" mit vorgeschalteter Vorschau.
+
+**Die Regel, auf die es ankommt: Der Bot nimmt nur weg, was er selbst vergeben hat.**
+Dafür `permission_role_grants`. Ohne diesen Merker hätte der erste Abgleich jedem die
+Moderator-Rolle entzogen, der sie von Hand bekommen hat — auch dem Besitzer.
+
+Unberührt bleiben: verdiente Rollen und Reaktionsrollen (eigene Zuständigkeiten), Rollen
+ohne Zuordnung wie Member und Server Booster, alles über der Bot-Rolle, und der Bot-Owner.
+
+Die Planung (`rollenabgleich.massnahmen()`) ist vom Ausführen getrennt und rein — sie
+verändert ihre Eingaben nicht, sonst zeigte die Vorschau je nach Reihenfolge etwas anderes.
+
+### Was die Benutzerverwaltung zeigt
+
+`/users` stellt Backend-Rechte und tatsächliche Discord-Rollen gegenüber und unterscheidet
+dabei drei Fälle: **fehlt** (der Bot kann es), **nur von Hand** (Rolle steht über ihm) und
+**ohne passendes Recht**. Der letzte Fall ist ausdrücklich kein Vorwurf — eine Rolle kann
+aus ganz anderen Gründen vergeben worden sein. Darunter eine zweite Tabelle für Personen,
+die eine zugeordnete Rolle tragen, ohne im Backend zu stehen; die tauchen in der Hauptliste
+gar nicht auf.
+
+---
+
+### Modultrennung (Grundsatz seit 03.09.2026)
+
+Patrick verfolgt das Ziel, einzelne Funktionsbereiche später als kostenpflichtige Module
+anzubieten. Jedes Modul muss sich deshalb **einzeln installieren lassen**, und für jede
+Änderung gilt: Erst klären, zu welchem Modul eine Funktion gehört, dann dort ablegen.
+
+**Ein Modul ist eine Datei** und bringt alles mit, was nur es betrifft:
+
+| Datei | Rolle |
+|---|---|
+| `bot/module.py` | Die Registratur — Schema anwenden, Ereignis-Kontext und Übersichtsbeiträge einsammeln. Kennt kein einziges Modul beim Namen. |
+| `bot/modul_quiz.py` | Pflanzenquiz: fünf Tabellen, Migrationen, sechs Achievements, zwei Bedingungen, 25 Abfragefunktionen. |
+| `bot/modul_xp_level.py` | XP & Level: `user_xp`, zwei Achievements, zwei Bedingungen, `award_xp()` und die Levelberechnung. |
+| `bot/modul_kern.py` | Was ohne Zusatzmodul funktioniert. Kein eigenes Schema — die gemeinsamen Tabellen bleiben zentral. |
+| `bot/achievements.py`, `bot/verdiente_rollen.py` | Nur Mechanik: Registratur, Datenklassen, Kandidatensuche. Kennen keine Inhalte. |
+| `bot/database.py` | Nur noch Kern: Einstellungen, Audit-Log, Berechtigungen, Rollenregeln. **Kein SQL mehr auf eine Modultabelle.** |
+| `bot/schema_helfer.py` | `ensure_column()`, bewusst ohne jede Abhängigkeit ausser `sqlite3`. |
+
+**`module.INSTALLIERT`** sagt an einer Stelle, was aktiv ist. Sobald Module tatsächlich
+einzeln verkauft werden, kommt die Liste aus der Konfiguration.
+
+### Die Datenbank baut sich selbst auf
+
+Nachgewiesen mit einer Installation „nur Kern": Dann entstehen `questions`, `players`,
+`user_stats`, `user_xp` und `categories` gar nicht erst, es gibt keine Achievements, und
+als Bedingung für verdiente Rollen steht nur „Tage auf dem Server" zur Auswahl.
+
+Kommt das Quizmodul später dazu, legt der **nächste Start** die fünf Tabellen an, führt die
+Migrationen aus (`questions.category_id`, die Streak-Spalten, der Index) und trägt die
+sechs Achievements ein. Bestehende Daten bleiben unberührt.
+
+Genau daran ist der erste Versuch gescheitert und hat dabei einen zweiten Riss offengelegt:
+`init_db()` enthielt Migrationen wie `_ensure_column(conn, "questions", …)`, die ohne das
+Modul auf Tabellen zugriffen, die es nicht gibt. Migrationen gehören deshalb ebenfalls zum
+Modul.
+
+### Drei Entwurfsentscheidungen
+
+**Die Bedingungen sind reine Funktionen** über ein Kontext-Dictionary, ohne
+Datenbankzugriff. Vorher zählte die Quiz-Bedingung als Nebenwirkung einen Zähler hoch —
+eine Prüfung veränderte also Daten, was beim Lesen niemand erwartet.
+
+**Jede Bedingung bringt ihre eigene Abfrage mit.** Ein zentraler Sammler hätte `user_stats`
+und `questions` gekannt, also Tabellen aus einem Modul, das fehlen kann.
+
+**Die Moduldateien laden sich ohne die Laufzeitumgebung des Bots.** Sie holen `database`
+und `config` erst beim Aufruf über `_conn()`, `_db()` und `_cfg()`, nie auf oberster Ebene.
+Sonst wäre schon das Beschreiben eines Moduls an `dotenv` und einen gesetzten
+`DISCORD_TOKEN` gebunden — woran die CI gescheitert ist, während lokal alles grün war. Zwei
+Tests bewachen das.
+
+### Zwei Sonderfälle
+
+`get_user_overview()` fragte drei Tabellen aus zwei Modulen direkt ab. Jetzt tragen die
+Module bei (`Modul.nutzer_uebersicht`), der Kern führt nur zusammen, und jedes Modul liefert
+Standardwerte mit — damit die Seite ohne ein Modul nicht jeden Wert einzeln absichern muss.
+
+`check_and_update_milestone()` stützt sich auf richtige Quizantworten. Ohne das Quizmodul
+gibt es solche Meilensteine schlicht nicht — die Funktion gibt dann `None` zurück, statt zu
+scheitern.
+
+Abgesichert durch `tests/test_module.py` und `tests/test_achievements_module.py`.
+
+---
+
+## 9. Sicherheitsfundament
 
 ### Owner-Schutz (unverändert seit Phase 1)
 `database.has_permission()` prüft den Owner zuerst, vor jeder SQL-Abfrage.
@@ -458,7 +625,7 @@ gehalten (nicht tunnel-spezifisch benannt) für künftige "Session sofort beende
 
 ---
 
-## 9. Personality/Mood/Events-System
+## 10. Personality/Mood/Events-System
 
 Grundprinzip unverändert: **Mood ist ein rein interner, deterministischer Spielzustand.**
 Ablauf (Herzschlag-Task, 60s-Takt), fünf Mood-Werte (`happy` vorbereitet, ungenutzt),
@@ -508,7 +675,7 @@ Meilensteine) gilt die Beschreibung der Vorversion unverändert.
 
 ---
 
-## 10. Bot Connect App (Android) + Bot Connect Dashboard
+## 11. Bot Connect App (Android) + Bot Connect Dashboard
 
 Vollständige Details, Architektur-Begründungen und Installationsanleitungen liegen in den
 jeweiligen README.md-Dateien im Repo — hier nur die Kurzfassung + Verweis:
@@ -532,7 +699,7 @@ deaktiviert — er ließ sich nicht einzeln widerrufen. Siehe
 
 ---
 
-## 11. OAuth-Setup
+## 12. OAuth-Setup
 
 Unverändert gegenüber der Vorversion, mit einer Ergänzung: der Login-Flow verwendet jetzt
 einen `state`-Parameter (`oauth.py`, `build_authorize_url()`) gegen Login-CSRF —
@@ -550,7 +717,7 @@ Scope: nur `identify`. Vorlage: `bot/.env.example` (nur Variablennamen, keine We
 
 ---
 
-## 12. Start / Stop / Logs
+## 13. Start / Stop / Logs
 
 Unverändert:
 
@@ -595,7 +762,7 @@ Syntax-Check → Bot starten → Tests → Bestandsdaten-Kontrolle → **git com
 
 ---
 
-## 13. Umgesetzte Sicherheitsmaßnahmen
+## 14. Umgesetzte Sicherheitsmaßnahmen
 
 Ergänzend zur Vorversion (Secrets-Handling, generierter Secret-Key, kein Debug-Modus,
 `.gitignore`, abgesicherte `/api/*`-Routen, waitress+nginx, ProxyFix, Owner-Schutz,
@@ -617,7 +784,7 @@ Audit-Log, Backup, kein `manage_users`-Flag) — **neu seit 31.08.2026:**
 
 ---
 
-## 14. Unterschiede zum alten Bot
+## 15. Unterschiede zum alten Bot
 
 Unverändert gegenüber der Vorversion (siehe dort für die volle Liste: Cogs statt
 Monolith, Hybrid-Commands, Buttons statt Chattext, getrenntes XP-System,
@@ -629,7 +796,7 @@ reiner Wortliste).
 
 ---
 
-## 15. Den Bot erweitern
+## 16. Den Bot erweitern
 
 Unverändert gegenüber der Vorversion (neues Cog in `bot/cogs/`, in `load_cogs()`
 eintragen; neue Settings über `config.DEFAULT_SETTINGS` + `database.get_setting()`/
@@ -642,7 +809,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 16. Testsuite (`tests/`, 594 Tests)
+## 17. Testsuite (`tests/`, 594 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -739,35 +906,48 @@ diesen Zusammenhang immer mitnennen.
 
 ---
 
-## 17. Offene Punkte (Stand 03.09.2026)
+## 18. Offene Punkte (Stand 03.09.2026, abends)
 
-- ~~**`ERR_TIMED_OUT` in der Android-App**~~ — **am 02.09.2026 gelöst.** Die hier
-  vermutete Relay-/NAT-Instabilität war NICHT die Ursache. Es waren zwei unabhängige
-  Fehler: dumbpipes mitgelieferte `Cargo.lock` nagelte iroh auf eine Version fest, die
-  den Android-JNI-Panic nur in Debug-Builds abfängt, und die Bereitschaftsprüfung der
-  App führte ihre Versuche ohne Pause hintereinander aus — sie gab damit Millisekunden
-  nach dem Start auf, rund 3 Sekunden bevor der Tunnel überhaupt bereit sein konnte.
-  Vollständige Analyse in `Fernzugriff-Setup-Anleitung.md`, Abschnitt 9.1.
 - **Echter Online/Idle/DND-Status** in der Überwachungs-Übersicht: aktuell Näherung über
-  Nachrichtenaktivität statt echtem Discord-Presence-Status (bräuchte den privilegierten
-  Presence-Intent, manuell im Discord Developer Portal freizuschalten).
-- **Live-Test der Moderationsaktionen** (Kick/Ban/Timeout) gegen den echten Server:
-  bisher nur per Fake-Discord-Objekten/DB-Kopien verifiziert.
-- **Kein einziger Slash-Befehl ist bei Discord registriert** (gefunden 03.09.2026). 17
-  Befehle sind als `commands.hybrid_command` gebaut und damit für `/befehl` vorgesehen,
-  inklusive Beschreibungstexten und Auswahllisten — aber `bot.tree.sync()` kommt im
-  Projekt nicht vor. Bei Discord abgefragt: 0 global und 0 serverspezifisch registrierte
-  Befehle. Alle 17 existieren ausschließlich als `>befehl`, was für neue Servermitglieder
-  praktisch unauffindbar ist. Plan liegt unter `~/Desktop/pläne/01-slash-commands.md`.
-- **Keine Fehlerbehandlung für Chat-Befehle.** Es gibt keinen `on_command_error`-Handler;
-  fehlende Argumente, falsche Argumenttypen und Cooldowns bleiben für den Nutzer völlig
-  stumm. Dieselbe Fehlerklasse wie beim WebView-Problem: Es passiert nichts und nichts
-  sagt warum. Plan unter `~/Desktop/pläne/04-befehlsfehler.md`.
-- **Moderationsgründe werden nicht auf 512 Zeichen begrenzt**, die von Discord für den
-  `X-Audit-Log-Reason`-Header dokumentierte Obergrenze (URL-kodiert gezählt, ein Umlaut
-  belegt dort sechs Zeichen). Ein zu langer Grund lässt Kick/Ban/Timeout mit einer
-  nichtssagenden 400er-Meldung scheitern. Plan unter
-  `~/Desktop/pläne/02-moderationsgrund.md`.
-- **Bild-/Link-Felder im Embed-Builder werden nicht geprüft.** Discord akzeptiert nur
-  `http`, `https` und `attachment` und antwortet sonst mit `Invalid Form Body`, ohne das
-  betroffene Feld zu nennen. Plan unter `~/Desktop/pläne/03-embed-urls.md`.
+  Nachrichtenaktivität statt echtem Discord-Presence-Status. Bräuchte den privilegierten
+  Presence-Intent, manuell im Discord Developer Portal freizuschalten.
+- **Live-Test der Moderationsaktionen** (Kick/Ban/Timeout) gegen den echten Server: bisher
+  nur mit Fake-Discord-Objekten und DB-Kopien verifiziert.
+- **Die Rollen-Zuordnung ist noch leer.** Solange dort nichts eingetragen ist, hat der
+  Abgleich nichts zu tun und die Übersicht auf `/users` zeigt einen Strich. Zum
+  Ausprobieren müsste etwa `moderate_members` → Moderator gesetzt werden.
+- **Verdiente Rollen und Reaktionsrollen sind gebaut, aber ungenutzt.** Es gibt noch keine
+  Regel ausser der migrierten 👍-Regel im Regelkanal.
+
+### Am 03.09.2026 erledigt
+
+Der Vollständigkeit halber, weil diese Punkte hier lange als offen standen:
+
+| War offen | Erledigt durch |
+|---|---|
+| Kein einziger Slash-Befehl registriert | `bot.tree.sync()` mit Änderungserkennung; 16 Befehle registriert, `>` abgeschaltet |
+| Keine Fehlerbehandlung für Befehle | Zentraler `on_command_error` plus `tree.on_error`, Meldungen nur für den Aufrufer |
+| Moderationsgründe ohne 512-Zeichen-Grenze | Kürzung nach **URL-kodierter** Länge; das eigene Audit-Log behält den vollen Text |
+| Bild-/Link-Felder im Embed ungeprüft | Formatprüfung, die das betroffene Feld beim Namen nennt |
+| `ERR_TIMED_OUT` in der Android-App | am 02.09.2026 gelöst, Analyse in `Fernzugriff-Setup-Anleitung.md` §9.1 |
+
+---
+
+## 19. Chronik des 03.09.2026
+
+Ein außergewöhnlich dichter Tag — hier die Reihenfolge, weil einige Entscheidungen nur im
+Zusammenhang verständlich sind.
+
+| Was | Warum es kam |
+|---|---|
+| Logging repariert (`PYTHONUNBUFFERED`) | Der Dienst schrieb in 24 Stunden **null** eigene Zeilen ins Journal |
+| `gumo`, `hallo`, `bothelp` entfernt | `gumo` war defekt: die Textdatei enthielt Python-Quelltext |
+| Tägliche Guten-Morgen-Nachricht | Ersatz für `gumo`, im Backend pflegbar |
+| Slash-Befehle registriert, `>` abgeschaltet | 17 Befehle waren gebaut, aber bei Discord unbekannt |
+| `/help` neu gebaut | Die Vorgänger zeigten **jedem alles**, auch die Adminbefehle |
+| Zentrale Fehlerbehandlung | Falsch benutzte Befehle blieben stumm |
+| Module getrennt (Achievements, Bedingungen, Schema, Abfragen) | Ziel: Module später einzeln verkaufen und installieren |
+| Rollenvergabe in drei Wegen | Reaktion, Verdienst, Berechtigung |
+| Bot-Rolle über Moderator gezogen | Voraussetzung dafür, dass der Bot Moderator vergeben kann — mit der bewussten Folge, dass Moderatoren nicht mehr vor ihm geschützt sind |
+
+Tests: von 31 auf 594.
