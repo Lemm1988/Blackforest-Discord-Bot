@@ -29,11 +29,17 @@ def _load_lines(path):
 
 
 class Fun(commands.Cog):
+    # Fuer die Gruppierung in /help. Das Label steht am Cog und nicht in
+    # einer zentralen Liste, damit ein entferntes Modul auch aus der Hilfe
+    # verschwindet, ohne dass man daran denken muss.
+    MODUL_LABEL = "✨ Sonstiges"
+    MODUL_REIHENFOLGE = 4
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.zitate = _load_lines(config.ZITATE_FILE)
 
-    @commands.hybrid_command(name="zitat", description="Zeigt ein zufälliges Zitat.")
+    @commands.hybrid_command(name="zitat", description="Ein zufälliges Zitat",
+        extras={"hilfe": "Ich gebe ein zufälliges Zitat aus meiner Sammlung aus."},)
     async def zitat(self, ctx: commands.Context):
         if not self.zitate:
             await ctx.send("Aktuell sind keine Zitate hinterlegt.")

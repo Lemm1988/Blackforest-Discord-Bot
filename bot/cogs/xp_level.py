@@ -25,12 +25,18 @@ import database
 
 
 class XpLevel(commands.Cog):
+    # Fuer die Gruppierung in /help. Das Label steht am Cog und nicht in
+    # einer zentralen Liste, damit ein entferntes Modul auch aus der Hilfe
+    # verschwindet, ohne dass man daran denken muss.
+    MODUL_LABEL = "📈 XP & Level"
+    MODUL_REIHENFOLGE = 2
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     @commands.hybrid_command(
         name="xp",
-        description="Zeigt deinen XP-Stand und dein Level auf dem Server.",
+        description="Zeigt deinen XP-Stand und dein Level",
+        extras={"hilfe": "Zeigt, wie viele XP du gesammelt hast, auf welchem Level du bist und wie weit es noch bis zum nächsten ist.\nXP bekommst du fürs Schreiben im Chat, für richtige Quizantworten und gelegentlich durch Zufallsereignisse. Pro Tag gibt es eine Obergrenze, damit niemand sie durch reines Vielschreiben hochtreibt."},
     )
     async def xp(self, ctx: commands.Context):
         progress = database.get_user_xp(ctx.author.id)
@@ -41,7 +47,8 @@ class XpLevel(commands.Cog):
 
     @commands.hybrid_command(
         name="serverxp_rangliste",
-        description="Zeigt die Top 15 nach Server-XP (Chat, Quiz und Events zusammen).",
+        description="Die 15 Besten nach Server-XP",
+        extras={"hilfe": "Zeigt die 15 Personen mit den meisten **Server-XP** — also aus Chat, Quiz und Zufallsereignissen zusammen.\nDie reine Quiz-Wertung findest du unter `/quiz_rangliste`."},
     )
     async def serverxp_rangliste(self, ctx: commands.Context):
         top = database.get_xp_leaderboard(15)
@@ -68,7 +75,8 @@ class XpLevel(commands.Cog):
             )
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(name="achievements", description="Zeigt deine Achievements.")
+    @commands.hybrid_command(name="achievements", description="Deine Auszeichnungen und was noch fehlt",
+        extras={"hilfe": "Zeigt alle Auszeichnungen mit ihrem Stand. Freigeschaltete siehst du mit Datum, offene mit der Bedingung.\nEinige sind **geheim** — die verrate ich erst, wenn du sie hast. Jede bringt zusätzliche XP.\nDie Antwort sieht nur du."},)
     async def achievements(self, ctx: commands.Context):
         overview = database.get_achievements_overview(ctx.author.id)
         embed = discord.Embed(title="🏅 Deine Achievements", color=discord.Color.gold())

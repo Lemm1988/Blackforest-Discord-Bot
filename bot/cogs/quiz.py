@@ -204,6 +204,11 @@ class CategorySelectView(discord.ui.View):
 
 
 class Quiz(commands.Cog):
+    # Fuer die Gruppierung in /help. Das Label steht am Cog und nicht in
+    # einer zentralen Liste, damit ein entferntes Modul auch aus der Hilfe
+    # verschwindet, ohne dass man daran denken muss.
+    MODUL_LABEL = "🌿 Pflanzenquiz"
+    MODUL_REIHENFOLGE = 1
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         # Bewusst nur im Arbeitsspeicher (kein DB-Feld): der Cooldown muss keinen
@@ -281,7 +286,8 @@ class Quiz(commands.Cog):
             message = await target.send(embed=embed, view=view)
             view.message = message
 
-    @commands.hybrid_command(name="frage", description="Beantworte eine zufällige Quizfrage.")
+    @commands.hybrid_command(name="frage", description="Zieht dir eine Quizfrage — richtig beantwortet gibt es Punkte und XP",
+        extras={"hilfe": "Ich stelle dir eine zufällige Pflanzenfrage mit vier Antworten zur Auswahl. Tippe auf die Antwort, die du für richtig hältst.\nLiegst du richtig, bekommst du Quiz-Punkte **und** Server-XP. Zwischen zwei Fragen liegt eine kurze Wartezeit, damit niemand einfach durchklickt."},)
     async def frage(self, ctx: commands.Context):
         # An/Aus-Schalter des Spiels (Spec 1, Phase B1, /games/quiz) - blockiert
         # bewusst nur das SPIELEN (neue Frage abrufen), nicht das ANSEHEN
@@ -312,7 +318,8 @@ class Quiz(commands.Cog):
         view = CategorySelectView(categories, ctx.author, on_choice)
         await ctx.send("🌿 Wähle eine Kategorie für deine nächste Frage:", view=view, ephemeral=True)
 
-    @commands.hybrid_command(name="gamescore", description="Zeigt deinen aktuellen Punktestand.")
+    @commands.hybrid_command(name="gamescore", description="Zeigt deine gesammelten Quiz-Punkte",
+        extras={"hilfe": "Zeigt, wie viele Punkte du im Pflanzenquiz gesammelt hast. Das ist etwas anderes als deine XP: Quiz-Punkte bekommst du **nur** durchs Quiz, XP auch fürs Schreiben im Chat. Deine XP siehst du mit `/xp`."},)
     async def gamescore(self, ctx: commands.Context):
         score = database.get_score(ctx.author.id)
         await ctx.send(f"{ctx.author.mention}, dein aktueller Punktestand beträgt **{score}** Punkte! 🌟")
@@ -324,7 +331,8 @@ class Quiz(commands.Cog):
     # ungenau, sondern irrefuehrend.
     @commands.hybrid_command(
         name="quiz_rangliste",
-        description="Zeigt die Top 15 nach Punkten im Pflanzenquiz.",
+        description="Die 15 Besten im Pflanzenquiz",
+        extras={"hilfe": "Zeigt die 15 Personen mit den meisten **Quiz-Punkten**.\nNicht zu verwechseln mit `/serverxp_rangliste` — das ist die Wertung über die Server-XP. Wer viel schreibt, aber selten Quiz spielt, steht dort weit oben und hier vielleicht gar nicht."},
     )
     async def quiz_rangliste(self, ctx: commands.Context):
         top_players = database.get_leaderboard(15)
@@ -346,7 +354,8 @@ class Quiz(commands.Cog):
             embed.add_field(name=f"{idx}. {user.name}", value=f"Punkte: {player['score']}", inline=False)
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(name="rules", description="Zeigt die Spielregeln des Pflanzenquiz.")
+    @commands.hybrid_command(name="rules", description="Die Spielregeln des Pflanzenquiz",
+        extras={"hilfe": "Erklärt, wie viele Punkte es pro richtiger Antwort gibt, wie lange du zum Antworten hast und welche Wartezeit zwischen zwei Fragen liegt."},)
     async def rules(self, ctx: commands.Context):
         points = database.get_setting("quiz_points_correct", config.DEFAULT_SETTINGS["quiz_points_correct"])
         timeout_seconds = database.get_setting(
@@ -364,7 +373,8 @@ class Quiz(commands.Cog):
         embed = discord.Embed(title="📜 Spielregeln 📜", description=rules_text, color=discord.Color.blue())
         await ctx.send(embed=embed)
 
-    @commands.hybrid_command(name="botgame", description="Infos zum Pflanzenquiz per DM.")
+    @commands.hybrid_command(name="botgame", description="Schickt dir die ausführlichen Quiz-Infos per DM",
+        extras={"hilfe": "Ich schicke dir eine private Nachricht mit allem Wissenswerten zum Pflanzenquiz.\nWenn du keine Direktnachrichten von Servermitgliedern annimmst, kann ich dir nichts schicken — ich sage dir dann im Kanal Bescheid."},)
     async def botgame(self, ctx: commands.Context):
         points = database.get_setting("quiz_points_correct", config.DEFAULT_SETTINGS["quiz_points_correct"])
         embed = discord.Embed(
@@ -396,7 +406,8 @@ class Quiz(commands.Cog):
 
     @commands.hybrid_command(
         name="frage_einreichen",
-        description="Reiche eine eigene Quizfrage direkt per Befehl ein (unverifiziert, wie das Web-Formular).",
+        description="Reiche eine eigene Quizfrage ein",
+        extras={"hilfe": "Du kannst eigene Fragen beisteuern. Gib den Fragetext, vier Antworten und die richtige Antwort an.\nDeine Frage wird **nicht sofort** gespielt: Ein Admin sieht sie sich vorher an. Für deine erste eingereichte Frage gibt es das Achievement „Community-Mitglied\"."},
     )
     @discord.app_commands.describe(
         frage="Der Fragetext",

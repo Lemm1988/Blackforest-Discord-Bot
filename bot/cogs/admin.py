@@ -72,10 +72,16 @@ def has_permission_check(key: str):
 
 
 class Admin(commands.Cog):
+    # Fuer die Gruppierung in /help. Das Label steht am Cog und nicht in
+    # einer zentralen Liste, damit ein entferntes Modul auch aus der Hilfe
+    # verschwindet, ohne dass man daran denken muss.
+    MODUL_LABEL = "🔧 Administration"
+    MODUL_REIHENFOLGE = 9
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @commands.hybrid_command(name="grant_access", description="Vergibt einem Nutzer eine Backend-Berechtigung.")
+    @commands.hybrid_command(name="grant_access", description="Vergibt einem Mitglied eine Backend-Berechtigung",
+        extras={"hilfe": "Gibt einer Person ein Recht für die Weboberfläche.\nDer Bot-Owner ist geschützt und kann hierüber nicht verändert werden. Jede Vergabe landet im Audit-Log.", "recht": "is_admin"},)
     @app_commands.describe(user="Der Discord-Nutzer", permission="Die zu vergebende Berechtigung")
     @app_commands.choices(permission=[app_commands.Choice(name=p, value=p) for p in database.ALL_PERMISSIONS])
     @app_commands.default_permissions(administrator=True)
@@ -94,7 +100,8 @@ class Admin(commands.Cog):
         database.grant_permission(user.id, permission, granted_by=ctx.author.id)
         await ctx.send(f"✅ {user.mention} hat jetzt die Berechtigung **{permission}**.")
 
-    @commands.hybrid_command(name="revoke_access", description="Entzieht einem Nutzer eine Backend-Berechtigung.")
+    @commands.hybrid_command(name="revoke_access", description="Entzieht einem Mitglied eine Backend-Berechtigung",
+        extras={"hilfe": "Nimmt einer Person ein Recht für die Weboberfläche wieder weg.\nDer Bot-Owner ist geschützt. Jeder Entzug landet im Audit-Log.", "recht": "is_admin"},)
     @app_commands.describe(user="Der Discord-Nutzer", permission="Die zu entziehende Berechtigung")
     @app_commands.choices(permission=[app_commands.Choice(name=p, value=p) for p in database.ALL_PERMISSIONS])
     @app_commands.default_permissions(administrator=True)
@@ -110,7 +117,8 @@ class Admin(commands.Cog):
         database.revoke_user_permission(user.id, permission, actor_id=ctx.author.id)
         await ctx.send(f"🚫 {user.mention} hat die Berechtigung **{permission}** nicht mehr.")
 
-    @commands.hybrid_command(name="my_access", description="Zeigt deine eigenen Backend-Berechtigungen.")
+    @commands.hybrid_command(name="my_access", description="Zeigt, welche Rechte du im Backend hast",
+        extras={"hilfe": "Zeigt deine Berechtigungen für die Weboberfläche des Bots. Die meisten Mitglieder haben hier nichts stehen — das ist normal und schränkt dich auf dem Server in keiner Weise ein."},)
     async def my_access(self, ctx: commands.Context):
         perms = database.get_user_permissions(ctx.author.id)
         if perms:
@@ -122,7 +130,8 @@ class Admin(commands.Cog):
                 "Ein Admin kann dir per `/grant_access` weitere Rechte geben."
             )
 
-    @commands.hybrid_command(name="dm", description="Sendet einem Nutzer eine private Nachricht im Namen des Bots.")
+    @commands.hybrid_command(name="dm", description="Schickt einem Mitglied eine Nachricht in meinem Namen",
+        extras={"hilfe": "Ich schicke der angegebenen Person eine Direktnachricht. Für den Empfänger sieht es so aus, als käme sie von mir — dein Name steht nicht dabei, der Vorgang wird aber im Audit-Log festgehalten.\nHat die Person ihre DMs zu, sage ich dir das.", "recht": "send_dm"},)
     @app_commands.describe(user="Der Discord-Nutzer", nachricht="Der Nachrichtentext")
     @app_commands.default_permissions(moderate_members=True)
     @has_permission_check("send_dm")

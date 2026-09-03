@@ -28,13 +28,18 @@ intents.messages = True
 intents.reactions = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix=config.COMMAND_PREFIX, intents=intents)
+bot = commands.Bot(command_prefix=config.COMMAND_PREFIX, intents=intents, help_command=None)
+# help_command=None schaltet die eingebaute Hilfe von discord.py ab. Sie muss
+# weichen, weil sie einen Prefix-Befehl namens "help" belegt - unser eigener
+# /help (cogs/hilfe.py) koennte sonst gar nicht registriert werden. Inhaltlich
+# ist sie ohnehin kein Verlust: Sie ist englisch formatiert, zeigt jedem alles
+# und existiert nur als Prefix-Variante, verschwaende also mit ">" ganz.
 
 _flask_started = False
 
 
 async def load_cogs():
-    for extension in ("quiz", "xp_level", "plants", "fun", "moderation", "reactions", "giveaway", "admin", "personality"):
+    for extension in ("hilfe", "quiz", "xp_level", "plants", "fun", "moderation", "reactions", "giveaway", "admin", "personality"):
         await bot.load_extension(f"cogs.{extension}")
 
 
