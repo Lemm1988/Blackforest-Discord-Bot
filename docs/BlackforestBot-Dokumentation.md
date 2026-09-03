@@ -28,7 +28,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 13. Umgesetzte Sicherheitsmaßnahmen
 14. Unterschiede zum alten Bot
 15. Den Bot erweitern
-16. Testsuite (`tests/`, 474 Tests)
+16. Testsuite (`tests/`, 478 Tests)
 17. Offene Punkte (Stand 03.09.2026)
 
 ---
@@ -642,7 +642,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 16. Testsuite (`tests/`, 474 Tests)
+## 16. Testsuite (`tests/`, 478 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -673,8 +673,8 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 |---|---|---|
 | `test_discord_limits.py` | 76 | Alle acht Embed-Grenzen gegen die offizielle Dokumentation, jeweils genau am Limit erlaubt und ein Zeichen darüber abgelehnt; die 6000-Zeichen-Gesamtsumme; Farbwerte; Zeitzonenbehandlung |
 | `test_rollenabgleich.py` | 15 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten |
-| `test_nutzertexte.py` | 94 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
-| `test_csrf_coverage.py` | 71 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
+| `test_nutzertexte.py` | 97 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
+| `test_csrf_coverage.py` | 73 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
 | `test_moderation_limits.py` | 33 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
 | `test_moderation_hierarchy.py` | 7 | Rollenhierarchie als eigene Schranke neben den Berechtigungen |
@@ -683,6 +683,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_befehlsfehler.py` | 27 | Jeder absehbare Befehlsfehler sagt etwas; Prüfungen antworten nicht mehr selbst |
 | `test_achievements_module.py` | 43 | Modultrennung der Achievements und alle Auslöseschwellen; prüft ausdrücklich, dass `database.py` keinen Achievement-Namen mehr kennt |
 | `test_morning_greeting.py` | 38 | Zeitlogik der täglichen Guten-Morgen-Nachricht: Fenster, Tagesmerker gegen doppelte Grüße nach einem Neustart, Randuhrzeiten um Mitternacht, unbrauchbare Eingaben |
+| `test_doku.py` | 4 | Die Testzahlen in dieser Tabelle stimmen mit der Wirklichkeit überein — eine Doku mit falschen Zahlen ist schlimmer als eine ohne |
 | `test_mood.py` | 5 | Mood-Texte, Häufigkeitsgrenzen, Nachtstunden über Mitternacht |
 | `test_webview_dialogs.py` | 3 | `WebChromeClient` in der App — ohne ihn schlucken WebViews `confirm()` und Kick/Ban/Timeout bleiben wirkungslos |
 
