@@ -116,3 +116,52 @@ def load_from_app(*namen: str) -> dict:
     modul = ast.Module(body=knoten, type_ignores=[])
     exec(compile(modul, filename=str(APP_PY), mode="exec"), namensraum)  # noqa: S102
     return namensraum
+
+
+# --------------------------------------------------------------------------
+# Dasselbe fuer bot/database.py
+# --------------------------------------------------------------------------
+
+DATABASE_PY = REPO / "bot" / "database.py"
+
+
+def load_from_database(*namen: str, umgebung: dict | None = None) -> dict:
+    """Fuehrt einzelne Funktionen aus bot/database.py aus.
+
+    Gleicher Gedanke wie load_from_app(): database.py importiert config und
+    damit dotenv, was in der CI nicht zur Verfuegung steht. Statt die SQL-Logik
+    im Test nachzubauen - eine Kopie liefe genau dann auseinander, wenn es
+    darauf ankommt - wird hier der echte Quelltext ausgefuehrt und lediglich
+    get_connection() durch eine Wegwerf-Datenbank ersetzt.
+    """
+    baum = ast.parse(DATABASE_PY.read_text(), filename=str(DATABASE_PY))
+    gesucht = set(namen)
+    knoten = []
+    for node in baum.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in gesucht:
+            knoten.append(node)
+            gesucht.discard(node.name)
+    if gesucht:
+        raise AssertionError(
+            f"In {DATABASE_PY.name} nicht gefunden: {sorted(gesucht)}. "
+            "Wurde umbenannt oder verschoben - der Test muss nachgezogen werden."
+        )
+
+    namensraum: dict = {"__name__": "database_ausschnitt"}
+    namensraum.update(umgebung or {})
+    modul = ast.Module(body=knoten, type_ignores=[])
+    exec(compile(modul, filename=str(DATABASE_PY), mode="exec"), namensraum)  # noqa: S102
+    return namensraum
+
+
+def tabellen_definition(tabelle: str) -> str:
+    """Holt das echte CREATE TABLE aus database.py.
+
+    Damit prueft der Test gegen das Schema, das der Bot wirklich anlegt. Eine
+    im Test getippte Kopie waere nach der ersten Spaltenaenderung falsch, ohne
+    dass ein Test rot wuerde.
+    """
+    quelle = DATABASE_PY.read_text()
+    anfang = quelle.index(f"CREATE TABLE IF NOT EXISTS {tabelle} (")
+    ende = quelle.index(");", anfang) + 2
+    return quelle[anfang:ende]

@@ -1415,6 +1415,78 @@ def reset_user_violations(discord_user_id, violation_type: str = "badword"):
         conn.commit()
 
 
+
+def delete_violation(violation_id) -> bool:
+    """Löscht einen einzelnen Verstoß endgültig.
+
+    Ergänzt reset_user_violations(), das bewusst nur die ZÄHLUNG zurücksetzt und
+    die Historie stehen lässt. Beides hat seine Berechtigung: Für ein einmaliges
+    Versehen soll die Zählung aufhören, ohne dass die Aufzeichnung verschwindet
+    — ein Fehlalarm des Filters dagegen (ein Wort in einem harmlosen
+    Zusammenhang, eine fälschlich verbotene Domain) gehört wirklich weg, sonst
+    steht dauerhaft ein Vorwurf in der Akte, der nie einer war.
+
+    Vorgabe Patrick, 04.09.2026: „in aktionen und überwachung muss man verstöße
+    eines users auch löschen können als admin oder Moderator."
+
+    Liefert True, wenn tatsächlich etwas gelöscht wurde — damit die Oberfläche
+    „gelöscht" von „gab es gar nicht (mehr)" unterscheiden kann.
+    """
+    with get_connection() as conn:
+        cur = conn.execute("DELETE FROM badword_violations WHERE id = ?", (violation_id,))
+        conn.commit()
+        return cur.rowcount > 0
+
+
+def delete_user_violations(discord_user_id, violation_type: str = None) -> int:
+    """Löscht alle Verstöße einer Person, wahlweise nur eines Typs.
+
+    Räumt anschließend die Reset-Grenze mit auf. Ohne das bliebe in der
+    settings-Tabelle eine Grenz-id stehen, die auf einen gelöschten Verstoß
+    zeigt — und die nächsten echten Verstöße würden stillschweigend nicht
+    gezählt, weil ihre id womöglich noch unter dieser Grenze läge. Genau die
+    Sorte Fehler, die erst auffällt, wenn jemand trotz Verstößen nie einen
+    Timeout bekommt.
+
+    Liefert die Anzahl der gelöschten Einträge.
+    """
+    typen = [violation_type] if violation_type else ["badword", "link", "spam"]
+    with get_connection() as conn:
+        if violation_type:
+            cur = conn.execute(
+                "DELETE FROM badword_violations WHERE discord_user_id = ? AND violation_type = ?",
+                (str(discord_user_id), violation_type),
+            )
+        else:
+            cur = conn.execute(
+                "DELETE FROM badword_violations WHERE discord_user_id = ?",
+                (str(discord_user_id),),
+            )
+        anzahl = cur.rowcount
+        for typ in typen:
+            conn.execute("DELETE FROM settings WHERE key = ?",
+                         (_violation_reset_key(discord_user_id, typ),))
+        conn.commit()
+        return anzahl
+
+
+def count_user_violations_by_type(discord_user_id) -> dict:
+    """Wie viele Verstöße welchen Typs diese Person insgesamt hat.
+
+    Für die Rückmeldung nach dem Löschen und für die Anzeige, damit ein Mod
+    sieht, worauf sich ein „alle löschen" beziehen würde, bevor er es tut.
+    """
+    with get_connection() as conn:
+        return {
+            r["violation_type"] or "badword": r["c"]
+            for r in conn.execute(
+                "SELECT violation_type, COUNT(*) c FROM badword_violations "
+                "WHERE discord_user_id = ? GROUP BY violation_type",
+                (str(discord_user_id),),
+            ).fetchall()
+        }
+
+
 # --- Link-Whitelist (für den Link-Filter-Modus "whitelist") ---
 
 def get_link_whitelist():

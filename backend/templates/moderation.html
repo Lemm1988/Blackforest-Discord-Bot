@@ -318,7 +318,7 @@
 </div>
 
 <div class="card mb-4">
-    <div class="card-header"><h5 class="h6 mb-0">Verstoß-Zählung zurücksetzen</h5></div>
+    <div class="card-header"><h5 class="h6 mb-0">Verstöße zurücksetzen oder löschen</h5></div>
     <div class="card-body">
         <p class="text-muted small mb-3">
             Setzt nur die Zählung für die Timeout-Schwelle eines Users (für den gewählten
@@ -345,6 +345,31 @@
                 <button type="submit" class="btn btn-warning w-100">Zurücksetzen</button>
             </div>
         </form>
+        <hr>
+        <p class="text-muted small mb-2">
+            <strong>Endgültig löschen</strong> entfernt die Verstöße dieser Person wirklich aus
+            der Historie — für Fehlalarme des Filters. Die Zählung beginnt danach bei null.
+        </p>
+        <form method="POST" action="{{ url_for('moderation_delete_user_violations') }}" class="row g-2"
+              onsubmit="return confirm('Wirklich ALLE Verstöße dieser Person endgültig löschen? Das lässt sich nicht rückgängig machen.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-8 col-md-4">
+                <input type="text" id="deleteUserId" name="user_id" class="form-control"
+                       placeholder="Name suchen oder User-ID eingeben" required autocomplete="off">
+                <div id="deleteUserPreview" class="form-text"></div>
+            </div>
+            <div class="col-6 col-md-3">
+                <select name="violation_type" class="form-select">
+                    <option value="">Alle Typen</option>
+                    <option value="badword">Nur Schimpfwörter</option>
+                    <option value="link">Nur Links</option>
+                    <option value="spam">Nur Spam</option>
+                </select>
+            </div>
+            <div class="col-6 col-md-2">
+                <button type="submit" class="btn btn-outline-danger w-100">Endgültig löschen</button>
+            </div>
+        </form>
     </div>
 </div>
 
@@ -354,7 +379,7 @@
         <div class="table-responsive">
             <table class="table table-sm table-striped align-middle mb-0">
                 <thead>
-                    <tr><th class="text-nowrap">Zeit</th><th>Typ</th><th>Nutzer-ID</th><th>Erkannt</th><th>Ausschnitt</th></tr>
+                    <tr><th class="text-nowrap">Zeit</th><th>Typ</th><th>Nutzer-ID</th><th>Erkannt</th><th>Ausschnitt</th><th></th></tr>
                 </thead>
                 <tbody>
                     {% for v in violations %}
@@ -368,9 +393,20 @@
                         <td>{{ v['discord_user_id'] }}</td>
                         <td><code>{{ v['matched_word'] }}</code></td>
                         <td class="text-muted text-break">{{ v['message_excerpt'] }}</td>
+                        <td class="text-end">
+                            {# Fuer Fehlalarme des Filters: ein harmloses Wort im falschen
+                               Zusammenhang gehoert nicht dauerhaft in die Akte einer Person. #}
+                            <form method="POST" class="d-inline"
+                                  action="{{ url_for('moderation_delete_violation', violation_id=v['id']) }}"
+                                  onsubmit="return confirm('Diesen Verstoß endgültig löschen?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-1"
+                                        title="Diesen Verstoß endgültig löschen">✕</button>
+                            </form>
+                        </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="5" class="text-muted">Keine Verstöße bisher.</td></tr>
+                    <tr><td colspan="6" class="text-muted">Keine Verstöße bisher.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -384,6 +420,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     attachMemberPicker('resetUserId', 'resetUserPreview');
+    attachMemberPicker('deleteUserId', 'deleteUserPreview');
 
     function toggleByRadio(radioName, targetId, showValue) {
         const target = document.getElementById(targetId);

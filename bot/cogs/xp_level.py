@@ -77,7 +77,7 @@ class XpLevel(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.hybrid_command(name="achievements", description="Deine Auszeichnungen und was noch fehlt",
-        extras={"hilfe": "Zeigt alle Auszeichnungen mit ihrem Stand. Freigeschaltete siehst du mit Datum, offene mit der Bedingung.\nEinige sind **geheim** — die verrate ich erst, wenn du sie hast. Jede bringt zusätzliche XP.\nDie Antwort sieht nur du."},)
+        extras={"antwort": "vertraulich", "hilfe": "Zeigt alle Auszeichnungen mit ihrem Stand. Freigeschaltete siehst du mit Datum, offene mit der Bedingung.\nEinige sind **geheim** — die verrate ich erst, wenn du sie hast. Jede bringt zusätzliche XP.\nDie Antwort sieht nur du."},)
     async def achievements(self, ctx: commands.Context):
         overview = database.get_achievements_overview(ctx.author.id)
         embed = discord.Embed(title="🏅 Deine Achievements", color=discord.Color.gold())

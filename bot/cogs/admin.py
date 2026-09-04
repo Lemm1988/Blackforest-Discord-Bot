@@ -128,7 +128,7 @@ class Admin(commands.Cog):
         await ctx.send(f"🚫 {user.mention} hat die Berechtigung **{permission}** nicht mehr.")
 
     @commands.hybrid_command(name="dm", description="Schickt einem Mitglied eine Nachricht in meinem Namen",
-        extras={"hilfe": "Ich schicke der angegebenen Person eine Direktnachricht. Für den Empfänger sieht es so aus, als käme sie von mir — dein Name steht nicht dabei, der Vorgang wird aber im Audit-Log festgehalten.\nHat die Person ihre DMs zu, sage ich dir das.", "recht": "send_dm"},)
+        extras={"antwort": "vertraulich", "hilfe": "Ich schicke der angegebenen Person eine Direktnachricht. Für den Empfänger sieht es so aus, als käme sie von mir — dein Name steht nicht dabei, der Vorgang wird aber im Audit-Log festgehalten.\nHat die Person ihre DMs zu, sage ich dir das.", "recht": "send_dm"},)
     @app_commands.describe(user="Der Discord-Nutzer", nachricht="Der Nachrichtentext")
     @app_commands.default_permissions(moderate_members=True)
     @has_permission_check("send_dm")

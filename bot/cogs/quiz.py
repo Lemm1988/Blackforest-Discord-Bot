@@ -313,7 +313,7 @@ class Quiz(commands.Cog):
             view.message = message
 
     @commands.hybrid_command(name="frage", description="Zieht dir eine Quizfrage — richtig beantwortet gibt es Punkte und XP",
-        extras={"hilfe": "Ich stelle dir eine zufällige Pflanzenfrage mit vier Antworten zur Auswahl. Tippe auf die Antwort, die du für richtig hältst.\nLiegst du richtig, bekommst du Quiz-Punkte **und** Server-XP. Zwischen zwei Fragen liegt eine kurze Wartezeit, damit niemand einfach durchklickt."},)
+        extras={"antwort": "vertraulich", "hilfe": "Ich stelle dir eine zufällige Pflanzenfrage mit vier Antworten zur Auswahl. Tippe auf die Antwort, die du für richtig hältst.\nLiegst du richtig, bekommst du Quiz-Punkte **und** Server-XP. Zwischen zwei Fragen liegt eine kurze Wartezeit, damit niemand einfach durchklickt."},)
     async def frage(self, ctx: commands.Context):
         # An/Aus-Schalter des Spiels (Spec 1, Phase B1, /games/quiz) - blockiert
         # bewusst nur das SPIELEN (neue Frage abrufen), nicht das ANSEHEN
@@ -433,7 +433,7 @@ class Quiz(commands.Cog):
     @commands.hybrid_command(
         name="frage_einreichen",
         description="Reiche eine eigene Quizfrage ein",
-        extras={"hilfe": "Du kannst eigene Fragen beisteuern. Gib den Fragetext, vier Antworten und die richtige Antwort an.\nDeine Frage wird **nicht sofort** gespielt: Ein Admin sieht sie sich vorher an. Für deine erste eingereichte Frage gibt es das Achievement „Community-Mitglied\".", "recht": "submit_questions"},
+        extras={"antwort": "manuell", "hilfe": "Du kannst eigene Fragen beisteuern. Gib den Fragetext, vier Antworten und die richtige Antwort an.\nDeine Frage wird **nicht sofort** gespielt: Ein Admin sieht sie sich vorher an. Für deine erste eingereichte Frage gibt es das Achievement „Community-Mitglied\".", "recht": "submit_questions"},
     )
     @discord.app_commands.describe(
         frage="Der Fragetext",
@@ -467,6 +467,13 @@ class Quiz(commands.Cog):
         if error:
             await ctx.send(f"⚠️ {error}", ephemeral=True)
             return
+
+        # Erst ab hier steht fest, dass die Antwort oeffentlich wird - die
+        # Meldungen der Pruefung oben gehen nur an den Aufrufer. Deshalb traegt
+        # dieser Befehl "manuell" und bestaetigt selbst, an der einzigen Stelle,
+        # an der die Antwortart feststeht (siehe interaktion.py).
+        if ctx.interaction is not None and not ctx.interaction.response.is_done():
+            await ctx.defer()
 
         modul_quiz.submit_question(frage, antwort_a, antwort_b, antwort_c, antwort_d, richtige_antwort, ctx.author.id)
         await verdiente_rollen.verdiente_rollen_pruefen(

@@ -80,7 +80,7 @@ class Hilfe(commands.Cog):
     @commands.hybrid_command(
         name="help",
         description="Zeigt, was ich kann — und was du davon benutzen darfst",
-        extras={"hilfe": "Ohne Angabe zeige ich dir alle Befehle, die du benutzen "
+        extras={"antwort": "vertraulich", "hilfe": "Ohne Angabe zeige ich dir alle Befehle, die du benutzen "
                          "kannst, nach Bereichen sortiert.\nMit einem Befehlsnamen "
                          "erkläre ich genau diesen einen — zum Beispiel `/help frage`.\n"
                          "Die Antwort sieht nur du."},

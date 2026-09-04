@@ -1242,9 +1242,67 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         # es gibt keine über Zeit angesammelte Zählung, die zurückgesetzt werden müsste.
         if violation_type not in ("badword", "link"):
             violation_type = "badword"
-        if user_id.isdigit():
-            database.reset_user_violations(user_id, violation_type=violation_type)
+        if not user_id.isdigit():
+            # Vorher passierte hier stillschweigend nichts. Wer sich vertippt
+            # hatte, sah eine unveraenderte Seite und schloss daraus, der Knopf
+            # sei kaputt - gemeldet von Patrick am 04.09.2026.
+            flash("Bitte eine gültige Nutzer-ID angeben oder einen Namen aus der Liste wählen.", "error")
+            return redirect(url_for("moderation_page"))
+
+        vorher = database.count_user_violations(user_id, violation_type=violation_type)
+        database.reset_user_violations(user_id, violation_type=violation_type)
+        bezeichnung = {"badword": "Schimpfwörter", "link": "Links"}[violation_type]
+        flash(
+            f"Zählung für {bezeichnung} zurückgesetzt: {vorher} Verstöße zählen ab jetzt nicht "
+            f"mehr für einen automatischen Timeout. Die Historie unten bleibt bewusst stehen — "
+            f"zum endgültigen Entfernen die Einträge dort löschen.",
+            "success",
+        )
         return redirect(url_for("moderation_page"))
+
+    @app.route("/moderation/violation/<int:violation_id>/delete", methods=["POST"])
+    # Vorgabe Patrick, 04.09.2026: "als admin oder Moderator". Ein Moderator
+    # sieht die Verstoesse auf der Mitgliederseite und muss einen Fehlalarm
+    # dort auch loeschen koennen, ohne zugleich den Filter verwalten zu duerfen.
+    @require_any_permission("manage_badword_filter", "moderate_members")
+    def moderation_delete_violation(violation_id):
+        """Löscht einen einzelnen Verstoß endgültig.
+
+        Für Fehlalarme des Filters: ein harmloses Wort im falschen Zusammenhang,
+        eine zu Unrecht verbotene Domain. So etwas gehört nicht dauerhaft in die
+        Akte einer Person.
+        """
+        if database.delete_violation(violation_id):
+            flash("Verstoß gelöscht.", "success")
+        else:
+            flash("Diesen Verstoß gibt es nicht mehr.", "error")
+        return redirect(request.referrer or url_for("moderation_page"))
+
+    @app.route("/moderation/violations/delete_user", methods=["POST"])
+    # Vorgabe Patrick, 04.09.2026: "als admin oder Moderator". Ein Moderator
+    # sieht die Verstoesse auf der Mitgliederseite und muss einen Fehlalarm
+    # dort auch loeschen koennen, ohne zugleich den Filter verwalten zu duerfen.
+    @require_any_permission("manage_badword_filter", "moderate_members")
+    def moderation_delete_user_violations():
+        """Löscht die gesamte Verstoß-Historie einer Person.
+
+        Räumt in database.delete_user_violations() auch die Reset-Grenze mit
+        auf, sonst würden die nächsten echten Verstöße nicht mitgezählt.
+        """
+        user_id = request.form.get("user_id", "").strip()
+        violation_type = request.form.get("violation_type", "") or None
+        if violation_type not in ("badword", "link", "spam", None):
+            violation_type = None
+        if not user_id.isdigit():
+            flash("Bitte eine gültige Nutzer-ID angeben.", "error")
+            return redirect(request.referrer or url_for("moderation_page"))
+
+        anzahl = database.delete_user_violations(user_id, violation_type=violation_type)
+        if anzahl:
+            flash(f"{anzahl} Verstöße endgültig gelöscht. Die Zählung beginnt wieder bei null.", "success")
+        else:
+            flash("Für diese Person war nichts zu löschen.", "error")
+        return redirect(request.referrer or url_for("moderation_page"))
 
     @app.route("/moderation/add", methods=["POST"])
     @require_permission("manage_badword_filter")

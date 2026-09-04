@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))  # damit "backend" importi
 import config
 import database
 import fehler
+import interaktion
 import module
 from backend.app import create_app
 from backend.internal_app import create_internal_app
@@ -120,6 +121,34 @@ async def on_ready():
         _flask_started = True
 
 
+@bot.before_invoke
+async def bestaetige_interaktion(ctx: commands.Context):
+    """Bestätigt jeden Slash-Befehl sofort, bevor er zu arbeiten anfängt.
+
+    Discord verlangt binnen drei Sekunden ein Lebenszeichen. Danach ist der
+    Sitzungsschlüssel verfallen und der Nutzer sieht „Die Anwendung reagiert
+    nicht" — so geschehen am 04.09.2026 bei /frage. Diese leere
+    Vorab-Bestätigung verlängert die Frist auf fünfzehn Minuten und gilt damit
+    für alle Befehle auf einmal, statt in jedem einzeln zu fehlen.
+
+    Für Chat-Befehle (ctx.interaction ist None) gibt es nichts zu bestätigen.
+    """
+    if ctx.interaction is None:
+        return
+    extras = getattr(ctx.command, "extras", None)
+    if not interaktion.soll_bestaetigen(extras):
+        return
+    if ctx.interaction.response.is_done():
+        return
+    try:
+        await ctx.defer(ephemeral=interaktion.ist_vertraulich(extras))
+    except discord.HTTPException as exc:
+        # Schon hier zu spät: dann bleibt es beim Logeintrag. Den Befehl
+        # trotzdem laufen zu lassen ist richtig - er kann noch in den Kanal
+        # schreiben, auch wenn die Interaktion selbst verloren ist.
+        print(f"[befehl] Vorab-Bestätigung für /{ctx.command} fehlgeschlagen: {exc}")
+
+
 @bot.event
 async def on_command_error(ctx: commands.Context, error: Exception):
     """Zentrale Fehlerbehandlung fuer Befehle - Chat wie Slash.
@@ -160,6 +189,12 @@ async def on_command_error(ctx: commands.Context, error: Exception):
         art, kontext = "intern", {}
         # Nur bei unerwarteten Fehlern die vollstaendige Ausnahme ins Log - die
         # bekannten Faelle oben sind Bedienfehler und wuerden es nur zumuellen.
+        if interaktion.abgelaufen(getattr(error, "code", None)):
+            # Kein Programmfehler, sondern eine verstrichene Frist: Discord
+            # hat den Sitzungsschluessel verworfen, bevor wir antworten
+            # konnten. Ein Traceback wuerde hier in die Irre fuehren.
+            print(f"[befehl] /{befehl or '?'}: Interaktion abgelaufen, Antwort kam zu spaet.")
+            return
         print(f"[befehl] Unerwarteter Fehler in /{befehl or '?'}: {error!r}")
         traceback.print_exception(type(error), error, error.__traceback__)
 
