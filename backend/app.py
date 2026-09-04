@@ -653,13 +653,20 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     )
 
     @app.route("/xp-level")
-    @require_guild_member
+    @require_permission("manage_game_settings")
     def xp_level_page():
-        settings = None
-        if _hat_recht(session["discord_user_id"], "manage_game_settings"):
-            settings = {
-                key: database.get_setting(key, config.DEFAULT_SETTINGS[key]) for key in XP_LEVEL_SETTING_KEYS
-            }
+        """Die XP-/Level-Einstellungen - seit dem 04.09.2026 unter Admin-Werkzeuge.
+
+        Vorher stand die Seite fuer jedes Server-Mitglied offen und zeigte ihm
+        einen Hinweis, dass hier nur Admins etwas einstellen koennen. Eine Seite,
+        die den meisten Besuchern nur mitteilt, dass sie hier nichts zu suchen
+        haben, gehoert nicht in die Hauptleiste (Vorgabe Patrick, 04.09.2026).
+        Die eigenen Auszeichnungen sind davon unberuehrt und weiterhin fuer alle
+        unter /achievements erreichbar.
+        """
+        settings = {
+            key: database.get_setting(key, config.DEFAULT_SETTINGS[key]) for key in XP_LEVEL_SETTING_KEYS
+        }
         return render_template("xp_level.html", settings=settings)
 
     @app.route("/xp-level/settings", methods=["POST"])

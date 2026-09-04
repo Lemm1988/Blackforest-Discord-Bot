@@ -3,9 +3,13 @@
    bewusst NICHT unter Pflanzenquiz einsortiert. #}
 {% macro xp_level_subnav(active) %}
 <ul class="nav nav-pills mb-3 flex-wrap">
+    {# Nur fuer Berechtigte: Ein Mitglied sah hier sonst einen Reiter, hinter dem
+       nichts fuer es zu tun war. #}
+    {% if has_permission('manage_game_settings') %}
     <li class="nav-item">
         <a class="nav-link {% if active == 'settings' %}active{% endif %}" href="{{ url_for('xp_level_page') }}">⚙️ Einstellungen</a>
     </li>
+    {% endif %}
     <li class="nav-item">
         <a class="nav-link {% if active == 'achievements' %}active{% endif %}" href="{{ url_for('achievements_page') }}">🏅 Achievements</a>
     </li>

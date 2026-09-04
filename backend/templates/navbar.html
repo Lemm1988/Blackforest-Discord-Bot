@@ -13,8 +13,13 @@
                 <li class="nav-item">
                     <a class="nav-link" href="{{ url_for('games_overview') }}">Spiele</a>
                 </li>
+                {# Die eigenen Auszeichnungen sind eine Mitglieder-Seite und bleiben
+                   deshalb in der Hauptleiste. Die EINSTELLUNGEN dazu sind unter
+                   Admin-Werkzeuge gewandert (Vorgabe Patrick, 04.09.2026) - vorher
+                   stand beides zusammen unter "XP & Level" in der Hauptleiste, wo
+                   ein normales Mitglied eine Seite sah, auf der es nichts tun konnte. #}
                 <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('xp_level_page') }}">XP &amp; Level</a>
+                    <a class="nav-link" href="{{ url_for('achievements_page') }}">Meine Achievements</a>
                 </li>
 
                 {# Moderation: alles, was sich an einzelne Mitglieder richtet.
@@ -72,14 +77,20 @@
                 {# Admin-Werkzeuge: Verwaltung des Bots selbst und seiner Zugaenge -
                    nicht des Servers. Die drei Punkte lagen vorher einzeln in der
                    Hauptleiste und haben sie unnoetig verbreitert. #}
-                {% if has_permission('is_admin') %}
+                {% if has_permission('is_admin') or has_permission('manage_game_settings') %}
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Admin-Werkzeuge</a>
                     <ul class="dropdown-menu dropdown-menu-dark">
+                        {% if has_permission('manage_game_settings') %}
+                        <li><a class="dropdown-item" href="{{ url_for('xp_level_page') }}">XP &amp; Level</a></li>
+                        {% endif %}
+                        {% if has_permission('is_admin') %}
+                        {% if has_permission('manage_game_settings') %}<li><hr class="dropdown-divider"></li>{% endif %}
                         <li><a class="dropdown-item" href="{{ url_for('users_page') }}">Benutzerverwaltung</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('audit_log_page') }}">Audit-Log</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('roles_mapping_page') }}">Rollen-Zuordnung</a></li>
                         <li><a class="dropdown-item" href="{{ url_for('tunnel_access_page') }}">App-Zugänge</a></li>
+                        {% endif %}
                     </ul>
                 </li>
                 {% endif %}
