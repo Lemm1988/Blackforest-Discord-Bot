@@ -68,6 +68,20 @@
                     Aus lassen für den Knopf zum Abholen — das fühlt sich mehr nach Belohnung an.
                 </div>
             </div>
+            <div class="form-check form-switch mt-3">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       id="ersetzt_niedrigere" name="ersetzt_niedrigere" value="1">
+                <label class="form-check-label" for="ersetzt_niedrigere">
+                    Rangleiter: vorherige Stufen wieder abnehmen
+                </label>
+                <div class="form-text">
+                    <strong>An:</strong> Man trägt immer nur die höchste erreichte Stufe.
+                    Betrifft nur Regeln <em>derselben Bedingung</em> — wer ein Jahr dabei ist,
+                    verliert seine Quiz-Auszeichnungen nicht.<br>
+                    <strong>Aus:</strong> Alle Stufen bleiben, wie eine Sammlung von Abzeichen.<br>
+                    Von Hand vergebene Rollen nimmt der Bot in keinem Fall weg.
+                </div>
+            </div>
             <button type="submit" class="btn btn-primary mt-3">Regel anlegen</button>
         </form>
     </div>
@@ -81,7 +95,7 @@
         {% else %}
         <div class="table-responsive">
             <table class="table table-sm align-middle mb-0">
-                <thead><tr><th>Bedingung</th><th>Rolle</th><th>Einstellungen</th><th></th></tr></thead>
+                <thead><tr><th>Bedingung</th><th>Rolle</th><th>Ankündigung in</th><th>Art</th><th>Einstellungen</th><th></th></tr></thead>
                 <tbody>
                     {% for r in regeln %}
                     <tr {% if not r.enabled %}class="opacity-50"{% endif %}>
@@ -94,6 +108,15 @@
                             {% if not r.vergebbar %}
                             <div class="text-danger small">⚠️ steht über der Bot-Rolle — wird nicht vergeben</div>
                             {% endif %}
+                        </td>
+                        <td class="small">
+                            {% if r.kanalname %}#{{ r.kanalname }}
+                            {% elif r.channel_id %}<span class="text-danger">Kanal gelöscht</span>
+                            {% else %}<span class="text-muted">Direktnachricht</span>{% endif %}
+                        </td>
+                        <td class="small">
+                            {% if r.ersetzt_niedrigere %}<span title="Vorherige Stufen werden abgenommen">🪜 Rangleiter</span>
+                            {% else %}<span class="text-muted" title="Alle Stufen bleiben">🎖️ Sammlung</span>{% endif %}
                         </td>
                         <td>
                             <form method="POST" action="{{ url_for('earned_roles_update', regel_id=r.id) }}"
@@ -115,6 +138,15 @@
                                            id="auto_{{ r.id }}" {% if r.automatisch %}checked{% endif %}>
                                     <label class="form-check-label small" for="auto_{{ r.id }}">sofort vergeben</label>
                                 </div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" name="ersetzt_niedrigere" value="1"
+                                           id="leiter_{{ r.id }}" {% if r.ersetzt_niedrigere %}checked{% endif %}>
+                                    <label class="form-check-label small" for="leiter_{{ r.id }}">vorherige Stufen abnehmen</label>
+                                </div>
+                                <select name="channel_id" class="form-select form-select-sm channel-picker"
+                                        data-current="{{ r.channel_id or '' }}">
+                                    <option value="">— per Direktnachricht —</option>
+                                </select>
                                 <input type="text" name="ankuendigung" class="form-control form-control-sm"
                                        value="{{ r.ankuendigung or '' }}" placeholder="Standardtext">
                                 <button type="submit" class="btn btn-outline-primary btn-sm">Speichern</button>

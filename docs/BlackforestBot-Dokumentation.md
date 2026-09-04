@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 616 Tests)
+17. Testsuite (`tests/`, 633 Tests)
 18. Offene Punkte (Stand 03.09.2026, abends)
 19. Chronik des 03.09.2026
 
@@ -512,6 +512,22 @@ sich jeder, der die Ankündigung im Kanal sieht, die Rolle holen. Er ist dauerha
 von gestern tot, der Knopf sähe aus wie immer und täte nichts. Beim Klick wird die
 Bedingung **erneut** geprüft.
 
+**Rangleiter oder Sammlung — pro Regel einstellbar.** „Rangleiter" nimmt beim Aufstieg die
+vorherigen Stufen wieder ab, man trägt also immer nur die höchste. „Sammlung" (Standard)
+lässt alle stehen, wie Abzeichen. Betroffen sind nur Regeln **derselben Bedingungsart** —
+wer ein Jahr dabei ist, verliert seine Quiz-Auszeichnungen nicht. Und der Bot nimmt nur
+weg, was er selbst vergeben hat.
+
+Der Merker in `earned_role_grants` bleibt beim Entfernen bewusst stehen. Würde er gelöscht,
+träfe die Bedingung beim nächsten Auslöser wieder zu, die Rolle käme zurück und würde
+erneut entfernt — eine Schaukel ohne Ende.
+
+**Höchstens eine Ankündigung pro Auslöser.** Wer schon lange dabei ist, erfüllt beim
+ersten Auslöser mehrere Stufen gleichzeitig — am 04.09.2026 im Betrieb aufgefallen: eine
+einzige Quizantwort ergab fünf Ankündigungen in zwei Sekunden, und dasselbe hätte jedes
+bestehende Mitglied getroffen. Die Rollen werden alle vergeben, angekündigt wird
+zusammengefasst: der Text der höchsten Stufe, darunter die übrigen in einer Zeile.
+
 Ein Merker verhindert wiederholte Ankündigungen: Der Auslöser feuert bei jeder Quizantwort.
 Vermerkt wird erst **nach** dem Senden — eine Ankündigung, die niemand gesehen hat, als
 erledigt zu buchen, wäre der schlechteste Ausgang.
@@ -849,7 +865,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 616 Tests)
+## 17. Testsuite (`tests/`, 633 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -879,7 +895,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | Datei | Tests | Sichert ab |
 |---|---|---|
 | `test_discord_limits.py` | 76 | Alle acht Embed-Grenzen gegen die offizielle Dokumentation, jeweils genau am Limit erlaubt und ein Zeichen darüber abgelehnt; die 6000-Zeichen-Gesamtsumme; Farbwerte; Zeitzonenbehandlung |
-| `test_verdiente_rollen.py` | 49 | Verdiente Rollen: Schwellen, Abhol-Knopf (an eine Person gebunden, übersteht Neustarts) und der Merker gegen wiederholte Ankündigungen |
+| `test_verdiente_rollen.py` | 66 | Verdiente Rollen: Schwellen, Abhol-Knopf (an eine Person gebunden, übersteht Neustarts) und der Merker gegen wiederholte Ankündigungen |
 | `test_reaktionsrollen.py` | 20 | Reaktionsrollen: Schema-Zusagen, Umzug der alten Regel, und dass Kanal und Rolle über IDs statt Namen angesprochen werden |
 | `test_rollenrechte.py` | 15 | Eine Rolle bringt Rechte mit: getrennte Tabellen für beide Richtungen, kein `is_admin` über Rollen, Befehl **und** Webformular abgesichert |
 | `test_rollenabgleich.py` | 28 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten |

@@ -1335,9 +1335,17 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
                 r["verwaltbar"] = False
                 r["grund"] = "wird über eine Reaktion vergeben"
         rollennamen = {r["id"]: r["name"] for r in rollen}
+        async def _kanalnamen():
+            if not bot.guilds:
+                return {}
+            return {str(c.id): c.name for c in bot.guilds[0].text_channels}
+
+        kanalnamen = run_on_bot(_kanalnamen())
         regeln = database.get_earned_roles()
         for r in regeln:
             r["rollenname"] = rollennamen.get(r["role_id"], f"unbekannt ({r['role_id']})")
+            r["kanalname"] = (kanalnamen.get(r["channel_id"]) if r["channel_id"]
+                              else None)
             r["vergebbar"] = r["role_id"] in verwaltbare
             art = verdiente_rollen.BEDINGUNGSARTEN().get(r["bedingung_art"])
             r["bedingung_label"] = art.label if art else r["bedingung_art"]
@@ -1384,6 +1392,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             role_id=role_id, bedingung_art=art, schwelle=schwelle,
             ankuendigung=form.get("ankuendigung", ""), channel_id=channel_id,
             automatisch=form.get("automatisch") == "1",
+            ersetzt_niedrigere=form.get("ersetzt_niedrigere") == "1",
         )
         database.log_audit(
             session["discord_user_id"], "earned_role_add", target_id=neu_id,
@@ -1400,11 +1409,19 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             schwelle = max(1, int(form.get("schwelle", "1")))
         except (TypeError, ValueError):
             schwelle = None
+        # Der Kanal war bis zum 04.09.2026 nur beim Anlegen einstellbar und in
+        # der Liste gar nicht sichtbar - man konnte also nicht nachsehen, wohin
+        # eine Regel ankuendigt, geschweige denn es aendern.
+        channel_id = (form.get("channel_id") or "").strip()
+        if channel_id and not channel_id.isdigit():
+            channel_id = ""
         database.update_earned_role(
             regel_id, schwelle=schwelle,
             ankuendigung=form.get("ankuendigung", ""),
+            channel_id=channel_id,
             automatisch=form.get("automatisch") == "1",
             enabled=form.get("enabled") == "1",
+            ersetzt_niedrigere=form.get("ersetzt_niedrigere") == "1",
         )
         database.log_audit(session["discord_user_id"], "earned_role_update", target_id=regel_id)
         flash("Regel gespeichert.", "success")

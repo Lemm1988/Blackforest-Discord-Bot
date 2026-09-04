@@ -152,3 +152,25 @@ def knopf_kennung_lesen(kennung: str) -> tuple[int, str] | None:
         return int(teile[1]), teile[2]
     except ValueError:
         return None
+
+
+def niedrigere_stufen(regel: dict, alle_regeln: list) -> list:
+    """Regeln derselben Bedingungsart mit kleinerer Schwelle.
+
+    Das sind die Stufen, die beim Aufstieg entfernt werden, wenn die erreichte
+    Regel als Rangleiter eingestellt ist (`ersetzt_niedrigere`).
+
+    **Nur dieselbe Bedingungsart.** Wer 365 Tage dabei ist, verliert seine
+    Quiz-Auszeichnungen nicht — das sind verschiedene Wege, keine Stufen
+    voneinander. Ohne diese Einschränkung würde ein Aufstieg in einer Leiter die
+    Erfolge aller anderen wegräumen.
+
+    **Echt kleiner, nicht gleich.** Zwei Regeln mit derselben Schwelle stehen
+    nebeneinander; keine ist Vorstufe der anderen.
+    """
+    return [
+        r for r in alle_regeln
+        if r["bedingung_art"] == regel["bedingung_art"]
+        and r["schwelle"] < regel["schwelle"]
+        and r["id"] != regel["id"]
+    ]

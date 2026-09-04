@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS earned_roles (
     channel_id TEXT,
     -- 1 = sofort vergeben, 0 = anbieten und auf den Abhol-Knopf warten.
     automatisch INTEGER NOT NULL DEFAULT 0,
+    -- 1 = beim Vergeben die niedrigeren Stufen DERSELBEN Bedingungsart wieder
+    -- entfernen (Rangleiter: man traegt immer nur die hoechste Stufe).
+    -- 0 = alle behalten (Sammlung von Abzeichen). Standard ist 0, weil das
+    -- weniger wegnimmt - eine Rolle versehentlich zu entziehen aergert mehr,
+    -- als eine zu viel zu tragen.
+    ersetzt_niedrigere INTEGER NOT NULL DEFAULT 0,
     enabled INTEGER NOT NULL DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now'))
 );
@@ -568,6 +574,8 @@ def init_db():
         # Die Tabellen der installierten Module anlegen, falls sie fehlen.
         # Damit baut sich die Datenbank selbst auf, wenn ein Modul spaeter
         # dazukommt - niemand muss von Hand etwas anlegen.
+        # Nachtraeglich hinzugekommen (04.09.2026), siehe earned_roles.
+        _ensure_column(conn, "earned_roles", "ersetzt_niedrigere", "INTEGER NOT NULL DEFAULT 0")
         _cleanup_veraltetes(conn)
         _migrate_link_filter_mode(conn)
         _seed_achievements(conn)
@@ -917,20 +925,23 @@ def get_earned_role(regel_id: int):
 
 
 def add_earned_role(role_id, bedingung_art: str, schwelle: int, ankuendigung: str = "",
-                    channel_id: str = "", automatisch: bool = False) -> int:
+                    channel_id: str = "", automatisch: bool = False,
+                    ersetzt_niedrigere: bool = False) -> int:
     with get_connection() as conn:
         cur = conn.execute(
             "INSERT INTO earned_roles (role_id, bedingung_art, schwelle, ankuendigung, "
-            "channel_id, automatisch) VALUES (?, ?, ?, ?, ?, ?)",
+            "channel_id, automatisch, ersetzt_niedrigere) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (str(role_id), bedingung_art, int(schwelle), (ankuendigung or "").strip(),
-             (channel_id or "").strip(), 1 if automatisch else 0),
+             (channel_id or "").strip(), 1 if automatisch else 0,
+             1 if ersetzt_niedrigere else 0),
         )
         conn.commit()
         return cur.lastrowid
 
 
 def update_earned_role(regel_id: int, *, schwelle=None, ankuendigung=None,
-                       channel_id=None, automatisch=None, enabled=None):
+                       channel_id=None, automatisch=None, enabled=None,
+                       ersetzt_niedrigere=None):
     felder, werte = [], []
     if schwelle is not None:
         felder.append("schwelle = ?"); werte.append(int(schwelle))
@@ -942,6 +953,8 @@ def update_earned_role(regel_id: int, *, schwelle=None, ankuendigung=None,
         felder.append("automatisch = ?"); werte.append(1 if automatisch else 0)
     if enabled is not None:
         felder.append("enabled = ?"); werte.append(1 if enabled else 0)
+    if ersetzt_niedrigere is not None:
+        felder.append("ersetzt_niedrigere = ?"); werte.append(1 if ersetzt_niedrigere else 0)
     if not felder:
         return
     with get_connection() as conn:
@@ -962,6 +975,23 @@ def delete_earned_role(regel_id: int) -> None:
         conn.execute("DELETE FROM earned_role_grants WHERE rule_id = ?", (int(regel_id),))
         conn.execute("DELETE FROM earned_roles WHERE id = ?", (int(regel_id),))
         conn.commit()
+
+
+def vom_bot_verdient_vergeben(discord_user_id) -> set:
+    """Regel-IDs, deren Rolle der Bot dieser Person tatsaechlich gegeben hat.
+
+    Gebraucht beim Ersetzen niedrigerer Stufen: Der Bot nimmt nur weg, was er
+    selbst gegeben hat - dieselbe Regel wie beim Berechtigungs-Abgleich. Eine
+    von Hand vergebene Rolle bleibt unangetastet.
+    """
+    with get_connection() as conn:
+        return {
+            row["rule_id"] for row in conn.execute(
+                "SELECT rule_id FROM earned_role_grants "
+                "WHERE discord_user_id = ? AND vergeben_at IS NOT NULL",
+                (str(discord_user_id),),
+            )
+        }
 
 
 def earned_role_status(regel_id: int, discord_user_id):

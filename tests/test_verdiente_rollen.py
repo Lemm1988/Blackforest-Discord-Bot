@@ -242,8 +242,8 @@ def test_merker_verhindert_wiederholte_ankuendigung():
     """Der Auslöser feuert bei JEDER Quizantwort. Ohne Merker bekäme jemand nach
     der 100. Frage bei jeder weiteren erneut dieselbe Ankündigung."""
     quelle = COG.read_text()
-    block = quelle[quelle.index("async def _regel_pruefen"):]
-    block = block[: block.index("async def _senden")]
+    block = quelle[quelle.index("async def _ist_faellig"):]
+    block = block[: block.index("async def _automatisch_vergeben")]
     assert "earned_role_status" in block
     assert 'status["vergeben_at"] or status["angekuendigt_at"]' in block
 
@@ -252,11 +252,11 @@ def test_gescheiterte_ankuendigung_wird_nicht_vermerkt():
     """Eine Ankündigung, die niemand gesehen hat, als erledigt zu buchen, wäre
     der schlechteste Ausgang - dann kommt sie nie wieder."""
     quelle = COG.read_text()
-    block = quelle[quelle.index("async def _regel_pruefen"):]
+    block = quelle[quelle.index("async def _zum_abholen_anbieten"):]
     block = block[: block.index("async def _senden")]
-    senden = block.index("await self._senden")
-    vermerk = block.index("mark_earned_role_announced")
-    assert senden < vermerk, "Erst senden, dann vermerken."
+    assert block.index("await self._senden") < block.index("mark_earned_role_announced"), (
+        "Erst senden, dann vermerken."
+    )
 
 
 def test_bestehende_rolle_wird_still_vermerkt():
@@ -327,3 +327,182 @@ def test_beantwortete_fragen_zaehlt_ueber_die_richtige_tabelle():
     block = block[: block.index("def _eingereichte_fragen")]
     assert "answered_questions" in block
     assert "quiz_correct_count" not in block
+
+
+# --------------------------------------------------------------------------
+# Nur EINE Ankündigung, auch wenn mehrere Regeln gleichzeitig fallen
+#
+# Am 04.09.2026 im Betrieb aufgefallen: Patrick beantwortete eine einzige
+# Quizfrage und bekam fünf Ankündigungen innerhalb von zwei Sekunden in die
+# Laberecke — alle Treuestufen auf einmal, weil er lange genug dabei ist.
+#
+# Das ist kein Sonderfall: Es hätte JEDES bestehende Mitglied getroffen, sobald
+# es irgendetwas tut. Die Rollen sind alle verdient und werden auch alle
+# vergeben — angekündigt wird aber zusammengefasst.
+# --------------------------------------------------------------------------
+
+def test_ankuendigungen_werden_zusammengefasst():
+    quelle = COG.read_text()
+    assert "_automatisch_vergeben" in quelle and "_zum_abholen_anbieten" in quelle
+    block = quelle[quelle.index("async def _automatisch_vergeben"):]
+    block = block[: block.index("async def _zum_abholen_anbieten")]
+    # Genau EIN Sendeaufruf, egal wie viele Rollen dazukamen
+    assert block.count("await self._senden") == 1, (
+        "Es wird mehr als einmal gesendet - genau das war die Flut."
+    )
+
+
+def test_bei_mehreren_rollen_gewinnt_der_text_der_hoechsten():
+    """Fünf einzelne Glückwünsche wären kein Fest, sondern eine Flut. Der Text
+    der höchsten Stufe trägt die Nachricht, die übrigen stehen in einer Zeile."""
+    quelle = COG.read_text()
+    block = quelle[quelle.index("async def _automatisch_vergeben"):]
+    block = block[: block.index("async def _zum_abholen_anbieten")]
+    assert 'max(vergeben, key=lambda p: p[0]["schwelle"])' in block
+    assert "Auf dem Weg dorthin" in block
+
+
+def test_trotzdem_werden_alle_rollen_vergeben():
+    """Zusammenfassen heißt nicht weglassen - verdient sind sie alle."""
+    quelle = COG.read_text()
+    block = quelle[quelle.index("async def _automatisch_vergeben"):]
+    block = block[: block.index("async def _zum_abholen_anbieten")]
+    assert "for regel in regeln:" in block
+    assert "add_roles" in block
+    assert "mark_earned_role_granted" in block
+
+
+def test_mehrere_abholbare_rollen_ergeben_mehrere_knoepfe():
+    quelle = COG.read_text()
+    block = quelle[quelle.index("async def _zum_abholen_anbieten"):]
+    block = block[: block.index("async def _senden")]
+    assert "for regel in regeln[:25]" in block, (
+        "Discord erlaubt höchstens 25 Knöpfe - ohne Grenze scheitert das Senden."
+    )
+    assert block.count("await self._senden") == 1
+
+
+def test_erst_senden_dann_vermerken_auch_bei_mehreren():
+    """Eine Ankündigung, die niemand gesehen hat, als erledigt zu buchen, wäre
+    der schlechteste Ausgang."""
+    quelle = COG.read_text()
+    block = quelle[quelle.index("async def _zum_abholen_anbieten"):]
+    block = block[: block.index("async def _senden")]
+    assert block.index("await self._senden") < block.index("mark_earned_role_announced")
+
+
+# --------------------------------------------------------------------------
+# Der Ankündigungskanal ist sicht- und änderbar
+# --------------------------------------------------------------------------
+
+def test_kanal_laesst_sich_nachtraeglich_aendern():
+    """Er war bis zum 04.09.2026 nur beim Anlegen einstellbar und in der Liste
+    gar nicht sichtbar - man konnte nicht nachsehen, wohin eine Regel
+    ankündigt."""
+    quelle = APP_PY.read_text()
+    block = quelle[quelle.index("def earned_roles_update"):]
+    block = block[: block.index("def earned_roles_delete")]
+    assert "channel_id" in block
+
+
+def test_die_liste_zeigt_den_kanal():
+    vorlage = (REPO / "backend" / "templates" / "earned_roles.html").read_text()
+    assert "Ankündigung in" in vorlage
+    assert "r.kanalname" in vorlage
+    assert "Direktnachricht" in vorlage, "Ein leerer Kanal muss als DM erkennbar sein."
+
+
+def test_geloeschter_kanal_faellt_auf():
+    """Eine Regel, die in einen gelöschten Kanal ankündigt, sendet ins Leere -
+    das soll man sehen."""
+    vorlage = (REPO / "backend" / "templates" / "earned_roles.html").read_text()
+    assert "Kanal gelöscht" in vorlage
+
+
+# --------------------------------------------------------------------------
+# Rangleiter oder Sammlung (04.09.2026, Frage von Patrick:
+# „soll man einstellen können ob rollen wieder verschwinden oder bleiben")
+#
+# Pro Regel einstellbar, damit sich beides mischen lässt: Treuestufen als
+# Leiter, Quiz-Auszeichnungen als Sammlung.
+# --------------------------------------------------------------------------
+
+def _regel(id, art, schwelle, rolle="r"):
+    return {"id": id, "bedingung_art": art, "schwelle": schwelle, "role_id": rolle}
+
+
+ALLE = [
+    _regel(1, "tage_dabei", 10), _regel(2, "tage_dabei", 30),
+    _regel(3, "tage_dabei", 90), _regel(4, "tage_dabei", 365),
+    _regel(5, "quiz_richtig", 10), _regel(6, "quiz_richtig", 50),
+]
+
+
+def test_nur_niedrigere_derselben_bedingung():
+    """Der wichtigste Punkt: Wer ein Jahr dabei ist, verliert seine
+    Quiz-Auszeichnungen nicht. Das sind verschiedene Wege, keine Stufen
+    voneinander."""
+    niedriger = vr.niedrigere_stufen(_regel(4, "tage_dabei", 365), ALLE)
+    assert {r["id"] for r in niedriger} == {1, 2, 3}
+
+
+def test_die_unterste_stufe_hat_keine_vorstufe():
+    assert vr.niedrigere_stufen(_regel(1, "tage_dabei", 10), ALLE) == []
+
+
+def test_gleiche_schwelle_ist_keine_vorstufe():
+    """Zwei Regeln mit derselben Schwelle stehen nebeneinander - keine ist
+    Vorstufe der anderen."""
+    alle = ALLE + [_regel(7, "tage_dabei", 365, "andere")]
+    niedriger = vr.niedrigere_stufen(_regel(4, "tage_dabei", 365), alle)
+    assert 7 not in {r["id"] for r in niedriger}
+
+
+def test_die_regel_selbst_zaehlt_nicht_mit():
+    niedriger = vr.niedrigere_stufen(_regel(3, "tage_dabei", 90), ALLE)
+    assert 3 not in {r["id"] for r in niedriger}
+
+
+def test_standard_ist_sammeln_nicht_entfernen():
+    """Eine Rolle versehentlich zu entziehen ärgert mehr, als eine zu viel zu
+    tragen - deshalb ist der Standard das Behalten."""
+    quelle = DATABASE_PY.read_text()
+    start = quelle.index("CREATE TABLE IF NOT EXISTS earned_roles")
+    schema = quelle[start : quelle.index(");", start)]
+    assert "ersetzt_niedrigere INTEGER NOT NULL DEFAULT 0" in schema
+
+
+def test_nur_selbst_vergebene_werden_entfernt():
+    """Wer eine dieser Rollen von Hand bekommen hat, behält sie - dieselbe Regel
+    wie beim Berechtigungs-Abgleich."""
+    quelle = COG.read_text()
+    block = quelle[quelle.index("async def _niedrigere_entfernen"):]
+    block = block[: block.index("async def _senden")]
+    assert "vom_bot_verdient_vergeben" in block
+    assert "not in selbst_vergeben" in block
+
+
+def test_der_merker_bleibt_beim_entfernen_stehen():
+    """Sonst träfe die Bedingung beim nächsten Auslöser wieder zu, die Rolle
+    käme zurück, würde erneut entfernt - eine Schaukel ohne Ende."""
+    quelle = COG.read_text()
+    block = quelle[quelle.index("async def _niedrigere_entfernen"):]
+    block = block[: block.index("async def _senden")]
+    assert "DELETE" not in block.upper()
+    assert "mark_earned_role" not in block
+
+
+def test_auch_der_abholknopf_raeumt_auf():
+    """Sonst wirkte die Einstellung nur bei automatisch vergebenen Rollen."""
+    quelle = COG.read_text()
+    block = quelle[quelle.index("async def on_interaction"):]
+    assert "_niedrigere_entfernen" in block
+
+
+def test_die_oberflaeche_erklaert_beide_faelle():
+    vorlage = (REPO / "backend" / "templates" / "earned_roles.html").read_text()
+    assert "Rangleiter" in vorlage and "Sammlung" in vorlage
+    assert "derselben Bedingung" in vorlage, (
+        "Der Hinweis fehlt, dass nur dieselbe Bedingungsart betroffen ist."
+    )
+    assert "Von Hand vergebene Rollen" in vorlage
