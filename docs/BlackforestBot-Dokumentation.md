@@ -1063,3 +1063,29 @@ Tests: von 31 auf 594.
 | Rolle bringt Berechtigung mit | Ideenschmied darf eigene Fragen einreichen |
 | Reaktionsrollen für andere Wege gesperrt | Member ist das Tor zum Server und darf nur über die Regel-Zustimmung entstehen |
 | Botbefehl-Rechte auf dem Server bereinigt | Nach dem Abschalten von `>` konnte kein normales Mitglied mehr Befehle nutzen |
+| Vorab-Bestätigung für alle Befehle | `/frage` lief in Discords Drei-Sekunden-Frist (Fehler 10062); die Bestätigung kam im ganzen Projekt vorher kein einziges Mal vor |
+| Verstöße löschbar, Zurücksetzen meldet sich | Der Knopf arbeitete stillschweigend und war dadurch von einem kaputten nicht zu unterscheiden |
+| „XP & Level" unter Admin-Werkzeuge | Die Seite stand für jedes Mitglied in der Hauptleiste und sagte den meisten nur, dass sie hier nichts einstellen können |
+
+### Die Drei-Sekunden-Frist
+
+Der wichtigste Einzelbefund des Tages, weil er alle Befehle betraf und nicht nur
+den gemeldeten:
+
+Discord verlangt binnen **drei Sekunden** ein Lebenszeichen auf einen Befehl.
+Verstreicht sie, ist der Sitzungsschlüssel verfallen — und zwar endgültig, auch
+für die Fehlermeldung. Deshalb sah der Nutzer ausschließlich Discords eigenen
+Text „Die Anwendung reagiert nicht", während im Log ein `NotFound: 404 (error
+code: 10062)` stand.
+
+Gemessen brauchte `/frage` selbst nur rund 7 ms, der zusätzliche Rollen-Check pro
+Nachricht rund 22 ms. Die Frist riss also nicht an der eigenen Arbeit des
+Befehls, sondern an dem, was währenddessen sonst auf dem Pi lief. Genau deshalb
+ist die Vorab-Bestätigung die richtige Antwort und nicht das Optimieren
+einzelner Abfragen: Sie verlängert die Frist auf fünfzehn Minuten und schützt
+jeden Befehl, statt einen schneller zu machen.
+
+Die Antwortart (`öffentlich`, `vertraulich`, `manuell`) steht dabei am Befehl
+selbst im `extras`-Feld, weil sich nachträglich nicht mehr ändern lässt, ob eine
+Antwort öffentlich wird. `tests/test_interaktion.py` wacht darüber, dass die
+Angabe zu dem passt, was der Befehl tatsächlich sendet.
