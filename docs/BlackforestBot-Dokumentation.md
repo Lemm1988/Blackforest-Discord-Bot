@@ -101,6 +101,41 @@ Alle Befehle sind **Hybrid-Commands** (`@commands.hybrid_command`), also technis
 Prefix-Befehl (`>befehl`) **und** Slash-Command (`/befehl`) vorgesehen. **17 Befehle
 insgesamt.**
 
+### Voraussetzung, die fast den Server lahmgelegt hätte
+
+**Slash-Befehle brauchen ein Discord-Recht, Prefix-Befehle nicht.** Ein `>befehl` war für
+Discord eine gewöhnliche Chatnachricht — dafür genügt „Nachrichten senden", das jeder hat.
+Ein `/befehl` verlangt zusätzlich **„Anwendungsbefehle verwenden"**
+(`USE_APPLICATION_COMMANDS`, Bit 31).
+
+Auf diesem Server hatten `@everyone` und `Member` dieses Recht nicht, und 61 Kanäle
+verboten es zusätzlich ausdrücklich. Das war jahrelang folgenlos — bis am 03.09.2026 `>`
+abgeschaltet wurde. **Am 04.09. meldete ein Mitglied, dass es `/frage` nicht aufrufen
+kann; tatsächlich konnte kein normales Mitglied irgendeinen Befehl mehr benutzen.**
+
+Die Lehre für künftige Umstellungen dieser Art: Vor dem Abschalten der Prefix-Befehle
+prüfen, ob die *Mitglieder* Slash-Befehle überhaupt benutzen dürfen — nicht nur, ob die
+Befehle registriert sind und der Bot seine Rechte hat.
+
+### Wer darf Botbefehle benutzen (Stand 04.09.2026)
+
+Nach der Bereinigung gibt es **kein einziges Verbot** mehr auf dieses Recht. Wer Befehle
+nutzen darf, ergibt sich aus zwei Dingen: den Rollenrechten und einer einzigen Erlaubnis
+für Member in der Willkommens-Kategorie.
+
+| Wer | Wo | Warum |
+|---|---|---|
+| Neuling (nur `@everyone`) | nirgends | Das Recht fehlt der Rolle. Wer mitreden will, akzeptiert erst die Regeln per 👍 und wird Member. |
+| **Member** | nur die 5 Kanäle der Kategorie `\\Wilkommen\\` | Ausdrückliche Erlaubnis dort, sonst nichts |
+| **Moderator, Manager** | überall | Recht auf Rollenebene, nichts entzieht es mehr |
+| alle übrigen Rollen | nirgends | reine Dekoration, ohne Rechte |
+
+Das ist der eigentliche Gewinn der Bereinigung: Eine neue Rolle bekommt Befehlsrechte an
+**einer** Stelle in den Rolleneinstellungen — vorher hätte man 61 Kanäle nachpflegen müssen.
+
+Zwei Rollen hatten das Recht, obwohl sie reine Dekoration sind (Supporter, Keimling 🌱) —
+ihnen wurde es entzogen.
+
 > **Gelöst am 03.09.2026.** Vorher war kein einziger Slash-Befehl bei Discord
 > registriert — `bot.tree.sync()` kam im Projekt nicht vor, nachgeprüft über die API: 0
 > global, 0 serverspezifisch. Die Befehle existierten ausschließlich als `>befehl` und
@@ -970,11 +1005,17 @@ diesen Zusammenhang immer mitnennen.
   Presence-Intent, manuell im Discord Developer Portal freizuschalten.
 - **Live-Test der Moderationsaktionen** (Kick/Ban/Timeout) gegen den echten Server: bisher
   nur mit Fake-Discord-Objekten und DB-Kopien verifiziert.
-- **Die Rollen-Zuordnung ist noch leer.** Solange dort nichts eingetragen ist, hat der
-  Abgleich nichts zu tun und die Übersicht auf `/users` zeigt einen Strich. Zum
-  Ausprobieren müsste etwa `moderate_members` → Moderator gesetzt werden.
-- **Verdiente Rollen und Reaktionsrollen sind gebaut, aber ungenutzt.** Es gibt noch keine
-  Regel ausser der migrierten 👍-Regel im Regelkanal.
+- **Die Rollen-Zuordnung (Recht → Rolle) ist noch leer.** Solange dort nichts steht, hat
+  der Abgleich nichts zu tun und die Übersicht auf `/users` zeigt einen Strich. Die
+  Gegenrichtung ist dagegen in Gebrauch: Ideenschmied bringt `submit_questions` mit.
+- **Die Rollenreihenfolge in Discord passt nicht zur Reihenfolge des Verdienens.**
+  Keimling 🌱 steht über den höheren Stufen, Discord zeigt deshalb dessen Farbe. Ein
+  Vorschlag zur Sortierung liegt vor, ist aber nicht umgesetzt — die Entscheidung liegt
+  bei Patrick.
+- **Alle elf verdienten Rollen stehen auf „Sammlung".** Ob die Treuestufen stattdessen
+  eine Rangleiter sein sollen (nur die höchste wird getragen), ist offen.
+- **Die Guten-Morgen-Nachricht ist eingerichtet, aber nie ausgelöst worden** — der erste
+  echte Durchlauf steht noch aus.
 
 ### Am 03.09.2026 erledigt
 
@@ -1008,3 +1049,15 @@ Zusammenhang verständlich sind.
 | Bot-Rolle über Moderator gezogen | Voraussetzung dafür, dass der Bot Moderator vergeben kann — mit der bewussten Folge, dass Moderatoren nicht mehr vor ihm geschützt sind |
 
 Tests: von 31 auf 594.
+
+### 04.09.2026
+
+| Was | Warum es kam |
+|---|---|
+| Ankündigungen zusammengefasst | Eine Quizantwort ergab fünf Ankündigungen in zwei Sekunden — hätte jedes bestehende Mitglied getroffen |
+| Ankündigungskanal sichtbar und änderbar | Er war nur beim Anlegen einstellbar und in der Liste unsichtbar |
+| Rangleiter oder Sammlung, pro Regel | Frage von Patrick, ob Rollen beim Aufstieg verschwinden sollen |
+| Bedingung „beantwortete Quizfragen" | Für Ideenschmied sinnvoller als eingereichte — davon gibt es serverweit nur 17 |
+| Rolle bringt Berechtigung mit | Ideenschmied darf eigene Fragen einreichen |
+| Reaktionsrollen für andere Wege gesperrt | Member ist das Tor zum Server und darf nur über die Regel-Zustimmung entstehen |
+| Botbefehl-Rechte auf dem Server bereinigt | Nach dem Abschalten von `>` konnte kein normales Mitglied mehr Befehle nutzen |
