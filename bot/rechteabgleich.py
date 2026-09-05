@@ -133,12 +133,20 @@ def massnahmen(
     echte_rollen = set(rollen) - set(spiegelrollen)
     zustehend = abgeleitete_rechte(echte_rollen, rollenrechte)
 
-    # Rechte, deren Spiegelrolle die Person gerade traegt und die ein Mensch
-    # eingetragen hat. Sie sind der Grund, warum die Rolle ueberhaupt da ist.
-    getragene_spiegel = set(rollen) & set(spiegelrollen)
+    # Rechte, die ein Mensch eingetragen hat und deren zugeordnete Rolle die
+    # Person gerade traegt. Sie sind der Grund, warum die Rolle da ist - egal
+    # ob der Bot sie gesetzt oder jemand sie von Hand vergeben hat.
+    #
+    # Dass hier NICHT nur Spiegelrollen zaehlen, ist Absicht: Seit dem
+    # 05.09.2026 bekommt jeder Moderator seine Rechte einzeln zugewiesen
+    # ("es gibt moderatoren die sich um den schimpfwortfilter kuemmern oder
+    # welche die kicken koennen.. manche koennen beides andere moderatoren
+    # koennen was anderes"). Wuerde der Schutz eine vom Bot gesetzte Rolle
+    # verlangen, verloere jeder seine Einzelrechte, der die Rolle schon vorher
+    # von Hand trug.
     ausloeser = {
         recht for recht in handverliehen
-        if (zuordnung or {}).get(recht) in getragene_spiegel
+        if (zuordnung or {}).get(recht) in set(rollen)
     }
 
     massnahme = Rechtemassnahme()

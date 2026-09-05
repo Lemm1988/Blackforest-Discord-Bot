@@ -374,3 +374,93 @@ def test_das_cog_reicht_die_spiegelrollen_herein():
 def test_die_herkunft_uebergeht_spiegelrollen():
     """Kein Recht darf auf eine Rolle zurueckgefuehrt werden, die es selbst ausgeloest hat."""
     assert "if str(rolle.id) in spiegelrollen" in COG
+
+
+# --------------------------------------------------------------------------
+# Rechte pro Person (Patrick, 05.09.2026)
+#
+#   "das heisst nicht jeder Moderator hat automatisch alle rechte im bot
+#    backend oder beim bot. es gibt moderatoren die sich um den
+#    schimpfwortfilter kuemmern oder welche die kicken koennen.. manche koennen
+#    beides andere moderatoren koennen was anderes"
+#
+# Die Moderator-Rolle bringt seither KEINE Rechte mehr mit. Sie ist die
+# Auszeichnung, die Befugnisse stehen einzeln in der Benutzerverwaltung. Damit
+# das traegt, muss ein einzeln vergebenes Recht die Rollenabgleiche ueberleben.
+# --------------------------------------------------------------------------
+
+#: Der Zustand nach der Umstellung: Moderator ohne Buendel, Manager traegt noch
+#: alles - dadurch bleiben die Rechte "rollenverwaltet" und damit entziehbar.
+OHNE_BUENDEL = {MODERATOR: set(), MANAGER: SPIEGEL_MOD_RECHTE | {"send_dm"}}
+
+
+def test_ein_einzeln_vergebenes_recht_ueberlebt_den_abgleich():
+    """Der Kern der Umstellung. Ohne das waere die Einzelvergabe wertlos:
+    Manager fuehrt dieselben Rechte, sie gelten also als rollenverwaltet und
+    wuerden jedem entzogen, den keine Rolle deckt."""
+    m = rechteabgleich.massnahmen(
+        rollen={MODERATOR}, rollenrechte=OHNE_BUENDEL,
+        eigene_rechte={"manage_badword_filter"},
+        zuordnung=SPIEGEL_ZUORDNUNG, handverliehen={"manage_badword_filter"},
+    )
+    assert m.entziehen == [] and m.vergeben == []
+
+
+def test_der_schutz_gilt_auch_bei_von_hand_vergebener_rolle():
+    """doc_loomis und sven tragen die Moderator-Rolle, seit ein Mensch sie
+    ihnen gab - sie stehen in keinem Merker. Verlangte der Schutz eine vom Bot
+    gesetzte Rolle, verloeren beide ihre Einzelrechte."""
+    m = rechteabgleich.massnahmen(
+        rollen={MODERATOR}, rollenrechte=OHNE_BUENDEL,
+        eigene_rechte={"moderate_members"},
+        spiegelrollen=set(),          # ausdruecklich KEINE Spiegelrolle
+        zuordnung=SPIEGEL_ZUORDNUNG, handverliehen={"moderate_members"},
+    )
+    assert m.entziehen == []
+
+
+def test_die_rolle_bringt_keine_weiteren_rechte_mehr_mit():
+    """Wer Moderator wird, bekommt dadurch nichts - das war der ganze Punkt."""
+    m = rechteabgleich.massnahmen(
+        rollen={MODERATOR}, rollenrechte=OHNE_BUENDEL, eigene_rechte=set(),
+        zuordnung=SPIEGEL_ZUORDNUNG, handverliehen=set(),
+    )
+    assert m.vergeben == []
+
+
+def test_zwei_moderatoren_koennen_verschiedenes_duerfen():
+    """Der Satz, um den es geht: manche kuemmern sich um den Filter, andere
+    kicken. Beide behalten genau ihres."""
+    filter_mod = rechteabgleich.massnahmen(
+        rollen={MODERATOR}, rollenrechte=OHNE_BUENDEL,
+        eigene_rechte={"manage_badword_filter"},
+        zuordnung=SPIEGEL_ZUORDNUNG, handverliehen={"manage_badword_filter"})
+    kick_mod = rechteabgleich.massnahmen(
+        rollen={MODERATOR}, rollenrechte=OHNE_BUENDEL,
+        eigene_rechte={"moderate_members"},
+        zuordnung=SPIEGEL_ZUORDNUNG, handverliehen={"moderate_members"})
+    assert filter_mod.leer and kick_mod.leer
+
+
+def test_ohne_die_rolle_geht_auch_das_einzelrecht():
+    """Patricks Entscheidung vom 05.09.2026 auf die Frage, was beim
+    Rollenentzug mit einzeln vergebenen Rechten geschieht: Sie gehen mit.
+    Die Rolle bleibt das Signal, dass jemand ueberhaupt eine Aufgabe hat."""
+    m = rechteabgleich.massnahmen(
+        rollen=set(), rollenrechte=OHNE_BUENDEL,
+        eigene_rechte={"manage_badword_filter"},
+        zuordnung=SPIEGEL_ZUORDNUNG, handverliehen={"manage_badword_filter"},
+    )
+    assert m.entziehen == ["manage_badword_filter"]
+
+
+def test_ein_recht_ohne_zugeordnete_rolle_ist_nicht_geschuetzt():
+    """`submit_questions` zeigt auf keine Rolle in der Zuordnung. Es kommt
+    ueber Ideenschmied, Supporter oder Server Booster - wer keine davon
+    traegt, behaelt es auch nicht durch Einzelvergabe."""
+    m = rechteabgleich.massnahmen(
+        rollen={MODERATOR}, rollenrechte=OHNE_BUENDEL | {MANAGER: {"submit_questions"}},
+        eigene_rechte={"submit_questions"},
+        zuordnung=SPIEGEL_ZUORDNUNG, handverliehen={"submit_questions"},
+    )
+    assert m.entziehen == ["submit_questions"]
