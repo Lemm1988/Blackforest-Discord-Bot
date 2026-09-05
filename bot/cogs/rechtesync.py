@@ -89,7 +89,6 @@ class Rechtesync(commands.Cog):
             rollen={str(r.id) for r in member.roles if r.name != "@everyone"},
             rollenrechte=database.get_role_permission_map(),
             eigene_rechte=set(database.get_user_permissions(uid)),
-            vom_bot_gesetzt=database.bot_gesetzte_rechte(uid),
             geschuetzt=database.is_protected_owner(uid),
         )
         if massnahme.leer:

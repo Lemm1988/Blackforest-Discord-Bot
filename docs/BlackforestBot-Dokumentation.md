@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 768 Tests)
+17. Testsuite (`tests/`, 770 Tests)
 18. Offene Punkte (Stand 03.09.2026, abends)
 19. Chronik des 03.09.2026
 
@@ -900,7 +900,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 768 Tests)
+## 17. Testsuite (`tests/`, 770 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -942,7 +942,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
 | `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
 | `test_achievements_konfiguration.py` | 38 | Einstellbare Achievements: Schwellen und Zeitspannen samt ihrer Grenzen, unbrauchbare Werte aus dem Backend, und dass nur selbst angelegte gelöscht werden können |
-| `test_rechteabgleich.py` | 23 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, dass ohne Merker nichts entzogen wird und der Besitzer nie beschnitten werden kann |
+| `test_rechteabgleich.py` | 25 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, dass ohne Merker nichts entzogen wird und der Besitzer nie beschnitten werden kann |
 | `test_verstoesse.py` | 18 | Verstöße zurücksetzen (Zählung fällt, Historie bleibt) und endgültig löschen; insbesondere, dass die Reset-Grenze beim Löschen mit aufgeräumt wird — sonst würden spätere Verstöße stillschweigend nicht mehr zählen |
 | `test_interaktion.py` | 51 | Discords Drei-Sekunden-Frist: die Vorab-Bestätigung je Befehl, und eine Wache, dass die angegebene Antwortart zu dem passt, was der Befehl tatsächlich sendet |
 | `test_befehlsfehler.py` | 27 | Jeder absehbare Befehlsfehler sagt etwas; Prüfungen antworten nicht mehr selbst |
@@ -1112,13 +1112,25 @@ niemand den Knopf drückte und die Gegenrichtung fehlte.
    Generalschlüssel; ein versehentlicher Rollenklick dürfte niemandem die volle
    Kontrolle geben, und ein versehentlich entfernter dürfte nicht den letzten
    Admin aussperren.
-2. **Der Bot nimmt nur weg, was er selbst gegeben hat.** Erkennbar an
-   `user_permissions.granted_by`, das für abgeleitete Rechte `rolle:<ID>`
-   enthält. Ohne diese Unterscheidung hätte der erste Durchlauf jedem seine von
-   Hand vergebenen Rechte genommen — aus Sicht des Abgleichs sieht ein
-   handverliehenes Recht ohne passende Rolle genauso aus wie ein veraltetes.
-   Vergibt ein Admin das Recht später ausdrücklich, überschreibt das `granted_by`
-   und der Abgleich fasst es nicht mehr an.
+2. **Ein Recht, das an einer Rolle hängt, gilt nur mit dieser Rolle.**
+   Rechte, die in keiner einzigen Rollenzuordnung vorkommen, bleiben dagegen
+   unangetastet — ein Admin kann also weiterhin jemandem gezielt etwas geben,
+   ohne ihm eine Rolle zu verleihen.
+
+   Diese Regel löste am 05.09.2026 eine vorsichtigere ab: *„Der Bot nimmt nur
+   weg, was er selbst gegeben hat"*, erkennbar an `granted_by = rolle:<ID>`.
+   Für den ERSTEN Durchlauf war sie richtig — ohne sie hätte er jedem seine von
+   Hand vergebenen Rechte genommen, bevor überhaupt jemand nachsehen konnte, ob
+   das passt. Danach stand sie der Absicht im Weg: Als Patrick einem Mitglied
+   die Moderator-Rolle entzog, blieben sieben Moderationsrechte stehen, weil er
+   sie seinerzeit selbst eingetragen hatte. Seine Ansage: „die rechte die er nur
+   als moderator hat müssen entzogen werden."
+
+   Wichtig zu wissen: Betroffen sind **alle** Rechte, die irgendeiner Rolle
+   zugeordnet sind — nicht nur die der gerade verlorenen. Wer die
+   Moderator-Rolle verliert und auch keine andere Rolle trägt, verliert damit
+   auch Rechte, die eigentlich zum Manager gehören. Das ist gewollt: Ohne
+   passende Rolle soll keines dieser Rechte bestehen bleiben.
 3. **Der Besitzer wird nie beschnitten.** Er soll sich nicht durch eine
    Rollenänderung aus seinem eigenen Backend aussperren können.
 

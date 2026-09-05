@@ -58,28 +58,55 @@ def abgeleitete_rechte(rollen: set[str], rollenrechte: dict[str, set[str]]) -> s
     return ergebnis - NUR_VON_HAND
 
 
+def rollenverwaltete_rechte(rollenrechte: dict[str, set[str]]) -> set[str]:
+    """Alle Rechte, die überhaupt an einer Rolle hängen.
+
+    Die Trennlinie der ganzen Mechanik. Ein Recht, das in KEINER Zuordnung
+    vorkommt, ist reine Handarbeit und geht den Abgleich nichts an - es wird
+    weder vergeben noch entzogen. Ein Recht, das an einer Rolle hängt, gilt
+    dagegen nur so lange, wie eine passende Rolle es trägt.
+    """
+    ergebnis: set[str] = set()
+    for rechte in rollenrechte.values():
+        ergebnis |= set(rechte)
+    return ergebnis - NUR_VON_HAND
+
+
 def massnahmen(
     *,
     rollen: set[str],
     rollenrechte: dict[str, set[str]],
     eigene_rechte: set[str],
-    vom_bot_gesetzt: set[str],
     geschuetzt: bool = False,
 ) -> Rechtemassnahme:
     """Was am Backend zu tun wäre, damit es zu den Rollen passt.
 
-    Drei Regeln entscheiden hier über brauchbar oder gefährlich:
+    **Ein Recht, das an einer Rolle hängt, gilt nur mit dieser Rolle.**
+    Verliert jemand die Moderator-Rolle, verliert er die Moderationsrechte —
+    unabhängig davon, wer sie seinerzeit eingetragen hat. Patrick am
+    05.09.2026: „die rechte die er nur als moderator hat müssen entzogen
+    werden."
 
-    **Der Bot nimmt nur weg, was er selbst gegeben hat.** `vom_bot_gesetzt` ist
-    der Merker dafür. Ohne ihn würde die erste Rollenänderung jedem alle von
-    Hand vergebenen Rechte entziehen, nur weil gerade keine Rolle sie hergibt.
-    Dieselbe Vorsichtsmaßnahme wie in rollenabgleich.massnahmen().
+    Bis dahin galt die vorsichtigere Regel „der Bot nimmt nur weg, was er
+    selbst gegeben hat". Sie war für den ERSTEN Durchlauf richtig — ohne sie
+    hätte er jedem seine von Hand vergebenen Rechte genommen, bevor überhaupt
+    jemand nachsehen konnte, ob das passt. Nachdem dieser Durchlauf einmal
+    sauber gelaufen ist, steht sie der Absicht im Weg: Wer eine Rolle verliert,
+    behielt die zugehörigen Rechte, wenn sie ein Mensch eingetragen hatte.
 
-    **`is_admin` bleibt außen vor** — siehe NUR_VON_HAND.
+    Was die Regel NICHT tut, und das ist der Unterschied zwischen streng und
+    unbrauchbar: Rechte, die in keiner einzigen Rollenzuordnung vorkommen,
+    bleiben unangetastet. Ein Admin kann also weiterhin jemandem gezielt ein
+    Recht geben, ohne ihm eine Rolle zu verleihen — es darf nur kein Recht
+    sein, das ohnehin schon einer Rolle zugeordnet ist. Sonst wäre nicht
+    entscheidbar, ob es zur Rolle gehört oder daneben steht.
 
-    **Der Besitzer wird nie beschnitten.** `geschuetzt` deckt den Fall ab, dass
-    jemand ihm versehentlich eine Rolle wegnimmt; er soll sich dadurch nicht
-    selbst aus seinem eigenen Backend aussperren können.
+    Zwei Sicherungen bleiben unverändert:
+
+    **`is_admin` läuft nie über eine Rolle** (siehe NUR_VON_HAND).
+
+    **Der Besitzer wird nie beschnitten** — er soll sich nicht durch eine
+    Rollenänderung aus seinem eigenen Backend aussperren können.
     """
     zustehend = abgeleitete_rechte(rollen, rollenrechte)
 
@@ -87,7 +114,7 @@ def massnahmen(
     massnahme.vergeben = sorted(zustehend - eigene_rechte)
     if not geschuetzt:
         massnahme.entziehen = sorted(
-            (eigene_rechte & vom_bot_gesetzt) - zustehend - NUR_VON_HAND
+            (eigene_rechte & rollenverwaltete_rechte(rollenrechte)) - zustehend - NUR_VON_HAND
         )
     return massnahme
 
