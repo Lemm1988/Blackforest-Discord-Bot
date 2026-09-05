@@ -243,3 +243,134 @@ def test_startabgleich_laeuft_nur_einmal():
     """on_ready feuert nach jedem Verbindungsabbruch erneut. Ein voller
     Durchlauf ueber alle Mitglieder bei jedem Wackler waere unnoetige Last."""
     assert "_startabgleich_erledigt" in COG
+
+
+# --------------------------------------------------------------------------
+# Spiegelrollen (05.09.2026)
+#
+# Patrick vergab einem Mitglied NUR das Recht, den Schimpfwortfilter zu
+# bearbeiten. Drei Sekunden spaeter hatte es fuenf Rechte:
+#
+#   13:27:29  manage_badword_filter   von: <Patrick>
+#   13:27:32  manage_categories       von: rolle:<Moderator>
+#   13:27:32  moderate_members        von: rolle:<Moderator>
+#   13:27:32  submit_questions        von: rolle:<Moderator>
+#   13:27:32  verify_questions        von: rolle:<Moderator>
+#
+# Ursache war ein Kreislauf: Das Recht brachte ueber permission_roles die
+# Moderator-Rolle auf den Server, und diese Funktion leitete aus der frisch
+# vergebenen Rolle gleich alle Rechte eines Moderators ab. Patrick dazu: "im
+# bot wurden ihm alle rechte zugewiesen anstatt nur der schimpfwortfilter. das
+# sollte nicht so sein."
+# --------------------------------------------------------------------------
+
+SPIEGEL_MOD_RECHTE = {"manage_badword_filter", "manage_categories", "moderate_members",
+              "verify_questions", "submit_questions"}
+SPIEGEL_ROLLENRECHTE = {MODERATOR: SPIEGEL_MOD_RECHTE}
+#: permission_roles: welches Recht welche Rolle nach sich zieht.
+SPIEGEL_ZUORDNUNG = {r: MODERATOR for r in
+             ("manage_badword_filter", "manage_categories", "moderate_members",
+              "verify_questions", "send_dm")}
+
+
+def _spiegelfall(**abweichungen):
+    """Der Fall von synthek: ein Recht von Hand, die Rolle als dessen Anzeige."""
+    grund = dict(
+        rollen={MODERATOR},
+        rollenrechte=SPIEGEL_ROLLENRECHTE,
+        eigene_rechte={"manage_badword_filter"},
+        spiegelrollen={MODERATOR},
+        zuordnung=SPIEGEL_ZUORDNUNG,
+        handverliehen={"manage_badword_filter"},
+    )
+    grund.update(abweichungen)
+    return rechteabgleich.massnahmen(**grund)
+
+
+def test_eine_spiegelrolle_vergibt_keine_weiteren_rechte():
+    """Der eigentliche Befund: aus einem Recht wurden fuenf."""
+    assert _spiegelfall().vergeben == []
+
+
+def test_das_ausloesende_recht_bleibt_erhalten():
+    """Sonst bliebe die Rolle uebrig und gar kein Recht mehr.
+
+    Ohne diesen Schutz griffe die aeltere Regel: `manage_badword_filter` haengt
+    an einer Rolle, keine "echte" Rolle deckt es - also weg damit.
+    """
+    assert "manage_badword_filter" not in _spiegelfall().entziehen
+
+
+def test_die_abgeleiteten_rechte_werden_wieder_entzogen():
+    """Aufraeumen des Bestands, den der Kreislauf angelegt hat."""
+    m = _spiegelfall(eigene_rechte={"manage_badword_filter"} | SPIEGEL_MOD_RECHTE)
+    assert set(m.entziehen) == SPIEGEL_MOD_RECHTE - {"manage_badword_filter"}
+
+
+def test_eine_echte_rolle_bringt_weiterhin_alle_rechte():
+    """Wer die Moderator-Rolle von Hand in Discord bekommt, ist Moderator.
+
+    Daran aendert sich nichts - sonst waere die Gegenrichtung nutzlos.
+    """
+    m = rechteabgleich.massnahmen(
+        rollen={MODERATOR}, rollenrechte=SPIEGEL_ROLLENRECHTE, eigene_rechte=set(),
+        spiegelrollen=set(), zuordnung=SPIEGEL_ZUORDNUNG, handverliehen=set(),
+    )
+    assert set(m.vergeben) == SPIEGEL_MOD_RECHTE
+
+
+def test_ohne_spiegelrollen_bleibt_alles_wie_vorher():
+    """Rueckwaertskompatibel: die neuen Angaben sind optional."""
+    ohne = rechteabgleich.massnahmen(
+        rollen={MODERATOR}, rollenrechte=SPIEGEL_ROLLENRECHTE, eigene_rechte=set())
+    mit = rechteabgleich.massnahmen(
+        rollen={MODERATOR}, rollenrechte=SPIEGEL_ROLLENRECHTE, eigene_rechte=set(),
+        spiegelrollen=set(), zuordnung={}, handverliehen=set())
+    assert ohne.vergeben == mit.vergeben and ohne.entziehen == mit.entziehen
+
+
+def test_der_schutz_endet_mit_der_rolle():
+    """Patricks Regel vom selben Vormittag darf nicht kaputtgehen.
+
+    Wird die Rolle in Discord entzogen, ist sie keine Spiegelrolle mehr,
+    sondern gar keine - und die daran haengenden Rechte gehen mit, auch die
+    von Hand eingetragenen.
+    """
+    m = _spiegelfall(rollen=set(), eigene_rechte={"manage_badword_filter"} | SPIEGEL_MOD_RECHTE)
+    assert set(m.entziehen) == SPIEGEL_MOD_RECHTE
+
+
+def test_ein_handrecht_ohne_zuordnung_bleibt_unangetastet():
+    """Rechte, die in keiner Rollenzuordnung vorkommen, gehen den Abgleich nichts an."""
+    m = _spiegelfall(eigene_rechte={"manage_badword_filter", "create_embed"})
+    assert "create_embed" not in m.entziehen
+
+
+def test_ein_vom_bot_gesetztes_recht_ist_nicht_geschuetzt():
+    """Nur was ein Mensch eingetragen hat, gilt als Ausloeser.
+
+    Sonst wuerde der Kreislauf sich selbst schuetzen: Die vier zu viel
+    vergebenen Rechte zeigen ebenfalls auf die Moderator-Rolle.
+    """
+    m = _spiegelfall(
+        eigene_rechte={"manage_badword_filter", "manage_categories"},
+        handverliehen={"manage_badword_filter"},
+    )
+    assert m.entziehen == ["manage_categories"]
+
+
+def test_der_besitzer_bleibt_auch_hier_unangetastet():
+    m = _spiegelfall(eigene_rechte=SPIEGEL_MOD_RECHTE, geschuetzt=True)
+    assert m.entziehen == []
+
+
+def test_das_cog_reicht_die_spiegelrollen_herein():
+    """Ohne diese Uebergabe rechnet die Logik zwar richtig, sieht aber nichts."""
+    assert "bot_vergebene_rollen" in COG
+    assert "spiegelrollen=" in COG
+    assert "handverliehen=" in COG
+
+
+def test_die_herkunft_uebergeht_spiegelrollen():
+    """Kein Recht darf auf eine Rolle zurueckgefuehrt werden, die es selbst ausgeloest hat."""
+    assert "if str(rolle.id) in spiegelrollen" in COG

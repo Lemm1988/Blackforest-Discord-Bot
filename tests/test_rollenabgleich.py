@@ -309,3 +309,34 @@ def test_ohne_zuordnung_tut_das_nachziehen_nichts():
     block = quelle[quelle.index("def _rollen_nachziehen"):]
     block = block[: block.index("roles-mapping/sync")]
     assert "if not zuordnung:" in block and "return" in block
+
+
+# --------------------------------------------------------------------------
+# Der Gegenweg zum Spiegel (Patrick, 05.09.2026)
+#
+#   "zusaetzlich wird der fall abgedeckt: rolle wird entzogen, keine
+#    Moderatorenrechte mehr vergeben dann wird rolle auch entzogen"
+#
+# Wenn ein Recht die Rolle nach sich zieht, muss der Wegfall des Rechts die
+# Rolle auch wieder mitnehmen - sonst bleibt auf dem Server eine Auszeichnung
+# stehen, fuer die es im Backend keine Grundlage mehr gibt.
+# --------------------------------------------------------------------------
+
+
+def test_faellt_das_letzte_zugeordnete_recht_weg_geht_die_rolle_mit():
+    p = _plan(set(), {MODERATOR}, vom_bot={MODERATOR})
+    assert p.entziehen == [MODERATOR]
+
+
+def test_solange_ein_zugeordnetes_recht_bleibt_bleibt_die_rolle():
+    """Eine Rolle kann fuer mehrere Rechte stehen. Sie geht erst, wenn das
+    letzte davon weg ist - sonst wuerde ein Entzug die Rolle streitig machen,
+    obwohl ein anderes Recht sie weiterhin traegt."""
+    p = _plan({"moderate_members"}, {MODERATOR}, vom_bot={MODERATOR})
+    assert p.entziehen == []
+
+
+def test_eine_von_hand_vergebene_rolle_bleibt_auch_ohne_jedes_recht():
+    """Sie kann aus Gruenden vergeben worden sein, die das Backend nichts angehen."""
+    p = _plan(set(), {MODERATOR}, vom_bot=set())
+    assert p.entziehen == []

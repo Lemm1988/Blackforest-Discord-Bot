@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 810 Tests)
+17. Testsuite (`tests/`, 824 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -942,7 +942,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 810 Tests)
+## 17. Testsuite (`tests/`, 824 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -975,7 +975,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_verdiente_rollen.py` | 66 | Verdiente Rollen: Schwellen, Abhol-Knopf (an eine Person gebunden, übersteht Neustarts) und der Merker gegen wiederholte Ankündigungen |
 | `test_reaktionsrollen.py` | 20 | Reaktionsrollen: Schema-Zusagen, Umzug der alten Regel, und dass Kanal und Rolle über IDs statt Namen angesprochen werden |
 | `test_rollenrechte.py` | 15 | Eine Rolle bringt Rechte mit: getrennte Tabellen für beide Richtungen, kein `is_admin` über Rollen, Befehl **und** Webformular abgesichert |
-| `test_rollenabgleich.py` | 28 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten |
+| `test_rollenabgleich.py` | 31 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten und dass eine vom Bot vergebene Rolle mit dem letzten zugeordneten Recht wieder verschwindet |
 | `test_nutzertexte.py` | 109 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
 | `test_csrf_coverage.py` | 81 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
@@ -984,7 +984,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
 | `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
 | `test_achievements_konfiguration.py` | 38 | Einstellbare Achievements: Schwellen und Zeitspannen samt ihrer Grenzen, unbrauchbare Werte aus dem Backend, und dass nur selbst angelegte gelöscht werden können |
-| `test_rechteabgleich.py` | 25 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, dass ohne Merker nichts entzogen wird und der Besitzer nie beschnitten werden kann |
+| `test_rechteabgleich.py` | 36 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, der Besitzer nie beschnitten wird — und dass eine Rolle, die der Bot wegen eines Rechts vergeben hat, nicht zurückwirkt |
 | `test_vergabewege.py` | 40 | Die fünf Vergabewege nebeneinander: dass ein Recht, das eine Rolle holt, von dieser Rolle auch zurückkommt, dass `is_admin` nie über eine Rolle läuft, dass Einträge auf gelöschte oder für den Bot unerreichbare Rollen auffallen und dass eine automatisch vergebene Rolle mit Backend-Rechten sichtbar wird |
 | `test_verstoesse.py` | 18 | Verstöße zurücksetzen (Zählung fällt, Historie bleibt) und endgültig löschen; insbesondere, dass die Reset-Grenze beim Löschen mit aufgeräumt wird — sonst würden spätere Verstöße stillschweigend nicht mehr zählen |
 | `test_interaktion.py` | 51 | Discords Drei-Sekunden-Frist: die Vorab-Bestätigung je Befehl, und eine Wache, dass die angegebene Antwortart zu dem passt, was der Befehl tatsächlich sendet |

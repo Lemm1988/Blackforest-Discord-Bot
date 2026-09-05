@@ -85,20 +85,35 @@ class Rechtesync(commands.Cog):
         Es passte bereits.
         """
         uid = str(member.id)
+        rollenrechte = database.get_role_permission_map()
+        eigene_rechte = set(database.get_user_permissions(uid))
+
+        # Rollen, die der Bot selbst wegen einer Berechtigung vergeben hat.
+        # Sie sind eine Anzeige des Rechts und duerfen nicht zurueckwirken -
+        # sonst wird aus einem gezielt vergebenen Recht das ganze Buendel der
+        # Rolle. `handverliehen` schuetzt dabei das ausloesende Recht davor,
+        # gleich wieder entzogen zu werden.
+        spiegelrollen = database.bot_vergebene_rollen(uid)
         massnahme = rechteabgleich.massnahmen(
             rollen={str(r.id) for r in member.roles if r.name != "@everyone"},
-            rollenrechte=database.get_role_permission_map(),
-            eigene_rechte=set(database.get_user_permissions(uid)),
+            rollenrechte=rollenrechte,
+            eigene_rechte=eigene_rechte,
             geschuetzt=database.is_protected_owner(uid),
+            spiegelrollen=spiegelrollen,
+            zuordnung=database.get_permission_role_map(),
+            handverliehen=eigene_rechte - database.bot_gesetzte_rechte(uid),
         )
         if massnahme.leer:
             return []
 
         # Welche Rolle das Recht mitbringt, wird mitgeschrieben - sonst liesse
         # sich spaeter nicht beantworten, warum jemand es bekommen hat.
-        rollenrechte = database.get_role_permission_map()
+        # Spiegelrollen bleiben aussen vor, damit kein Recht auf eine Rolle
+        # zurueckgefuehrt wird, die es selbst ausgeloest hat.
         herkunft = {}
         for rolle in member.roles:
+            if str(rolle.id) in spiegelrollen:
+                continue
             for schluessel in rollenrechte.get(str(rolle.id), ()):
                 herkunft.setdefault(schluessel, str(rolle.id))
 

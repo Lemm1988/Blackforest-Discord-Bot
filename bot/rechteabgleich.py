@@ -78,6 +78,9 @@ def massnahmen(
     rollenrechte: dict[str, set[str]],
     eigene_rechte: set[str],
     geschuetzt: bool = False,
+    spiegelrollen: set[str] | frozenset = frozenset(),
+    zuordnung: dict[str, str] | None = None,
+    handverliehen: set[str] | frozenset = frozenset(),
 ) -> Rechtemassnahme:
     """Was am Backend zu tun wäre, damit es zu den Rollen passt.
 
@@ -107,14 +110,43 @@ def massnahmen(
 
     **Der Besitzer wird nie beschnitten** — er soll sich nicht durch eine
     Rollenänderung aus seinem eigenen Backend aussperren können.
+
+    **Eine Rolle, die der Bot wegen eines Rechts vergeben hat, zählt nicht als
+    Quelle** (`spiegelrollen`). Ohne diese Regel verstärkt sich jede Vergabe:
+    Patrick gab am 05.09.2026 einem Mitglied nur `manage_badword_filter`; das
+    Recht brachte über `permission_roles` die Moderator-Rolle, und aus dieser
+    frisch vergebenen Rolle leitete diese Funktion drei Sekunden später alle
+    fünf Moderationsrechte ab. Sein Urteil: „im bot wurden ihm alle rechte
+    zugewiesen anstatt nur der schimpfwortfilter. das sollte nicht so sein."
+    Eine solche Rolle ist eine Anzeige des Rechts, nicht seine Ursache.
+
+    Damit dabei nicht das auslösende Recht selbst mitgerissen wird, ist
+    geschützt, was ein Mensch vergeben hat (`handverliehen`) UND dessen
+    Spiegelrolle die Person gerade trägt. Sonst nähme der Abgleich
+    `manage_badword_filter` gleich wieder weg, weil keine „echte" Rolle es mehr
+    deckt — übrig bliebe die Rolle ohne jedes Recht.
+
+    Der Schutz endet mit der Rolle. Wird sie in Discord entzogen, ist sie keine
+    Spiegelrolle mehr, sondern gar keine — und die erste Regel greift wieder:
+    Rechte, die an ihr hingen, gehen mit.
     """
-    zustehend = abgeleitete_rechte(rollen, rollenrechte)
+    echte_rollen = set(rollen) - set(spiegelrollen)
+    zustehend = abgeleitete_rechte(echte_rollen, rollenrechte)
+
+    # Rechte, deren Spiegelrolle die Person gerade traegt und die ein Mensch
+    # eingetragen hat. Sie sind der Grund, warum die Rolle ueberhaupt da ist.
+    getragene_spiegel = set(rollen) & set(spiegelrollen)
+    ausloeser = {
+        recht for recht in handverliehen
+        if (zuordnung or {}).get(recht) in getragene_spiegel
+    }
 
     massnahme = Rechtemassnahme()
     massnahme.vergeben = sorted(zustehend - eigene_rechte)
     if not geschuetzt:
         massnahme.entziehen = sorted(
-            (eigene_rechte & rollenverwaltete_rechte(rollenrechte)) - zustehend - NUR_VON_HAND
+            (eigene_rechte & rollenverwaltete_rechte(rollenrechte))
+            - zustehend - ausloeser - NUR_VON_HAND
         )
     return massnahme
 
