@@ -16,9 +16,9 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 1. Architektur-Überblick (Bot-Ökosystem, vier Teile)
 2. Vollständige Befehlsliste (16 Slash-Befehle)
 3. Backend-Routen (`backend/app.py` + `backend/internal_app.py`)
-4. Komplettes Datenbankschema (29 Tabellen)
+4. Komplettes Datenbankschema (31 Tabellen: 25 im Kern, 6 aus den Modulen)
 5. Berechtigungssystem (Owner, `is_admin`, 9 Flags, Basis-Rechte)
-6. Vollständige Settings-Referenz (74 Einstellungen)
+6. Vollständige Settings-Referenz (70 mit Voreinstellung)
 7. Menü-/Modul-Struktur im Backend
 8. Rollenvergabe (Reaktionsrollen, verdiente Rollen, Rechte spiegeln)
 9. Sicherheitsfundament (Owner-Schutz, Audit-Log, Backup, Session-Invalidierung)
@@ -30,8 +30,8 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
 17. Testsuite (`tests/`, 770 Tests)
-18. Offene Punkte (Stand 03.09.2026, abends)
-19. Chronik des 03.09.2026
+18. Offene Punkte (Stand 05.09.2026)
+19. Chronik (03. bis 05.09.2026)
 
 ---
 
@@ -306,7 +306,8 @@ genau dieses Flag oder `is_admin`. `require_any_permission(...)` = mindestens ei
 
 ## 4. Komplettes Datenbankschema (`bot/data/bot.db`)
 
-**25 Tabellen.** Schema-Änderungen laufen ausnahmslos idempotent über
+**31 Tabellen** — 25 im Kern, 6 bringen die Module selbst mit (siehe
+„Modultrennung“). Schema-Änderungen laufen ausnahmslos idempotent über
 `CREATE TABLE IF NOT EXISTS` bzw. `_ensure_column()`/dedizierte Migrationsfunktionen —
 nie destruktiv.
 
@@ -379,7 +380,7 @@ granularen Modell. `is_admin` impliziert es weiterhin automatisch.
 
 ---
 
-## 6. Vollständige Settings-Referenz (74 Einstellungen)
+## 6. Vollständige Settings-Referenz (70 mit Voreinstellung)
 
 Änderungen wirken sofort, ohne Bot-Neustart, werden im Audit-Log protokolliert.
 
@@ -1002,26 +1003,52 @@ diesen Zusammenhang immer mitnennen.
 
 ---
 
-## 18. Offene Punkte (Stand 03.09.2026, abends)
+## 18. Offene Punkte (Stand 05.09.2026)
 
-- **Echter Online/Idle/DND-Status** in der Überwachungs-Übersicht: aktuell Näherung über
-  Nachrichtenaktivität statt echtem Discord-Presence-Status. Bräuchte den privilegierten
-  Presence-Intent, manuell im Discord Developer Portal freizuschalten.
-- **Live-Test der Moderationsaktionen** (Kick/Ban/Timeout) gegen den echten Server: bisher
-  nur mit Fake-Discord-Objekten und DB-Kopien verifiziert.
-- **Die Rollen-Zuordnung (Recht → Rolle) ist noch leer.** Solange dort nichts steht, hat
-  der Abgleich nichts zu tun und die Übersicht auf `/users` zeigt einen Strich. Die
-  Gegenrichtung ist dagegen in Gebrauch: Ideenschmied bringt `submit_questions` mit.
-- **Die Rollenreihenfolge in Discord passt nicht zur Reihenfolge des Verdienens.**
-  Keimling 🌱 steht über den höheren Stufen, Discord zeigt deshalb dessen Farbe. Ein
-  Vorschlag zur Sortierung liegt vor, ist aber nicht umgesetzt — die Entscheidung liegt
-  bei Patrick.
-- **Alle elf verdienten Rollen stehen auf „Sammlung".** Ob die Treuestufen stattdessen
-  eine Rangleiter sein sollen (nur die höchste wird getragen), ist offen.
-- **Die Guten-Morgen-Nachricht ist eingerichtet, aber nie ausgelöst worden** — der erste
-  echte Durchlauf steht noch aus.
+### Warten auf eine Entscheidung von Patrick
 
-### Am 03.09.2026 erledigt
+- **Linkfilter: die Sperrliste fehlt.** Es gibt drei Regeln (alles blockieren,
+  Whitelist, nur neue Mitglieder), aber keine Blacklist. Entwurf liegt in
+  `~/Desktop/pläne/14-filter-ueberarbeiten.md`, Teil 1 — klein und ohne offene
+  Fragen.
+- **Schimpfwortfilter überarbeiten.** Patrick am 04.09.2026: „irgendwie gefällt
+  mir die funktion so noch nicht." Drei benannte Schwächen (flache Wortliste
+  ohne Stufen, kein Kontext, keine Möglichkeit zum Ausprobieren) und der
+  Vorschlag, eine öffentliche Wortliste **einmalig zur Durchsicht** zu
+  importieren statt sie zur Laufzeit zu laden. Zwei Rückfragen offen: ob
+  Wortstufen den Pflegeaufwand wert sind, und welche Liste.
+- **Die Rollenreihenfolge in Discord passt nicht zur Reihenfolge des
+  Verdienens.** Keimling 🌱 steht über den höheren Stufen, Discord zeigt deshalb
+  dessen Farbe. Ein Sortiervorschlag liegt vor; die Umsetzung ist Handarbeit in
+  Discord und damit Patricks Entscheidung.
+- **Alle elf verdienten Rollen stehen auf „Sammlung".** Ob die Treuestufen
+  stattdessen eine Rangleiter sein sollen (nur die höchste wird getragen), ist
+  offen.
+
+### Nicht geprüft, weil nur im echten Betrieb prüfbar
+
+- **Live-Test der Moderationsaktionen** (Kick/Ban/Timeout) gegen den echten
+  Server: bisher nur mit gestellten Discord-Objekten und DB-Kopien verifiziert.
+- **Die Guten-Morgen-Nachricht ist eingerichtet, aber nie ausgelöst worden** —
+  der erste echte Durchlauf steht noch aus.
+- **Die große Sichtprüfung** des Backends steht aus; die Liste dazu liegt in
+  `~/Desktop/pläne/sichtpruefung.md`.
+
+### Bewusst nicht umgesetzt
+
+- **Echter Online/Idle/DND-Status** in der Überwachungs-Übersicht: aktuell
+  Näherung über Nachrichtenaktivität statt echtem Discord-Presence-Status.
+  Bräuchte den privilegierten Presence-Intent, manuell im Discord Developer
+  Portal freizuschalten.
+- **Mycodo mit dem Bot verbinden.** Patrick am 03.09.2026 ausdrücklich
+  zurückgestellt.
+- **Frei erfindbare Achievement-Bedingungen im Backend.** Ein Achievement
+  braucht ein Ereignis, das es auslöst. Eine im Backend zusammengeklickte
+  Bedingung für ein Ereignis, das der Bot nicht kennt, würde nie fallen, und
+  niemand könnte sehen warum. Die Bedingungs*arten* bleiben deshalb im Code, nur
+  ihre Werte sind einstellbar (siehe Abschnitt „Achievements einstellbar").
+
+### Seit dem 03.09.2026 erledigt
 
 Der Vollständigkeit halber, weil diese Punkte hier lange als offen standen:
 
@@ -1032,10 +1059,16 @@ Der Vollständigkeit halber, weil diese Punkte hier lange als offen standen:
 | Moderationsgründe ohne 512-Zeichen-Grenze | Kürzung nach **URL-kodierter** Länge; das eigene Audit-Log behält den vollen Text |
 | Bild-/Link-Felder im Embed ungeprüft | Formatprüfung, die das betroffene Feld beim Namen nennt |
 | `ERR_TIMED_OUT` in der Android-App | am 02.09.2026 gelöst, Analyse in `Fernzugriff-Setup-Anleitung.md` §9.1 |
+| **Die Rollen-Zuordnung (Recht → Rolle) war leer** | Fünf Rechte hängen jetzt an der Moderator-Rolle; beide Richtungen laufen automatisch (05.09.2026) |
+| **Rolle und Berechtigung liefen auseinander** | `cogs/rechtesync.py` — Listener auf Rollenänderungen plus Abgleich nach jedem Start |
+| **Achievements nur im Code änderbar** | Bedingungsart im Code, Wert in der Datenbank; einstellbar unter Admin-Werkzeuge → XP & Level |
+| **`/frage` antwortete „Die Anwendung reagiert nicht"** | Vorab-Bestätigung für alle Befehle, zentral in `main.py` |
+| **„Verstöße zurücksetzen" schien wirkungslos** | Rückmeldung plus echtes Löschen, einzeln und ganze Historien |
+| **App-Zugang „ging manchmal nicht"** | Nicht routbares IPv6 auf dem Pi abgeschaltet, siehe `Fernzugriff-Setup-Anleitung.md` §10 |
 
 ---
 
-## 19. Chronik des 03.09.2026
+## 19. Chronik (03. bis 05.09.2026)
 
 Ein außergewöhnlich dichter Tag — hier die Reihenfolge, weil einige Entscheidungen nur im
 Zusammenhang verständlich sind.

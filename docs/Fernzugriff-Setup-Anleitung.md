@@ -884,3 +884,103 @@ Dashboard-Dienstes: Die Tunnel-Befehle laufen, allgemeines `sudo` und z.B.
 Secret und damit ein **neues Ticket**. Das alte funktioniert nie wieder — sonst wäre ein
 Widerruf nur eine Pause. Nach jedem Widerruf muss der betroffenen Person also ein neu
 erzeugtes Ticket zugestellt werden.
+
+---
+
+## 10. Nachtrag (05.09.2026): Der Tunnel hing an nicht routbarem IPv6
+
+Verwandt mit Abschnitt 9, aber eine völlig andere Ursache — und ein Lehrstück
+darüber, wie irreführend ein sporadischer Fehler sein kann.
+
+### 10.1 Das Symptom
+
+Die Bot Connect App erreichte das Backend „manchmal nicht", und wenn doch, mit
+langen Ladezeiten. Die Diagnose der App zeigte, dass das Handy den Pi-Knoten
+`d2c93fd899…` nicht auflösen konnte:
+
+```
+DNS lookup failed: no calls succeeded: [Failed to resolve TXT record ...]
+WARN dumbpipe: error handling connection: error connecting to d2c93fd899…
+```
+
+Die naheliegende Vermutung — ein veraltetes Ticket — war **falsch**. Die
+Knoten-Kennung des Tunnels ist über Neustarts hinweg stabil; verteilte Tickets
+bleiben gültig. Genau das ist der Grund, warum ein „einfach neu einrichten"
+hier nichts gebracht hätte.
+
+### 10.2 Was der Pi-Log zeigte
+
+```
+10:26:20  Deactivated successfully   →  Neustartzähler 2
+10:27:20  Deactivated successfully   →  Neustartzähler 3
+10:28:51  Deactivated successfully   →  Neustartzähler 4
+```
+
+Alle 60–90 Sekunden, und bei jedem Start `Warning: Failed to connect to the
+home relay`. Der Dienst stürzte dabei nicht ab, er beendete sich **sauber** —
+weshalb `Restart=always` ihn brav wieder hochfuhr und der Fehler nie als
+Absturz auffiel.
+
+### 10.3 Die Messung
+
+| Prüfung | Ergebnis |
+|---|---|
+| Backend direkt (`127.0.0.1:5000`) | **0,6 ms** — kerngesund |
+| Globale IPv6-Adresse des Pi | **keine**, nur `fdc9:…` |
+| Relay über IPv6 | **scheitert** nach 15 ms |
+| Relay über IPv4 | **200 OK** in 0,39 s |
+| DNS-Auflösung | **2–3 Sekunden**, AAAA zuerst |
+
+### 10.4 Die Ursache
+
+Der Pi hatte als einzige IPv6-Adresse eine **ULA** aus dem `fd00::/8`-Bereich
+(Unique Local Address). Die ist im Hausnetz gültig, im Internet aber nicht
+routbar — das IPv6-Gegenstück zu einer 192.168er-Adresse. Der Pi meldete sie
+trotzdem als gültige Adresse und versuchte jede Verbindung zuerst darüber.
+
+Für normalen Verkehr bedeutete das nur Verzögerung: erst der IPv6-Versuch, dann
+der Rückfall auf IPv4. Für den dumbpipe-Tunnel war es gravierender. Ohne
+Relay-Verbindung veröffentlicht iroh seine Adresse nicht im pkarr-DNS — das
+Handy suchte also einen Knoten, der sich nirgends eingetragen hatte.
+
+**Warum „manchmal":** Zwischen den Neustarts gab es kurze Fenster, in denen der
+Tunnel oben *und* mit dem Relay verbunden war. Traf ein Verbindungsversuch
+eines dieser Fenster, klappte es. Sonst nicht.
+
+### 10.5 Die Behebung
+
+`/etc/sysctl.d/99-ipv6-aus.conf`:
+
+```
+net.ipv6.conf.all.disable_ipv6 = 1
+net.ipv6.conf.default.disable_ipv6 = 1
+```
+
+`lo` bleibt bewusst aktiv — manche Dienste binden auf `::1`. Anwenden mit
+`sudo sysctl --system`, danach die Tunnel neu starten. Rückgängig: Datei
+löschen und `sysctl --system` erneut ausführen.
+
+Der zweite Nameserver in `/etc/resolv.conf` ist eine IPv6-Adresse der Fritzbox
+und fällt damit weg. Das ist unkritisch: Der erste Eintrag ist dieselbe
+Fritzbox über IPv4.
+
+### 10.6 Ergebnis (nachgemessen)
+
+| | vorher | nachher |
+|---|---|---|
+| DNS-Auflösung | 2–3 s | **9–13 ms** |
+| Relay | scheitert über IPv6 | 200 in 0,28 s über IPv4 |
+| Relay-Warnungen | bei jedem Start | **0** |
+| Tunnel-Neustarts | 9 pro Stunde | **0** |
+
+### 10.7 Merkposten
+
+Dass die Verbindung **manchmal** funktionierte, war der entscheidende Hinweis.
+Ein durchgehend defekter Dienst sieht anders aus als einer, der sich alle 60 bis
+90 Sekunden neu startet. Wer bei so einem Bild zuerst die App oder das Ticket
+verdächtigt, sucht an der falschen Stelle.
+
+Zweiter Merkposten: **`ping` taugt hier nicht als Beweis.** Auf diesem Pi
+scheitert `ping 1.1.1.1` mit 100 % Paketverlust, während HTTPS zu Discord in
+0,2 Sekunden antwortet — ICMP ist schlicht gefiltert. Für „ist der Pi online?"
+gehört ein `curl` gegen einen echten Dienst genommen, kein Ping.

@@ -24,10 +24,10 @@ Für SSH/Iroh-Tunnel/Fernzugriff-Hintergrund: [`docs/Fernzugriff-Setup-Anleitung
 ## Setup
 
 1. `bot/.env.example` nach `bot/.env` kopieren und ausfüllen (siehe Kommentare darin
-   sowie Abschnitt 11 der Dokumentation für den OAuth-Teil).
+   sowie Abschnitt 12 der Dokumentation für den OAuth-Teil).
 2. Python-Virtualenv unter `venv/` anlegen, `bot/requirements.txt` installieren.
 3. Start: `cd bot && ../venv/bin/python main.py` (oder als systemd-Dienst, siehe Doku
-   Abschnitt 12).
+   Abschnitt 13).
 
 ## Tests
 
@@ -36,14 +36,26 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
+Aktuell **770 Tests**.
+
 Laufen auch in der CI bei jedem Push und Pull Request
 (`.github/workflows/tests.yml`). Sie brauchen **keine** Laufzeit-Abhängigkeiten des
 Bots, kein systemd und kein `dumbpipe` — alles Privilegierte wird durch Fakes ersetzt.
 
 Der Schwerpunkt liegt bewusst auf Fehlern, die real aufgetreten sind und dabei
-**stumm** blieben: ein Widerruf, der Erfolg meldete, während der Tunnel weiterlief;
-ein Löschen, das den falschen Eintrag traf; fest verdrahtete Pfade, die beim Umzug
-alles lahmlegten; und zwei Schritte im Android-Build, ohne die die App nie durchkommt.
+**stumm** blieben — das ist der rote Faden dieses Projekts:
+
+* ein Widerruf, der Erfolg meldete, während der Tunnel weiterlief;
+* ein Löschen, das den falschen Eintrag traf;
+* fest verdrahtete Pfade, die beim Umzug alles lahmlegten;
+* zwei Schritte im Android-Build, ohne die die App nie durchkommt;
+* ein Befehl, der Discords Drei-Sekunden-Frist riss und deshalb nicht einmal mehr
+  seine eigene Fehlermeldung zustellen konnte;
+* ein Knopf, der tat, was er sollte, es aber nicht sagte — und dadurch von einem
+  kaputten Knopf nicht zu unterscheiden war;
+* eine Discord-Rolle und eine Backend-Berechtigung, die auseinanderliefen, ohne
+  dass irgendetwas darauf hinwies.
+
 Wer hier etwas ändert, sollte die Tests eher erweitern als anpassen.
 
 ## Sicherheit
