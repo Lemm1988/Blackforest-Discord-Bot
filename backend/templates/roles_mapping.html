@@ -19,6 +19,73 @@
 </div>
 
 <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="h6 mb-0">Wie Rollen vergeben werden</h5>
+        {% if befunde %}
+        <span class="badge bg-{{ 'danger' if befunde|selectattr('schwere', 'equalto', 'hoch')|list else 'warning' }}">
+            {{ befunde|length }} auffällig
+        </span>
+        {% else %}
+        <span class="badge bg-success">nichts auffällig</span>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Rollen entstehen auf vier Wegen, die unabhängig voneinander eingestellt werden:
+            über ein Backend-Recht, über eine Reaktion, als verdiente Rolle — und eine Rolle
+            kann ihrerseits Rechte mitbringen. Hier stehen sie nebeneinander, damit sichtbar
+            wird, wo sie sich in die Quere kommen.
+        </p>
+
+        {% for b in befunde %}
+        <div class="alert alert-{{ {'hoch': 'danger', 'mittel': 'warning', 'hinweis': 'info'}[b.schwere] }} py-2">
+            <strong>{{ b.titel }}</strong>
+            <div class="small mt-1">{{ b.text }}</div>
+            <div class="small mt-1"><em>Zu tun:</em> {{ b.empfehlung }}</div>
+        </div>
+        {% endfor %}
+
+        {% if uebersicht %}
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr><th>Rolle</th><th>Wege</th><th>Bringt diese Rechte mit</th></tr>
+                </thead>
+                <tbody>
+                    {% for z in uebersicht %}
+                    <tr>
+                        <td>
+                            {{ z.name }}
+                            {% if not z.vorhanden %}
+                            <span class="badge bg-secondary">nicht auf dem Server</span>
+                            {% elif not z.verwaltbar %}
+                            <span class="badge bg-secondary">über dem Bot</span>
+                            {% endif %}
+                        </td>
+                        <td class="small">
+                            {% for w in z.wege %}
+                            <div><span class="text-muted">{{ w.label }}:</span> {{ w.detail }}</div>
+                            {% endfor %}
+                        </td>
+                        <td class="small">
+                            {% for key in z.rechte %}
+                            <span class="badge bg-light text-dark">{{ permission_labels.get(key, key) }}</span>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endfor %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Noch keine Rolle eingerichtet.</p>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card mb-4">
     <div class="card-header"><h5 class="h6 mb-0">Zuordnung</h5></div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('roles_mapping_save') }}">

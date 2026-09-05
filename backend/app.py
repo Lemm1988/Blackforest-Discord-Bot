@@ -28,6 +28,7 @@ import mood
 import rollenabgleich
 import scheduling
 import verdiente_rollen
+import vergabewege
 from . import oauth
 from .moderation_rules import moderation_block_reason
 
@@ -1889,14 +1890,29 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
                 r["grund"] = "wird über eine Reaktion vergeben"
         labels = dict(config.PERMISSION_LABELS)
         labels.update(module.REGISTRATUR.berechtigungen())
+        zuordnung = database.get_permission_role_map()
+        rollenrechte = database.get_role_permission_map()
+
+        # Teil D von Plan 12: die fuenf Vergabewege nebeneinander. Bis hierher
+        # war jede der Karten fuer sich verstaendlich, aber niemand sah, wie sie
+        # zusammenwirken - und ob sie sich widersprechen.
+        wege_daten = dict(
+            rollen=rollen,
+            recht_zu_rolle=zuordnung,
+            rolle_zu_rechten=rollenrechte,
+            reaktionsrollen=database.get_reaction_roles(),
+            verdiente_rollen=database.get_earned_roles(),
+        )
         return render_template(
             "roles_mapping.html",
             rollen=rollen,
-            zuordnung=database.get_permission_role_map(),
-            rollenrechte=database.get_role_permission_map(),
+            zuordnung=zuordnung,
+            rollenrechte=rollenrechte,
             all_permissions=database.ALL_PERMISSIONS,
             alle_rechte=database.alle_berechtigungen(),
             permission_labels=labels,
+            uebersicht=vergabewege.uebersicht(**wege_daten),
+            befunde=vergabewege.befunde(**wege_daten),
         )
 
     @app.route("/roles-mapping/role-rights", methods=["POST"])

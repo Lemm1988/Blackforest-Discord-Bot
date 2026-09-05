@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 770 Tests)
+17. Testsuite (`tests/`, 810 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -609,6 +609,47 @@ reicht sie herein; wer nicht, bekommt weiterhin das Verhalten von vorher.
 Pflanzenquiz — ohne das Modul steht es gar nicht erst zur Vergabe, weil es dann nichts
 gäbe, wofür es gilt.
 
+### Die Übersicht „Wie Rollen vergeben werden" (05.09.2026)
+
+Vier Wege vergeben Rollen, ein fünfter vergibt Rechte direkt an eine Person, und alle
+werden an unterschiedlichen Stellen eingestellt. Jede Stelle für sich ist verständlich;
+zusammen ergaben sie einen Zustand, den niemand mehr überblickte. Patrick am 04.09.2026:
+„ich kann an mehreren stellen im bot rechte und rollendinge einstellen die irgendwie
+unabhängig voneinander laufen."
+
+Oben auf `/roles-mapping` steht deshalb eine Übersicht: eine Zeile je Rolle, die überhaupt
+irgendwo vorkommt, mit allen Wegen, die sie betreffen, und den Rechten, die sie mitbringt.
+Rollen ohne jeden Eintrag bleiben weg — der Server hat siebzehn davon, und leere Zeilen
+hätten die wenigen interessanten versteckt.
+
+Darüber stehen die **Befunde**, also die Stellen, an denen sich zwei Wege widersprechen.
+Sechs Arten werden geprüft:
+
+| Befund | Schwere | Was er bedeutet |
+|---|---|---|
+| Rückweg fehlt | hoch / mittel | Ein Recht holt eine Rolle, die dieses Recht nicht mitbringt |
+| `is_admin` über eine Rolle | hoch | Wer die Rolle vergeben darf, verteilt volle Backend-Rechte |
+| Rolle über dem Bot | hoch | Die Zuordnung ist eingestellt, greift aber nie |
+| Rolle nicht mehr vorhanden | mittel | Der Eintrag zeigt ins Leere |
+| Mehrere Vergabewege | mittel | Die Wege wissen nichts voneinander und überschreiben sich |
+| Kette | Hinweis | Eine automatisch vergebene Rolle bringt Backend-Rechte mit |
+
+Der erste Befund ist der Grund, warum es die Seite gibt. Er trat beim ersten Lauf sofort
+auf: `send_dm` zeigte auf die Moderator-Rolle, die Moderator-Rolle brachte `send_dm` aber
+nicht mit. Wer das Recht bekam, erhielt die Rolle — und beim nächsten Rechteabgleich nahm
+der Bot das Recht wieder weg, weil keine der Rollen es deckte. Übrig blieb eine Rolle ohne
+die passende Berechtigung, also genau der Zustand, den die ganze Umstellung ausschließen
+sollte. Ohne Übersicht fällt so etwas erst auf, wenn sich jemand beschwert.
+
+Die Schwere unterscheidet dabei, ob der Widerspruch im Betrieb wirklich zuschlägt: Nur
+wenn das Recht an **irgendeiner** Rolle hängt, holt der Abgleich es zurück. Hängt es an
+keiner, bleibt es bestehen und die Meldung ist eine Stufe niedriger.
+
+Die Logik steht in `bot/vergabewege.py` und ist bewusst rein rechnend — keine Datenbank,
+kein discord.py, kein Schreibzugriff. Eine Warnung kann dadurch nie versehentlich etwas
+verändern, und die 40 Tests in `tests/test_vergabewege.py` laufen ohne Server und ohne
+Discord-Verbindung.
+
 ### Was die Benutzerverwaltung zeigt
 
 `/users` stellt Backend-Rechte und tatsächliche Discord-Rollen gegenüber und unterscheidet
@@ -901,7 +942,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 770 Tests)
+## 17. Testsuite (`tests/`, 810 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -944,6 +985,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
 | `test_achievements_konfiguration.py` | 38 | Einstellbare Achievements: Schwellen und Zeitspannen samt ihrer Grenzen, unbrauchbare Werte aus dem Backend, und dass nur selbst angelegte gelöscht werden können |
 | `test_rechteabgleich.py` | 25 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, dass ohne Merker nichts entzogen wird und der Besitzer nie beschnitten werden kann |
+| `test_vergabewege.py` | 40 | Die fünf Vergabewege nebeneinander: dass ein Recht, das eine Rolle holt, von dieser Rolle auch zurückkommt, dass `is_admin` nie über eine Rolle läuft, dass Einträge auf gelöschte oder für den Bot unerreichbare Rollen auffallen und dass eine automatisch vergebene Rolle mit Backend-Rechten sichtbar wird |
 | `test_verstoesse.py` | 18 | Verstöße zurücksetzen (Zählung fällt, Historie bleibt) und endgültig löschen; insbesondere, dass die Reset-Grenze beim Löschen mit aufgeräumt wird — sonst würden spätere Verstöße stillschweigend nicht mehr zählen |
 | `test_interaktion.py` | 51 | Discords Drei-Sekunden-Frist: die Vorab-Bestätigung je Befehl, und eine Wache, dass die angegebene Antwortart zu dem passt, was der Befehl tatsächlich sendet |
 | `test_befehlsfehler.py` | 27 | Jeder absehbare Befehlsfehler sagt etwas; Prüfungen antworten nicht mehr selbst |
