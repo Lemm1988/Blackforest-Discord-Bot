@@ -984,3 +984,103 @@ Zweiter Merkposten: **`ping` taugt hier nicht als Beweis.** Auf diesem Pi
 scheitert `ping 1.1.1.1` mit 100 % Paketverlust, während HTTPS zu Discord in
 0,2 Sekunden antwortet — ICMP ist schlicht gefiltert. Für „ist der Pi online?"
 gehört ein `curl` gegen einen echten Dienst genommen, kein Ping.
+
+---
+
+## 11. Nachtrag (05.09.2026): WLAN brach ab und fragte nach dem Passwort
+
+### 11.1 Das Symptom
+
+Der Pi verlor immer wieder die Netzwerkverbindung und verlangte danach eine
+„Legitimierung" — also eine erneute Eingabe des WLAN-Passworts. Bis jemand von
+Hand bestätigte, blieb er offline. Alles, was von aussen auf ihn zugreift
+(Bot-Backend, Tunnel, Mycodo), war in dieser Zeit tot.
+
+### 11.2 Was das Log zeigte
+
+Die ganze Kette steht in vier Zeilen von `journalctl -u NetworkManager`:
+
+```
+supplicant interface state: 4way_handshake -> disconnected
+Activation: (wifi) disconnected during association, asking for new key
+state change: activated -> need-auth (reason 'supplicant-disconnect')
+… 120 Sekunden später …
+state change: need-auth -> failed (reason 'no-secrets')
+```
+
+Der WPA-Handshake bricht ab. NetworkManager kann nicht erkennen, **warum** er
+abbricht, und tippt auf den statistisch häufigsten Grund: falsches Passwort.
+Also fragt er nach. Antwortet niemand innerhalb von zwei Minuten, gibt er mit
+`no-secrets` endgültig auf und lässt die Verbindung liegen.
+
+**Das Passwort war nie das Problem.** `nmcli -s -f 802-11-wireless-security.psk-flags`
+lieferte `0 (keine)` — der Schlüssel liegt korrekt im System hinterlegt und ist
+nicht an eine angemeldete Sitzung gebunden. NetworkManager verwirft ihn beim
+blossen Verdacht auf einen Fehler selbst.
+
+### 11.3 Warum der Handshake abbrach — zwei Ursachen
+
+**Erstens schlief das Funkmodul.** Schon beim Booten meldete der Treiber:
+
+```
+brcmfmac: brcmf_cfg80211_set_power_mgmt: power save enabled
+```
+
+Der Broadcom-Chip des Pi legt sich zwischen den Paketen schlafen, verpasst
+Beacons und wird vom Access Point verworfen. Das ist der bekannte Klassiker bei
+Raspberry Pi im Dauerbetrieb und der Hauptgrund für genau dieses Fehlerbild.
+
+**Zweitens war der Kanal belegt.** Messung vom 05.09.2026, zwei unabhängige
+Scans mit demselben Ergebnis:
+
+| Kanal | Signal | Netz                             |
+|-------|--------|----------------------------------|
+| 1     | —      | frei                             |
+| 6     | 57     | DIRECT-70-HP DeskJet (Direktdruck) |
+| 11    | 35     | WLAN-925866                      |
+| 13    | **100**| `--` (versteckt, `40:86:CB:C8:E3:93`) |
+| 13    | 69     | **FRITZ!Box 7530 FQ**            |
+
+Ein fremdes, verstecktes Netz sendet auf exakt demselben Kanal wie die eigene
+FritzBox und kommt deutlich stärker an. Dazu überlappen sich 11 und 13, weil
+2,4-GHz-Kanäle 20 MHz breit sind, aber nur 5 MHz auseinanderliegen — nur
+1/5/9/13 beziehungsweise 1/6/11 sind überlappungsfrei.
+
+In 74 Minuten Laufzeit musste sich der Pi fünfmal neu anmelden, einmal davon
+endgültig gescheitert.
+
+### 11.4 Was gesetzt wurde
+
+```bash
+# Stromsparmodus des Funkmoduls dauerhaft aus
+sudo nmcli connection modify "FRITZ!Box 7530 FQ" 802-11-wireless.powersave 2
+
+# Bei Handshake-Fehlern unbegrenzt weiterversuchen statt nach dem Schluessel zu fragen
+sudo nmcli connection modify "FRITZ!Box 7530 FQ" connection.auth-retries 0
+
+# Sofort wirksam, ohne die laufende Verbindung zu trennen
+sudo iw dev wlan0 set power_save off
+```
+
+`connection.auth-retries 0` bedeutet **unbegrenzt** — damit kann
+NetworkManager den Zustand `no-secrets` gar nicht mehr erreichen und fragt nicht
+mehr nach dem Passwort. Die `nmcli`-Werte stehen in der Verbindungsdatei und
+gelten nach jedem Neustart; der `iw`-Befehl wirkt nur bis zum nächsten Neustart
+und dient allein dazu, den Stromsparmodus sofort loszuwerden, ohne die
+Verbindung neu aufzubauen.
+
+### 11.5 Offen: der Funkkanal
+
+Der Kanal gehört der FritzBox und wird dort unter *WLAN → Funkkanal* geändert,
+nicht auf dem Pi. Nach der Messung wäre **Kanal 1** die richtige Wahl: dort
+liegt nichts, während 13 den stärksten Sender der Umgebung trägt. Das ist
+bewusst nicht automatisch geschehen — Änderungen am Router trifft Patrick
+selbst.
+
+### 11.6 Merkposten
+
+`reason 'no-secrets'` heisst **nicht**, dass das Passwort fehlt oder falsch ist.
+Es heisst, dass NetworkManager nach einem gescheiterten Handshake aufgegeben
+hat. Wer bei dieser Meldung anfängt, das WLAN-Passwort neu einzutragen, behebt
+nichts und verliert Zeit — der Blick gehört auf die Zeile darüber, also darauf,
+warum der `4way_handshake` überhaupt abgebrochen ist.
