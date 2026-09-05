@@ -102,6 +102,7 @@ class Rechtesync(commands.Cog):
             spiegelrollen=spiegelrollen,
             zuordnung=database.get_permission_role_map(),
             handverliehen=eigene_rechte - database.bot_gesetzte_rechte(uid),
+            ausnahmen=database.ausnahmen(uid),
         )
         if massnahme.leer:
             return []
@@ -123,8 +124,15 @@ class Rechtesync(commands.Cog):
                                       database.rollen_quelle(herkunft.get(schluessel, "?")))
             geschehen.append(f"+{schluessel}")
         for schluessel in massnahme.entziehen:
-            database.revoke_user_permission(uid, schluessel, actor_id=None)
+            # bewusst=False: Der Abgleich raeumt nur auf, was keine Grundlage
+            # mehr hat. Daraus eine dauerhafte Ausnahme zu machen waere falsch -
+            # bekommt die Person die Rolle zurueck, soll sie wieder die volle
+            # Grundausstattung haben.
+            database.revoke_user_permission(uid, schluessel, actor_id=None, bewusst=False)
             geschehen.append(f"-{schluessel}")
+        for schluessel in massnahme.ausnahmen_aufheben:
+            database.revoke_user_permission(uid, schluessel, actor_id=None, bewusst=False)
+            geschehen.append(f"~{schluessel}")
 
         # Wer Rechte verliert, darf nicht mit einer offenen Backend-Sitzung
         # weiterarbeiten - sonst wirkt der Entzug erst beim naechsten Login.

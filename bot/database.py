@@ -615,6 +615,13 @@ def init_db():
         # dazukommt - niemand muss von Hand etwas anlegen.
         # Nachtraeglich hinzugekommen (04.09.2026), siehe earned_roles.
         _ensure_column(conn, "earned_roles", "ersetzt_niedrigere", "INTEGER NOT NULL DEFAULT 0")
+
+        # Bewusst entzogene Rechte (05.09.2026). Eine Zeile mit ausnahme = 1
+        # heisst: Die Person hat dieses Recht NICHT, obwohl ihre Rolle es
+        # hergibt - und der Abgleich soll es nicht nachziehen. Ohne diesen
+        # Merker ist "hat nicht" von "hatte noch nie" nicht zu unterscheiden,
+        # und jeder gezielte Entzug waere beim naechsten Lauf rueckgaengig.
+        _ensure_column(conn, "user_permissions", "ausnahme", "INTEGER NOT NULL DEFAULT 0")
         _cleanup_veraltetes(conn)
         _migrate_link_filter_mode(conn)
         _seed_achievements(conn)
@@ -828,7 +835,8 @@ def has_permission(discord_user_id, key: str, rollen=None) -> bool:
         return True
     with get_connection() as conn:
         row = conn.execute(
-            "SELECT 1 FROM user_permissions WHERE discord_user_id = ? AND permission_key IN (?, 'is_admin')",
+            "SELECT 1 FROM user_permissions WHERE discord_user_id = ? AND ausnahme = 0 "
+            "AND permission_key IN (?, 'is_admin')",
             (str(discord_user_id), key),
         ).fetchone()
         if row is not None:
@@ -908,33 +916,98 @@ def grant_permission(discord_user_id, key: str, granted_by):
         conn.execute(
             "INSERT INTO user_permissions (discord_user_id, permission_key, granted_by) VALUES (?, ?, ?) "
             "ON CONFLICT(discord_user_id, permission_key) DO UPDATE SET "
-            "granted_by = excluded.granted_by, granted_at = datetime('now')",
+            "granted_by = excluded.granted_by, granted_at = datetime('now'), ausnahme = 0",
             (str(discord_user_id), key, str(granted_by)),
         )
         conn.commit()
     log_audit(granted_by, "grant_permission", target_id=discord_user_id, detail=key)
 
 
-def revoke_user_permission(discord_user_id, key: str, actor_id=None):
+def revoke_user_permission(discord_user_id, key: str, actor_id=None, bewusst: bool = True):
+    """Nimmt einer Person ein Recht.
+
+    `bewusst=True` (ein Mensch im Backend oder ueber /revoke) hinterlaesst eine
+    Ausnahme: Die Person hat das Recht nicht mehr, und der Rollenabgleich zieht
+    es auch dann nicht nach, wenn ihre Rolle es hergaebe. Genau das ist der
+    Fall "Moderatoren koennen verschiedene rechte besitzen die andere nicht
+    haben" (Patrick, 05.09.2026).
+
+    `bewusst=False` ist der Abgleich selbst. Er raeumt nur auf, was ohnehin
+    keine Grundlage mehr hat - daraus eine dauerhafte Ausnahme zu machen waere
+    falsch: Bekommt die Person die Rolle spaeter zurueck, soll sie wieder die
+    volle Grundausstattung haben.
+    """
     with get_connection() as conn:
-        conn.execute(
-            "DELETE FROM user_permissions WHERE discord_user_id = ? AND permission_key = ?",
-            (str(discord_user_id), key),
-        )
+        if bewusst:
+            conn.execute(
+                "INSERT INTO user_permissions (discord_user_id, permission_key, granted_by, ausnahme) "
+                "VALUES (?, ?, ?, 1) ON CONFLICT(discord_user_id, permission_key) DO UPDATE SET "
+                "ausnahme = 1, granted_by = excluded.granted_by, granted_at = datetime('now')",
+                (str(discord_user_id), key, str(actor_id) if actor_id else "entzogen"),
+            )
+        else:
+            conn.execute(
+                "DELETE FROM user_permissions WHERE discord_user_id = ? AND permission_key = ?",
+                (str(discord_user_id), key),
+            )
         conn.commit()
     log_audit(actor_id, "revoke_permission", target_id=discord_user_id, detail=key)
+
+
+def ausnahmen(discord_user_id) -> set:
+    """Rechte, die dieser Person bewusst entzogen wurden.
+
+    Der Abgleich darf sie nicht vergeben, und die Benutzerverwaltung soll sie
+    als "bewusst entzogen" ausweisen - sonst sucht der Naechste, der sich
+    wundert, warum ein Moderator etwas nicht darf, den Fehler im Code.
+    """
+    with get_connection() as conn:
+        return {
+            row["permission_key"] for row in conn.execute(
+                "SELECT permission_key FROM user_permissions "
+                "WHERE discord_user_id = ? AND ausnahme = 1", (str(discord_user_id),),
+            )
+        }
+
+
+def loesche_ausnahmen(discord_user_id) -> None:
+    """Raeumt die Ausnahmen einer Person weg (wenn sie die Rolle ganz verliert).
+
+    Sonst wuerde eine Entscheidung von vor Monaten sie weiter einschraenken,
+    wenn sie die Rolle irgendwann neu bekommt - ohne dass irgendwo steht warum.
+    """
+    with get_connection() as conn:
+        conn.execute(
+            "DELETE FROM user_permissions WHERE discord_user_id = ? AND ausnahme = 1",
+            (str(discord_user_id),),
+        )
+        conn.commit()
 
 
 def set_user_permissions(discord_user_id, keys, granted_by):
     """Setzt EXAKT die übergebenen Flags für diesen User - alle anderen, die er
     vorher hatte, werden entfernt (für das Formular auf /users, das den kompletten
     Berechtigungssatz eines Users auf einmal speichert)."""
+    keys = list(keys)
     with get_connection() as conn:
+        # Was vorher da war und jetzt fehlt, wurde bewusst abgewaehlt und wird
+        # zur Ausnahme - sonst holt der Rollenabgleich es sofort zurueck.
+        vorher = {
+            row["permission_key"] for row in conn.execute(
+                "SELECT permission_key FROM user_permissions WHERE discord_user_id = ? AND ausnahme = 0",
+                (str(discord_user_id),),
+            )
+        }
         conn.execute("DELETE FROM user_permissions WHERE discord_user_id = ?", (str(discord_user_id),))
         for key in keys:
             conn.execute(
                 "INSERT INTO user_permissions (discord_user_id, permission_key, granted_by) VALUES (?, ?, ?)",
                 (str(discord_user_id), key, str(granted_by)),
+            )
+        for key in sorted(vorher - set(keys)):
+            conn.execute(
+                "INSERT INTO user_permissions (discord_user_id, permission_key, granted_by, ausnahme) "
+                "VALUES (?, ?, ?, 1)", (str(discord_user_id), key, str(granted_by)),
             )
         conn.commit()
     log_audit(granted_by, "set_user_permissions", target_id=discord_user_id, detail=", ".join(keys) if keys else "(keine)")
@@ -943,7 +1016,8 @@ def set_user_permissions(discord_user_id, keys, granted_by):
 def get_user_permissions(discord_user_id):
     with get_connection() as conn:
         rows = conn.execute(
-            "SELECT permission_key FROM user_permissions WHERE discord_user_id = ? ORDER BY permission_key",
+            "SELECT permission_key FROM user_permissions WHERE discord_user_id = ? "
+            "AND ausnahme = 0 ORDER BY permission_key",
             (str(discord_user_id),),
         ).fetchall()
         return [r["permission_key"] for r in rows]
@@ -1207,7 +1281,7 @@ def bot_gesetzte_rechte(discord_user_id) -> set:
             r["permission_key"]
             for r in conn.execute(
                 "SELECT permission_key FROM user_permissions "
-                "WHERE discord_user_id = ? AND granted_by LIKE ?",
+                "WHERE discord_user_id = ? AND ausnahme = 0 AND granted_by LIKE ?",
                 (str(discord_user_id), f"{ROLLEN_QUELLE}:%"),
             ).fetchall()
         }
@@ -1251,7 +1325,7 @@ def get_all_permissioned_users():
     with get_connection() as conn:
         rows = conn.execute(
             "SELECT discord_user_id, permission_key, granted_by, granted_at "
-            "FROM user_permissions ORDER BY discord_user_id, permission_key"
+            "FROM user_permissions WHERE ausnahme = 0 ORDER BY discord_user_id, permission_key"
         ).fetchall()
     users = {}
     for row in rows:

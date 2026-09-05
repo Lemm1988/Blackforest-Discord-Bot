@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 830 Tests)
+17. Testsuite (`tests/`, 843 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -609,60 +609,85 @@ reicht sie herein; wer nicht, bekommt weiterhin das Verhalten von vorher.
 Pflanzenquiz — ohne das Modul steht es gar nicht erst zur Vergabe, weil es dann nichts
 gäbe, wofür es gilt.
 
-### Rechte werden pro Person vergeben, nicht pro Rolle (05.09.2026)
+### Grundausstattung aus der Rolle, Feinschliff pro Person (05.09.2026)
 
-Bis zum Nachmittag des 05.09.2026 brachte die **Moderator**-Rolle fünf Rechte mit:
+Berechtigungen entstehen auf **zwei Ebenen**. Die Rolle liefert eine
+**Grundausstattung**: Was unter „Rolle bringt Berechtigung mit" eingestellt ist,
+bekommt jeder, der die Rolle auf dem Server erhält. Darauf setzt der
+**Feinschliff pro Person** — einzelne Rechte lassen sich zusätzlich vergeben oder
+gezielt entziehen, und diese Abweichung bleibt bestehen.
+
+Patrick am 05.09.2026: „wenn man auf dem server zum Moderator gemacht wird hat
+man erstmal alle Moderatoren rechte die über die rechteverwaltung eingestellt
+wurden aber man kann auch einzelne rechte vergeben und entziehen." Der Anlass
+davor: „es gibt moderatoren die sich um den schimpfwortfilter kümmern oder welche
+die kicken können.. manche können beides andere moderatoren können was anderes."
+
+Die Grundausstattung der Moderator-Rolle sind vier Rechte:
 `manage_badword_filter`, `manage_categories`, `moderate_members`,
-`submit_questions`, `verify_questions`. Wer die Rolle bekam, bekam alles.
+`verify_questions`. `submit_questions` gehört nicht dazu — das ist das Recht des
+**Ideenschmieds**, und diese Rolle bringt es weiterhin allein mit.
 
-Patrick hat das verworfen: „nicht jeder Moderator hat automatisch alle rechte im
-bot backend oder beim bot. es gibt moderatoren die sich um den schimpfwortfilter
-kümmern oder welche die kicken können.. manche können beides andere moderatoren
-können was anderes."
+#### Bewusst entzogene Rechte
 
-**Die Moderator-Rolle bringt seither keine Rechte mehr mit.** Sie ist die
-Auszeichnung — sie sagt nach außen, dass jemand eine Moderationsaufgabe hat.
-*Welche*, das steht einzeln in der Benutzerverwaltung. Zwei Moderatoren können
-völlig unterschiedliche Befugnisse haben, und das ist der Normalfall.
+Der Abgleich vergab bis zu diesem Tag stur alles, was die Rolle mitbringt und die
+Person noch nicht hat. Ein gezielter Entzug war damit beim nächsten Lauf wieder
+rückgängig gemacht, und die zweite Ebene existierte praktisch nicht.
 
-Die Karte „Rolle bringt Berechtigung mit" bleibt trotzdem sinnvoll — nur für
-Rollen, die tatsächlich eine feste Fähigkeit beschreiben. **Ideenschmied** etwa
-bringt weiterhin `submit_questions` mit: Wer sich durch 100 Quizfragen gearbeitet
-hat, darf eigene einreichen. Das ist eine Eigenschaft der Rolle, keine
-Aufgabenverteilung.
+Dafür gibt es in `user_permissions` die Spalte **`ausnahme`**. Eine Zeile mit
+`ausnahme = 1` heißt: Die Person hat dieses Recht nicht, obwohl ihre Rolle es
+hergäbe — und der Abgleich zieht es nicht nach. Bewusst eine Spalte und keine
+zweite Tabelle, aus demselben Grund wie bei `granted_by`: Zwei Tabellen könnten
+auseinanderlaufen, und dann wüsste niemand, welche recht hat.
 
-**`send_dm` und `create_embed` sind Admin-Funktionen.** Mit ihnen tritt man im
-Namen des Bots an Mitglieder heran, deshalb liegen sie standardmäßig beim
-Besitzer. Weitergegeben werden sie einzeln im Backend — und sie lösen die
-Moderator-Auszeichnung auf dem Server aus, damit erkennbar bleibt, wer im Namen
-des Bots sprechen kann.
+| Was geschieht | Ergebnis |
+|---|---|
+| Entzug in der Benutzerverwaltung oder über `/revoke` | `ausnahme = 1`, das Recht kommt nicht zurück |
+| Abwählen im Formular auf `/users` | dasselbe — jedes entfernte Häkchen wird zur Ausnahme |
+| Erneutes Vergeben | `ausnahme = 0`, das Recht gilt wieder |
+| Der Abgleich räumt auf (`bewusst=False`) | Zeile wird gelöscht, **keine** Ausnahme |
+| Die Rolle fällt ganz weg | Ausnahmen werden mit weggeräumt |
+
+Der letzte Fall ist wichtig: Ohne die Rolle gäbe es das Recht ohnehin nicht, die
+Ausnahme bedeutet also nichts mehr. Bliebe sie stehen, würde eine Entscheidung
+von damals die Person auch dann noch einschränken, wenn sie die Rolle irgendwann
+neu bekommt — ohne dass irgendwo steht warum.
+
+Dass der Abgleich selbst keine Ausnahmen erzeugt, ist der zweite wichtige Punkt.
+Er räumt nur auf, was keine Grundlage mehr hat; daraus eine dauerhafte Sperre zu
+machen wäre falsch.
+
+**Sichtbar ist das in der Benutzerverwaltung:** Ein bewusst entzogenes Recht
+steht durchgestrichen neben den vorhandenen, mit `↺` zum Wiedervergeben. Ohne
+diese Anzeige wäre die Funktion schlimmer als ihr Fehlen — wer sich wundert,
+warum ein Moderator etwas nicht darf, fände die Rolle korrekt gesetzt und suchte
+den Fehler im Code.
 
 #### Was ein einzeln vergebenes Recht am Leben hält
 
-Fast jedes Recht wird von *irgendeiner* Rolle geführt (die Manager-Rolle trägt
-neun), und die Regel vom Vormittag lautet: Ein rollengebundenes Recht gilt nur,
-solange eine Rolle es deckt. Ein einzeln vergebenes Recht wäre damit beim
-nächsten Abgleich sofort wieder weg.
+Fast jedes Recht wird von *irgendeiner* Rolle geführt, und die Regel vom
+Vormittag lautet: Ein rollengebundenes Recht gilt nur, solange eine Rolle es
+deckt. Ein zusätzlich vergebenes Recht wäre damit beim nächsten Abgleich weg.
 
 Geschützt ist deshalb, was ein Mensch eingetragen hat **und** dessen zugeordnete
-Rolle die Person gerade trägt. Wer `manage_badword_filter` bekommt, erhält die
-Moderator-Auszeichnung, und solange er sie trägt, bleibt das Recht.
+Rolle die Person gerade trägt. Wer `send_dm` bekommt, erhält die
+Moderator-Auszeichnung, und solange er sie trägt, bleibt das Recht. Dass dabei
+nicht nur vom Bot gesetzte Rollen zählen, ist Absicht: doc_loomis und sven tragen
+die Moderator-Rolle, seit ein Mensch sie ihnen gab.
 
-Dass dabei nicht nur vom Bot gesetzte Rollen zählen, ist Absicht: doc_loomis und
-sven trugen die Moderator-Rolle, seit ein Mensch sie ihnen gab. Verlangte der
-Schutz eine vom Bot gesetzte Rolle, verlören beide ihre Einzelrechte.
+#### Beide Richtungen, für jede Rolle
 
-Der Schutz endet mit der Rolle. Wird sie in Discord entzogen, gehen die Rechte
-mit — auf die Frage, ob einzeln vergebene Rechte das überleben sollen, hat
-Patrick am 05.09.2026 mit Nein geantwortet: Die Rolle bleibt das Signal, dass
-jemand überhaupt eine Aufgabe hat. Wer nur ein einzelnes Recht loswerden soll,
-dem nimmt man es im Backend; die Rolle bleibt, solange ein Recht übrig ist.
+„wenn ich im bot ein recht gebe muss es auf dem server auch konsistent gesetzt
+und entzogen werden wenn ich es im Bot wieder entferne.. genauso muss es
+andersrum auch laufen." Das gilt nicht nur für Moderator. Für den Ideenschmied
+heißt es: Wer `submit_questions` im Backend bekommt, erhält die Rolle auf dem
+Server; wer die Rolle verliert, verliert das Recht.
 
-**Ein Recht ohne zugeordnete Rolle ist nicht geschützt.** `submit_questions`
-zeigt auf keine Auszeichnung — es kommt über Ideenschmied, Supporter oder Server
-Booster. Bei der Umstellung haben doc_loomis und sven es deshalb verloren; sie
-tragen keine dieser Rollen. Wer es einem Moderator geben will, gibt ihm die
-Ideenschmied-Rolle.
+**`send_dm` und `create_embed` sind Admin-Funktionen.** Mit ihnen tritt man im
+Namen des Bots an Mitglieder heran, deshalb liegen sie standardmäßig beim
+Besitzer und gehören nicht zur Grundausstattung. Weitergegeben werden sie einzeln
+im Backend — und sie lösen die Moderator-Auszeichnung aus, damit erkennbar
+bleibt, wer im Namen des Bots sprechen kann.
 
 ### Die Übersicht „Wie Rollen vergeben werden" (05.09.2026)
 
@@ -997,7 +1022,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 830 Tests)
+## 17. Testsuite (`tests/`, 843 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1039,7 +1064,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
 | `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
 | `test_achievements_konfiguration.py` | 38 | Einstellbare Achievements: Schwellen und Zeitspannen samt ihrer Grenzen, unbrauchbare Werte aus dem Backend, und dass nur selbst angelegte gelöscht werden können |
-| `test_rechteabgleich.py` | 42 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, der Besitzer nie beschnitten wird — und dass eine Rolle, die der Bot wegen eines Rechts vergeben hat, nicht zurückwirkt |
+| `test_rechteabgleich.py` | 55 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, der Besitzer nie beschnitten wird, dass eine Rolle, die der Bot wegen eines Rechts vergeben hat, nicht zurückwirkt — und dass die Grundausstattung einer Rolle greift, ein bewusst entzogenes Recht aber nicht nachgezogen wird |
 | `test_vergabewege.py` | 40 | Die fünf Vergabewege nebeneinander: dass ein Recht, das eine Rolle holt, von dieser Rolle auch zurückkommt, dass `is_admin` nie über eine Rolle läuft, dass Einträge auf gelöschte oder für den Bot unerreichbare Rollen auffallen und dass eine automatisch vergebene Rolle mit Backend-Rechten sichtbar wird |
 | `test_verstoesse.py` | 18 | Verstöße zurücksetzen (Zählung fällt, Historie bleibt) und endgültig löschen; insbesondere, dass die Reset-Grenze beim Löschen mit aufgeräumt wird — sonst würden spätere Verstöße stillschweigend nicht mehr zählen |
 | `test_interaktion.py` | 51 | Discords Drei-Sekunden-Frist: die Vorab-Bestätigung je Befehl, und eine Wache, dass die angegebene Antwortart zu dem passt, was der Befehl tatsächlich sendet |

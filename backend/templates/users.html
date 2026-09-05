@@ -86,6 +86,21 @@
                                 </form>
                                 {% endif %}
                                 {% endfor %}
+
+                                {% for key in u.ausnahmen %}
+                                {% if not (bot_owner_id and u.discord_user_id == bot_owner_id) %}
+                                <form method="POST" action="{{ url_for('users_grant_one') }}" class="d-inline">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <input type="hidden" name="user_id" value="{{ u.discord_user_id }}">
+                                    <input type="hidden" name="permission" value="{{ key }}">
+                                    <button type="submit" class="badge border border-secondary bg-transparent text-secondary px-2 py-2"
+                                        style="text-decoration: line-through;"
+                                        title="Bewusst entzogen — die Rolle würde dieses Recht mitbringen, es wird aber nicht nachgezogen. Klicken, um es wieder zu vergeben.">
+                                        {{ permission_labels.get(key, key) }} ↺
+                                    </button>
+                                </form>
+                                {% endif %}
+                                {% endfor %}
                             </div>
                         </td>
                         <td class="small">

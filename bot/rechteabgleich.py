@@ -39,9 +39,18 @@ class Rechtemassnahme:
     vergeben: list[str] = field(default_factory=list)
     entziehen: list[str] = field(default_factory=list)
 
+    ausnahmen_aufheben: list[str] = field(default_factory=list)
+    """Bewusst entzogene Rechte, deren Rolle die Person gar nicht mehr hat.
+
+    Sie werden weggeräumt, weil sie nichts mehr bedeuten: Ohne die Rolle gäbe
+    es das Recht ohnehin nicht. Bliebe die Ausnahme stehen, würde eine
+    Entscheidung von damals die Person auch dann noch einschränken, wenn sie
+    die Rolle irgendwann neu bekommt — ohne dass irgendwo steht warum.
+    """
+
     @property
     def leer(self) -> bool:
-        return not (self.vergeben or self.entziehen)
+        return not (self.vergeben or self.entziehen or self.ausnahmen_aufheben)
 
 
 def abgeleitete_rechte(rollen: set[str], rollenrechte: dict[str, set[str]]) -> set[str]:
@@ -81,6 +90,7 @@ def massnahmen(
     spiegelrollen: set[str] | frozenset = frozenset(),
     zuordnung: dict[str, str] | None = None,
     handverliehen: set[str] | frozenset = frozenset(),
+    ausnahmen: set[str] | frozenset = frozenset(),
 ) -> Rechtemassnahme:
     """Was am Backend zu tun wäre, damit es zu den Rollen passt.
 
@@ -129,6 +139,15 @@ def massnahmen(
     Der Schutz endet mit der Rolle. Wird sie in Discord entzogen, ist sie keine
     Spiegelrolle mehr, sondern gar keine — und die erste Regel greift wieder:
     Rechte, die an ihr hingen, gehen mit.
+
+    **Die Rolle liefert eine Grundausstattung, keine Zwangsjacke.** Wer auf dem
+    Server zum Moderator gemacht wird, bekommt zunächst alles, was für die Rolle
+    eingestellt ist. Davon lässt sich pro Person abweichen: `ausnahmen` sind
+    Rechte, die ein Mensch bewusst entzogen hat, und sie werden nicht wieder
+    nachgezogen. Patrick am 05.09.2026: „wenn man auf dem server zum Moderator
+    gemacht wird hat man erstmal alle Moderatoren rechte die über die
+    rechteverwaltung eingestellt wurden aber man kann auch einzelne rechte
+    vergeben und entziehen."
     """
     echte_rollen = set(rollen) - set(spiegelrollen)
     zustehend = abgeleitete_rechte(echte_rollen, rollenrechte)
@@ -150,7 +169,13 @@ def massnahmen(
     }
 
     massnahme = Rechtemassnahme()
-    massnahme.vergeben = sorted(zustehend - eigene_rechte)
+    # Bewusst entzogene Rechte werden nicht nachgezogen. Ohne das waere jeder
+    # gezielte Entzug beim naechsten Abgleich rueckgaengig gemacht, und die
+    # Grundausstattung einer Rolle liesse sich fuer niemanden anpassen -
+    # Patrick, 05.09.2026: "man kann auch einzelne rechte vergeben und
+    # entziehen".
+    massnahme.vergeben = sorted(zustehend - eigene_rechte - set(ausnahmen))
+    massnahme.ausnahmen_aufheben = sorted(set(ausnahmen) - zustehend)
     if not geschuetzt:
         massnahme.entziehen = sorted(
             (eigene_rechte & rollenverwaltete_rechte(rollenrechte))

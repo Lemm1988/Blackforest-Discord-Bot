@@ -2020,6 +2020,10 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             )
             u["passt"] = ergebnis.passt
             u["abgleich"] = rollenabgleich.zusammenfassung(ergebnis, rollennamen)
+            # Bewusst entzogene Rechte gehoeren sichtbar daneben. Sonst sucht
+            # der Naechste, der sich wundert, warum ein Moderator etwas nicht
+            # darf, den Fehler im Code statt in der Einstellung.
+            u["ausnahmen"] = sorted(database.ausnahmen(uid))
 
         # Leute MIT zugeordneter Rolle, aber OHNE Backend-Rechte tauchen in
         # get_all_permissioned_users() gar nicht auf - sie haben ja keinen
@@ -2081,6 +2085,25 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         if user_id and permission in database.ALL_PERMISSIONS:
             database.revoke_user_permission(user_id, permission, actor_id=session["discord_user_id"])
             _rollen_nachziehen(user_id, f"Recht {permission} entzogen")
+        return redirect(url_for("users_page"))
+
+    @app.route("/users/grant_one", methods=["POST"])
+    @require_permission("is_admin")
+    def users_grant_one():
+        """Hebt einen bewussten Entzug wieder auf.
+
+        Das Gegenstueck zu revoke_one. `grant_permission` setzt die Ausnahme
+        zurueck und vergibt das Recht in einem Schritt - es sofort zu vergeben
+        statt nur die Ausnahme zu loeschen ist Absicht: Sonst haette die Person
+        das Recht erst nach dem naechsten Rollenabgleich wieder, und niemand
+        wuesste, worauf er wartet.
+        """
+        user_id = request.form.get("user_id", "").strip()
+        permission = request.form.get("permission", "").strip()
+        if user_id and permission in database.alle_berechtigungen():
+            database.grant_permission(user_id, permission, granted_by=session["discord_user_id"])
+            _rollen_nachziehen(user_id, f"Recht {permission} vergeben")
+            flash(f"Recht {permission} wieder vergeben.", "success")
         return redirect(url_for("users_page"))
 
     # --- Audit-Log (nur is_admin/Owner - reine Ansicht, keine Aenderungen moeglich) ---

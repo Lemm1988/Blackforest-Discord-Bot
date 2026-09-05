@@ -464,3 +464,121 @@ def test_ein_recht_ohne_zugeordnete_rolle_ist_nicht_geschuetzt():
         zuordnung=SPIEGEL_ZUORDNUNG, handverliehen={"submit_questions"},
     )
     assert m.entziehen == ["submit_questions"]
+
+
+# --------------------------------------------------------------------------
+# Grundausstattung und Abweichung (Patrick, 05.09.2026)
+#
+#   "wenn man auf dem server zum Moderator gemacht wird hat man erstmal alle
+#    Moderatoren rechte die ueber die rechteverwaltung eingestellt wurden aber
+#    man kann auch einzelne rechte vergeben und entziehen"
+#
+# Zwei Ebenen: Die Rolle liefert eine Voreinstellung, davon wird pro Person
+# abgewichen. Ein Abgleich, der stur alles nachzieht, was die Rolle mitbringt,
+# macht jeden gezielten Entzug beim naechsten Lauf wieder rueckgaengig - und
+# damit waere die zweite Ebene wertlos.
+# --------------------------------------------------------------------------
+
+GRUNDAUSSTATTUNG = {"manage_badword_filter", "manage_categories",
+                    "moderate_members", "verify_questions"}
+MIT_GRUNDAUSSTATTUNG = {MODERATOR: GRUNDAUSSTATTUNG,
+                        MANAGER: GRUNDAUSSTATTUNG | {"send_dm", "create_embed"}}
+
+
+def _mod(**abweichungen):
+    grund = dict(rollen={MODERATOR}, rollenrechte=MIT_GRUNDAUSSTATTUNG,
+                 eigene_rechte=set(), zuordnung=SPIEGEL_ZUORDNUNG,
+                 handverliehen=set(), ausnahmen=set())
+    grund.update(abweichungen)
+    return rechteabgleich.massnahmen(**grund)
+
+
+def test_wer_moderator_wird_bekommt_die_grundausstattung():
+    assert set(_mod().vergeben) == GRUNDAUSSTATTUNG
+
+
+def test_ein_bewusst_entzogenes_recht_wird_nicht_nachgezogen():
+    """Der Kern von Plan 16. Ohne die Ausnahme kaeme das Recht beim naechsten
+    Abgleich sofort zurueck, und kein Moderator liesse sich zuschneiden."""
+    eigene = GRUNDAUSSTATTUNG - {"moderate_members"}
+    m = _mod(eigene_rechte=eigene, handverliehen=eigene,
+             ausnahmen={"moderate_members"})
+    assert m.vergeben == []
+
+
+def test_die_ausnahme_entzieht_nicht_zusaetzlich():
+    """Sie verhindert nur das Nachziehen. Entzogen wurde das Recht schon."""
+    eigene = GRUNDAUSSTATTUNG - {"moderate_members"}
+    m = _mod(eigene_rechte=eigene, handverliehen=eigene,
+             ausnahmen={"moderate_members"})
+    assert m.entziehen == []
+
+
+def test_zwei_moderatoren_mit_verschiedenem_zuschnitt():
+    """Einer kuemmert sich um den Filter, einer kickt - beide behalten ihres."""
+    nur_filter = GRUNDAUSSTATTUNG - {"moderate_members"}
+    nur_kick = GRUNDAUSSTATTUNG - {"manage_badword_filter"}
+    a = _mod(eigene_rechte=nur_filter, handverliehen=nur_filter,
+             ausnahmen={"moderate_members"})
+    b = _mod(eigene_rechte=nur_kick, handverliehen=nur_kick,
+             ausnahmen={"manage_badword_filter"})
+    assert a.leer and b.leer
+
+
+def test_ein_zusatzrecht_ueber_die_grundausstattung_hinaus_bleibt():
+    m = _mod(eigene_rechte=GRUNDAUSSTATTUNG | {"send_dm"}, handverliehen={"send_dm"})
+    assert m.entziehen == []
+
+
+def test_ohne_ausnahme_wird_die_luecke_wieder_gefuellt():
+    """Die Gegenprobe: Fehlt die Markierung, holt der Abgleich das Recht
+    zurueck. Genau dieses Verhalten war der Anlass fuer Plan 16."""
+    eigene = GRUNDAUSSTATTUNG - {"moderate_members"}
+    m = _mod(eigene_rechte=eigene, handverliehen=eigene, ausnahmen=set())
+    assert m.vergeben == ["moderate_members"]
+
+
+def test_ohne_die_rolle_wird_die_ausnahme_weggeraeumt():
+    """Eine Ausnahme ohne Rolle bedeutet nichts mehr - ohne die Rolle gaebe es
+    das Recht ohnehin nicht. Bliebe sie stehen, wuerde eine Entscheidung von
+    damals die Person auch dann noch einschraenken, wenn sie die Rolle
+    irgendwann neu bekommt."""
+    m = _mod(rollen=set(), ausnahmen={"moderate_members"})
+    assert m.ausnahmen_aufheben == ["moderate_members"]
+
+
+def test_solange_die_rolle_da_ist_bleibt_die_ausnahme():
+    m = _mod(eigene_rechte=GRUNDAUSSTATTUNG - {"moderate_members"},
+             ausnahmen={"moderate_members"})
+    assert m.ausnahmen_aufheben == []
+
+
+def test_eine_aufzuraeumende_ausnahme_macht_die_massnahme_nicht_leer():
+    """Sonst kaeme der Abgleich nie dazu, sie wegzuraeumen."""
+    m = _mod(rollen=set(), ausnahmen={"moderate_members"})
+    assert not m.leer
+
+
+def test_die_datenbank_kennt_die_ausnahmespalte():
+    quelle = (REPO / "bot" / "database.py").read_text(encoding="utf-8")
+    assert '"user_permissions", "ausnahme"' in quelle
+    assert "def ausnahmen(" in quelle
+
+
+def test_lesende_abfragen_uebergehen_ausnahmen():
+    """Eine Ausnahme ist kein Recht. Wuerde has_permission sie mitzaehlen,
+    haette der Entzug im Backend gar keine Wirkung."""
+    quelle = (REPO / "bot" / "database.py").read_text(encoding="utf-8")
+    for stelle in ("AND ausnahme = 0 \"\n            \"AND permission_key IN (?, 'is_admin')",
+                   "\"AND ausnahme = 0 ORDER BY permission_key\""):
+        assert stelle in quelle, stelle
+
+
+def test_der_abgleich_erzeugt_keine_ausnahmen():
+    """bewusst=False: Was der Abgleich wegraeumt, ist keine Entscheidung eines
+    Menschen und darf nicht dauerhaft blockieren."""
+    assert "bewusst=False" in COG
+
+
+def test_das_cog_reicht_die_ausnahmen_herein():
+    assert "ausnahmen=database.ausnahmen(uid)" in COG
