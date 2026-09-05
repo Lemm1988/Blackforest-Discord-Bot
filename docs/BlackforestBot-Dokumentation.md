@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 702 Tests)
+17. Testsuite (`tests/`, 725 Tests)
 18. Offene Punkte (Stand 03.09.2026, abends)
 19. Chronik des 03.09.2026
 
@@ -900,7 +900,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 702 Tests)
+## 17. Testsuite (`tests/`, 725 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -941,6 +941,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_moderation_hierarchy.py` | 7 | Rollenhierarchie als eigene Schranke neben den Berechtigungen |
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
 | `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
+| `test_rechteabgleich.py` | 23 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, dass ohne Merker nichts entzogen wird und der Besitzer nie beschnitten werden kann |
 | `test_verstoesse.py` | 18 | Verstöße zurücksetzen (Zählung fällt, Historie bleibt) und endgültig löschen; insbesondere, dass die Reset-Grenze beim Löschen mit aufgeräumt wird — sonst würden spätere Verstöße stillschweigend nicht mehr zählen |
 | `test_interaktion.py` | 51 | Discords Drei-Sekunden-Frist: die Vorab-Bestätigung je Befehl, und eine Wache, dass die angegebene Antwortart zu dem passt, was der Befehl tatsächlich sendet |
 | `test_befehlsfehler.py` | 27 | Jeder absehbare Befehlsfehler sagt etwas; Prüfungen antworten nicht mehr selbst |
@@ -1089,3 +1090,36 @@ Die Antwortart (`öffentlich`, `vertraulich`, `manuell`) steht dabei am Befehl
 selbst im `extras`-Feld, weil sich nachträglich nicht mehr ändern lässt, ob eine
 Antwort öffentlich wird. `tests/test_interaktion.py` wacht darüber, dass die
 Angabe zu dem passt, was der Befehl tatsächlich sendet.
+
+### Rollen und Rechte in beide Richtungen (05.09.2026)
+
+Bis zu diesem Tag lief nur eine Richtung, und die auch nur halb:
+
+| Richtung | vorher | jetzt |
+|---|---|---|
+| Recht → Rolle | bei jeder Rechteänderung im Backend (`_rollen_nachziehen`), plus Knopf für alle | unverändert |
+| Rolle → Recht | **gab es nicht** | `cogs/rechtesync.py`, bei jeder Rollenänderung und einmal nach dem Start |
+
+Sichtbar wurde die Lücke an drei Personen: Zwei trugen die Moderator-Rolle ohne
+jede Berechtigung, einer hatte sämtliche Moderationsrechte, ohne die Rolle zu
+tragen. Die Benutzerverwaltung wies auf beides hin — behoben wurde es nie, weil
+niemand den Knopf drückte und die Gegenrichtung fehlte.
+
+**Drei Sicherungen** machen den Unterschied zwischen brauchbar und gefährlich:
+
+1. **`is_admin` läuft nie über eine Rolle**, weder hin noch zurück. Es ist der
+   Generalschlüssel; ein versehentlicher Rollenklick dürfte niemandem die volle
+   Kontrolle geben, und ein versehentlich entfernter dürfte nicht den letzten
+   Admin aussperren.
+2. **Der Bot nimmt nur weg, was er selbst gegeben hat.** Erkennbar an
+   `user_permissions.granted_by`, das für abgeleitete Rechte `rolle:<ID>`
+   enthält. Ohne diese Unterscheidung hätte der erste Durchlauf jedem seine von
+   Hand vergebenen Rechte genommen — aus Sicht des Abgleichs sieht ein
+   handverliehenes Recht ohne passende Rolle genauso aus wie ein veraltetes.
+   Vergibt ein Admin das Recht später ausdrücklich, überschreibt das `granted_by`
+   und der Abgleich fasst es nicht mehr an.
+3. **Der Besitzer wird nie beschnitten.** Er soll sich nicht durch eine
+   Rollenänderung aus seinem eigenen Backend aussperren können.
+
+Bewusst dieselbe Spalte statt einer eigenen Merker-Tabelle: Zwei Tabellen
+könnten auseinanderlaufen, und dann wüsste niemand, welche recht hat.

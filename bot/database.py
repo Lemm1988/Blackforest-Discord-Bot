@@ -1135,6 +1135,45 @@ def vergiss_rollenvergabe(discord_user_id, role_id) -> None:
         conn.commit()
 
 
+#: Kennzeichnet in user_permissions.granted_by ein Recht, das der Bot wegen
+#: einer Discord-Rolle gesetzt hat - gespeichert als "rolle:<Rollen-ID>".
+#:
+#: Bewusst dieselbe Spalte statt einer eigenen Merker-Tabelle: Zwei Tabellen
+#: koennten auseinanderlaufen, und dann wuesste niemand, welche recht hat. So
+#: gibt es genau eine Wahrheit, und sie steht dort, wo ohnehin schon steht, wer
+#: das Recht vergeben hat.
+ROLLEN_QUELLE = "rolle"
+
+
+def rollen_quelle(role_id) -> str:
+    """Der granted_by-Wert für ein aus einer Rolle abgeleitetes Recht."""
+    return f"{ROLLEN_QUELLE}:{role_id}"
+
+
+def bot_gesetzte_rechte(discord_user_id) -> set:
+    """Welche Rechte der Bot wegen einer Rolle gesetzt hat.
+
+    Das Gegenstück zu bot_vergebene_rollen(). Nur diese Rechte darf der
+    Abgleich wieder entziehen - alles andere hat ein Mensch vergeben und geht
+    ihn nichts an.
+
+    Vergibt ein Admin ein solches Recht spaeter von Hand ueber die
+    Benutzerverwaltung, ueberschreibt das granted_by - das Recht gilt dann als
+    handverliehen und der Abgleich fasst es nicht mehr an. Das ist gewollt: Wer
+    es ausdruecklich gesetzt hat, soll es nicht durch eine Rollenaenderung
+    wieder verlieren.
+    """
+    with get_connection() as conn:
+        return {
+            r["permission_key"]
+            for r in conn.execute(
+                "SELECT permission_key FROM user_permissions "
+                "WHERE discord_user_id = ? AND granted_by LIKE ?",
+                (str(discord_user_id), f"{ROLLEN_QUELLE}:%"),
+            ).fetchall()
+        }
+
+
 def get_permission_role_map() -> dict:
     """{Backend-Recht: Discord-Rollen-ID}. Leer, solange nichts zugeordnet ist -
     dann macht der Abgleich schlicht nichts."""

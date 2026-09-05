@@ -54,7 +54,7 @@ _flask_started = False
 
 
 async def load_cogs():
-    for extension in ("hilfe", "quiz", "xp_level", "plants", "fun", "moderation", "reactions", "verdiente_rollen", "giveaway", "admin", "personality"):
+    for extension in ("hilfe", "quiz", "xp_level", "plants", "fun", "moderation", "reactions", "verdiente_rollen", "giveaway", "admin", "personality", "rechtesync"):
         await bot.load_extension(f"cogs.{extension}")
 
 
