@@ -1169,3 +1169,42 @@ jemand tatsächlich hat. Vorher stand dort die vollständige Liste samt der
 verschlossenen; auf einer Seite dieses Namens ist das eher Katalog als Vitrine.
 Wie viele es insgesamt gibt, bleibt als bloße Zahl stehen — das verrät keines
 und gibt trotzdem ein Ziel.
+
+### Der Tunnel hing an IPv6 (05.09.2026)
+
+Symptom: Die Android-App erreichte das Backend „manchmal nicht", und wenn doch,
+mit langen Ladezeiten. Die Diagnose der App zeigte, dass das Handy den Pi-Knoten
+`d2c93fd899…` nicht auflösen konnte.
+
+Der Fehler lag weder am Bot noch an der App. Gemessen auf dem Pi:
+
+| Prüfung | vorher | nachher |
+|---|---|---|
+| Backend direkt (`127.0.0.1:5000`) | 0,6 ms | unverändert |
+| DNS-Auflösung | 2–3 s | 9–13 ms |
+| Relay über IPv6 | scheitert nach 15 ms | wird nicht mehr versucht |
+| Relay über IPv4 | 200 in 0,39 s | 200 in 0,28 s |
+| Tunnel-Neustarts | 9 pro Stunde | 0 |
+
+**Ursache:** Der Pi hatte als einzige IPv6-Adresse eine ULA aus dem
+`fd00::/8`-Bereich (`fdc9:…`). Die gilt im Hausnetz, ist im Internet aber nicht
+routbar. Der Pi meldete sie trotzdem als gültige Adresse und versuchte jede
+Verbindung zuerst darüber. Jeder Versuch war zum Scheitern verurteilt und kostete
+Zeit — daher die Ladezeiten.
+
+Für den dumbpipe-Tunnel war es gravierender: Ohne Relay-Verbindung
+(`Failed to connect to the home relay` bei jedem Start) veröffentlichte er seine
+Adresse nicht im pkarr-DNS. Das Handy suchte dann einen Knoten, der sich nirgends
+eingetragen hatte — und fand ihn in den Lücken zwischen den Neustarts nicht.
+
+**Behebung:** IPv6 auf dem Pi abgeschaltet, `/etc/sysctl.d/99-ipv6-aus.conf`.
+`lo` bleibt bewusst aktiv, weil manche Dienste auf `::1` binden. Rückgängig zu
+machen, indem man die Datei löscht und `sudo sysctl --system` ausführt.
+
+Die Knoten-Kennung des Tunnels ist über Neustarts hinweg stabil — bereits
+verteilte Tickets in der App bleiben nach so einem Eingriff gültig und müssen
+nicht neu erzeugt werden.
+
+**Merkposten für ähnliche Fälle:** Dass die Verbindung „manchmal" funktioniert,
+war der entscheidende Hinweis. Ein durchgehend defekter Dienst sieht anders aus
+als einer, der sich alle 60 bis 90 Sekunden neu startet.
