@@ -163,9 +163,25 @@ def massnahmen(
     # koennen was anderes"). Wuerde der Schutz eine vom Bot gesetzte Rolle
     # verlangen, verloere jeder seine Einzelrechte, der die Rolle schon vorher
     # von Hand trug.
+    zuordnung = zuordnung or {}
     ausloeser = {
         recht for recht in handverliehen
-        if (zuordnung or {}).get(recht) in set(rollen)
+        # Entweder die zugeordnete Rolle wird gerade getragen ...
+        if zuordnung.get(recht) in set(rollen)
+        # ... oder das Recht ist ueberhaupt keiner Rolle zugeordnet.
+        #
+        # Der zweite Fall ist eine Sicherung gegen einen Fehler, der am
+        # 05.09.2026 echten Schaden angerichtet hat: `create_giveaway` stand in
+        # keiner Zuordnung. Wer es vergab, loeste damit keine Rolle aus - der
+        # Traeger verlor die Moderator-Auszeichnung, und weil die Manager-Rolle
+        # dasselbe Recht fuehrt, galt es als rollenverwaltet und wurde ihm
+        # sofort wieder entzogen. Am Ende hatte er gar nichts mehr und
+        # verschwand aus der Benutzerverwaltung.
+        #
+        # Ein Recht, das keine Rolle repraesentiert, kann auch an keiner
+        # haengen. Es ist eine reine Einzelvergabe und geht den Rollenabgleich
+        # nichts an.
+        or recht not in zuordnung
     }
 
     massnahme = Rechtemassnahme()

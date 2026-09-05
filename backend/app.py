@@ -1500,6 +1500,17 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     # --- Benutzerverwaltung (NUR is_admin - es gibt bewusst kein eigenes
     # "manage_users"-Flag, siehe database.ALL_PERMISSIONS) ---
 
+    def _alle_rechte_labels() -> dict:
+        """Bezeichnungen der Kern-Rechte plus der Rechte installierter Module.
+
+        Ohne die Modul-Rechte stand `submit_questions` in der
+        Benutzerverwaltung als roher Schluessel da und liess sich weder
+        vergeben noch entziehen.
+        """
+        labels = dict(config.PERMISSION_LABELS)
+        labels.update(module.REGISTRATUR.berechtigungen())
+        return labels
+
     def _discord_rollen():
         """Alle Rollen des Servers, plus die Angabe, welche der Bot verwalten kann.
 
@@ -1765,8 +1776,16 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
                 rolle = guild.get_role(int(role_id))
                 if rolle is None:
                     continue
-                await member.add_roles(rolle, reason=f"Backend-Berechtigung ({grund})")
+                # Merker vor der Vergabe: Discord meldet die Aenderung sofort
+                # zurueck, und der Listener im Bot wuerde die Rolle sonst fuer
+                # von Hand vergeben halten und ihre ganze Grundausstattung
+                # ableiten.
                 database.merke_rollenvergabe(user_id, role_id)
+                try:
+                    await member.add_roles(rolle, reason=f"Backend-Berechtigung ({grund})")
+                except Exception:
+                    database.vergiss_rollenvergabe(user_id, role_id)
+                    raise
                 geschehen.append(f"+{rolle.name}")
             for role_id in massnahme.entziehen:
                 rolle = guild.get_role(int(role_id))
@@ -1888,8 +1907,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             if r["id"] in gesperrt:
                 r["verwaltbar"] = False
                 r["grund"] = "wird über eine Reaktion vergeben"
-        labels = dict(config.PERMISSION_LABELS)
-        labels.update(module.REGISTRATUR.berechtigungen())
+        labels = _alle_rechte_labels()
         zuordnung = database.get_permission_role_map()
         rollenrechte = database.get_role_permission_map()
 
@@ -2047,8 +2065,8 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             zuordnung_aktiv=bool(zuordnung),
             rollen_ohne_recht=rollen_ohne_recht,
             users=users,
-            all_permissions=database.ALL_PERMISSIONS,
-            permission_labels=config.PERMISSION_LABELS,
+            all_permissions=database.alle_berechtigungen(),
+            permission_labels=_alle_rechte_labels(),
             bot_owner_id=config.BOT_OWNER_ID,
         )
 
@@ -2065,9 +2083,18 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             )
             flash("Der Bot-Owner kann nicht über diese Seite verändert werden.", "error")
             return redirect(url_for("users_page"))
-        selected = [p for p in request.form.getlist("permissions") if p in database.ALL_PERMISSIONS]
-        database.set_user_permissions(user_id, selected, granted_by=session["discord_user_id"])
+        selected = [p for p in request.form.getlist("permissions")
+                    if p in database.alle_berechtigungen()]
+        # Ergaenzen, nicht ersetzen. Das Formular zeigt nicht an, was jemand
+        # schon hat - es als "genau diese Rechte" zu lesen hiess, dass ein
+        # Nachtragen alles andere stillschweigend loeschte. Genau so verlor am
+        # 05.09.2026 jemand saemtliche Rechte, weil nur das neue angehakt war.
+        # Entzogen wird gezielt ueber das X am einzelnen Recht.
+        for key in selected:
+            database.grant_permission(user_id, key, granted_by=session["discord_user_id"])
         _rollen_nachziehen(user_id, "Rechte geaendert")
+        if selected:
+            flash(f"{len(selected)} Berechtigung(en) hinzugefügt.", "success")
         return redirect(url_for("users_page"))
 
     @app.route("/users/revoke_one", methods=["POST"])
@@ -2082,7 +2109,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             )
             flash("Der Bot-Owner kann nicht über diese Seite verändert werden.", "error")
             return redirect(url_for("users_page"))
-        if user_id and permission in database.ALL_PERMISSIONS:
+        if user_id and permission in database.alle_berechtigungen():
             database.revoke_user_permission(user_id, permission, actor_id=session["discord_user_id"])
             _rollen_nachziehen(user_id, f"Recht {permission} entzogen")
         return redirect(url_for("users_page"))

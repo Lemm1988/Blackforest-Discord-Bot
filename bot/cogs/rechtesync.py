@@ -26,6 +26,7 @@ from discord.ext import commands
 
 import database
 import rechteabgleich
+import rollenabgleich
 
 
 class Rechtesync(commands.Cog):
@@ -50,6 +51,15 @@ class Rechtesync(commands.Cog):
             return
         self._startabgleich_erledigt = True
 
+        # ZUERST die Richtung Recht -> Rolle. Die Reihenfolge ist der Punkt:
+        # Wer ein Recht hat, dessen Rolle ihm fehlt, soll die Rolle bekommen -
+        # nicht das Recht verlieren. Lief nur die andere Richtung, loeste der
+        # Bot jede Unstimmigkeit zerstoerend auf. Am 05.09.2026 kostete das
+        # jemanden seine Berechtigung: Sie wurde ausserhalb des Backends
+        # eingetragen, die zugehoerige Rolle fehlte, und der Startabgleich
+        # entfernte daraufhin das Recht.
+        await self.rollen_nachziehen()
+
         if not database.get_role_permission_map():
             return  # Keine Zuordnung eingerichtet - dann gibt es nichts abzuleiten.
 
@@ -62,6 +72,62 @@ class Rechtesync(commands.Cog):
                     geaendert += 1
         if geaendert:
             print(f"[rechtesync] Startabgleich: bei {geaendert} Mitgliedern nachgezogen.")
+
+    async def rollen_nachziehen(self) -> int:
+        """Vergibt fehlende Rollen fuer bereits vorhandene Rechte.
+
+        Bewusst nur vergeben, nicht entziehen. Das Entziehen laeuft im Backend
+        bei jeder Rechteaenderung und ueber den Knopf "Bestand angleichen" -
+        es hier zusaetzlich zu tun hiesse, beim Start eine Rolle wegzunehmen,
+        die vielleicht gerade erst von Hand vergeben wurde. Fehlende Rollen
+        nachzutragen ist dagegen in keinem Fall schaedlich.
+        """
+        zuordnung = database.get_permission_role_map()
+        if not zuordnung:
+            return 0
+
+        nachgetragen = 0
+        for guild in self.bot.guilds:
+            eigene = guild.me.top_role.position
+            verwaltbar = {
+                str(r.id) for r in guild.roles
+                if r.position < eigene and not r.managed
+            }
+            for member in guild.members:
+                if member.bot or database.is_protected_owner(str(member.id)):
+                    continue
+                massnahme = rollenabgleich.massnahmen(
+                    rechte=set(database.get_user_permissions(str(member.id))),
+                    rollen={str(r.id) for r in member.roles if r.name != "@everyone"},
+                    zuordnung=zuordnung,
+                    verwaltbare_rollen=verwaltbar,
+                    vom_bot_vergeben=database.bot_vergebene_rollen(str(member.id)),
+                )
+                for role_id in massnahme.vergeben:
+                    rolle = guild.get_role(int(role_id))
+                    if rolle is None:
+                        continue
+                    # Der Merker MUSS vor dem Vergeben stehen. Discord meldet
+                    # die Rollenaenderung sofort zurueck, und on_member_update
+                    # unten laeuft dann los, bevor die Zeile geschrieben waere -
+                    # der Listener haelt die Rolle fuer von Hand vergeben und
+                    # leitet die ganze Grundausstattung daraus ab. Beobachtet am
+                    # 05.09.2026: erst "+manage_categories, +moderate_members,
+                    # +verify_questions", eine Sekunde spaeter alles wieder weg.
+                    database.merke_rollenvergabe(str(member.id), role_id)
+                    try:
+                        await member.add_roles(rolle, reason="Backend-Berechtigung (Start)")
+                    except discord.HTTPException as exc:
+                        database.vergiss_rollenvergabe(str(member.id), role_id)
+                        print(f"[rechtesync] {member}: Rolle {rolle.name} nicht vergebbar: {exc}")
+                        continue
+                    database.log_audit(None, "rollen_angeglichen", target_id=str(member.id),
+                                       detail=f"+{rolle.name} (Start)")
+                    print(f"[rechtesync] {member}: +{rolle.name} (Recht vorhanden, Rolle fehlte)")
+                    nachgetragen += 1
+        if nachgetragen:
+            print(f"[rechtesync] {nachgetragen} fehlende Rolle(n) nachgetragen.")
+        return nachgetragen
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):

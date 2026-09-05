@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 843 Tests)
+17. Testsuite (`tests/`, 853 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -675,6 +675,70 @@ Moderator-Auszeichnung, und solange er sie trägt, bleibt das Recht. Dass dabei
 nicht nur vom Bot gesetzte Rollen zählen, ist Absicht: doc_loomis und sven tragen
 die Moderator-Rolle, seit ein Mensch sie ihnen gab.
 
+#### Vier Fehler, die zusammen eine Berechtigung vernichteten (05.09.2026)
+
+Patrick gab jemandem nachträglich das Recht „Giveaway starten" — danach war die
+Person aus der Benutzerverwaltung verschwunden, mitsamt ihrem bisherigen Recht.
+Der Audit-Log zeigt die Kette in zwei Sekunden:
+
+```
+19:34:22  set_user_permissions   create_giveaway
+19:34:22  revoke_permission      create_giveaway
+19:34:23  revoke_permission      manage_badword_filter
+19:34:23  rechtesync             verliert: create_giveaway
+19:34:23  rollen_angeglichen     -Moderator
+```
+
+Vier Ursachen wirkten zusammen:
+
+**1. Das Formular ersetzte, statt zu ergänzen.** Die Häkchen auf `/users` waren
+nie mit den vorhandenen Rechten vorbelegt, das Speichern setzte aber „genau
+diese". Wer ein Recht nachtrug, löschte damit stillschweigend alle anderen. Das
+Formular **ergänzt** jetzt; entzogen wird gezielt über das ✕ am einzelnen Recht.
+
+**2. Ein Recht ohne zugeordnete Rolle vernichtete sich selbst.**
+`create_giveaway` stand in keiner Zuordnung. Wer es bekam, löste damit keine
+Rolle aus, verlor also die Moderator-Auszeichnung — und weil die Manager-Rolle
+dasselbe Recht führt, galt es als rollenverwaltet und wurde sofort wieder
+entzogen. Ein Recht, das keine Rolle repräsentiert, kann auch an keiner hängen;
+es zählt jetzt als reine Einzelvergabe und bleibt unangetastet.
+
+**3. Modul-Rechte fehlten in der Benutzerverwaltung.** `submit_questions` kommt
+aus dem Quizmodul und stand deshalb weder in `ALL_PERMISSIONS` noch in
+`PERMISSION_LABELS`. In der Liste stand der rohe Schlüssel, das ✕ daneben tat
+nichts, und vergeben ließ es sich über die Seite gar nicht. Die Seite benutzt
+jetzt `alle_berechtigungen()` und die zusammengeführten Bezeichnungen.
+
+**4. Der Start glich nur eine Richtung ab.** `on_ready` zog ausschließlich
+`Rolle → Recht` nach. Eine Unstimmigkeit löste der Bot damit immer zerstörend
+auf: Wer ein Recht hatte, dessen Rolle fehlte, verlor das Recht — statt die
+Rolle zu bekommen. Seit dem 05.09. läuft **zuerst** `Recht → Rolle`
+(`Rechtesync.rollen_nachziehen`), und erst danach die Ableitung.
+
+Dieser Startlauf **vergibt nur**, er entzieht keine Rollen. Das Entziehen läuft
+im Backend bei jeder Rechteänderung und über „Bestand angleichen" — beim Start
+eine Rolle wegzunehmen, die vielleicht gerade von Hand vergeben wurde, wäre
+derselbe Fehler in Grün.
+
+#### Der Merker steht vor der Vergabe
+
+Beim Reparieren fiel ein Wettlauf auf, sichtbar im Log:
+
+```
+21:43:40  synthek_flo (Rollenänderung): +manage_categories, +moderate_members, +verify_questions
+21:43:40  synthek_flo: +Moderator (Recht vorhanden, Rolle fehlte)
+21:43:41  synthek_flo (Abgleich nach Neustart): -manage_categories, -moderate_members, -verify_questions
+```
+
+Discord meldet eine Rollenänderung sofort zurück. Stand `merke_rollenvergabe()`
+hinter `add_roles()`, lief `on_member_update` los, bevor die Zeile geschrieben
+war — der Listener hielt die frisch vergebene Rolle für von Hand verliehen und
+leitete ihre ganze Grundausstattung ab. Eine Sekunde später nahm der
+Startabgleich alles wieder weg. Das Ergebnis stimmte, der Weg dorthin nicht.
+
+Der Merker wird deshalb **vor** der Vergabe geschrieben und bei einem Fehlschlag
+wieder entfernt — in `rechtesync.py` wie in `app.py`.
+
 #### Beide Richtungen, für jede Rolle
 
 „wenn ich im bot ein recht gebe muss es auf dem server auch konsistent gesetzt
@@ -1022,7 +1086,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 843 Tests)
+## 17. Testsuite (`tests/`, 853 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1064,7 +1128,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
 | `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
 | `test_achievements_konfiguration.py` | 38 | Einstellbare Achievements: Schwellen und Zeitspannen samt ihrer Grenzen, unbrauchbare Werte aus dem Backend, und dass nur selbst angelegte gelöscht werden können |
-| `test_rechteabgleich.py` | 55 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, der Besitzer nie beschnitten wird, dass eine Rolle, die der Bot wegen eines Rechts vergeben hat, nicht zurückwirkt — und dass die Grundausstattung einer Rolle greift, ein bewusst entzogenes Recht aber nicht nachgezogen wird |
+| `test_rechteabgleich.py` | 65 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, der Besitzer nie beschnitten wird, dass eine Rolle, die der Bot wegen eines Rechts vergeben hat, nicht zurückwirkt — und dass die Grundausstattung einer Rolle greift, ein bewusst entzogenes Recht aber nicht nachgezogen wird |
 | `test_vergabewege.py` | 40 | Die fünf Vergabewege nebeneinander: dass ein Recht, das eine Rolle holt, von dieser Rolle auch zurückkommt, dass `is_admin` nie über eine Rolle läuft, dass Einträge auf gelöschte oder für den Bot unerreichbare Rollen auffallen und dass eine automatisch vergebene Rolle mit Backend-Rechten sichtbar wird |
 | `test_verstoesse.py` | 18 | Verstöße zurücksetzen (Zählung fällt, Historie bleibt) und endgültig löschen; insbesondere, dass die Reset-Grenze beim Löschen mit aufgeräumt wird — sonst würden spätere Verstöße stillschweigend nicht mehr zählen |
 | `test_interaktion.py` | 51 | Discords Drei-Sekunden-Frist: die Vorab-Bestätigung je Befehl, und eine Wache, dass die angegebene Antwortart zu dem passt, was der Befehl tatsächlich sendet |

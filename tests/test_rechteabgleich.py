@@ -454,16 +454,34 @@ def test_ohne_die_rolle_geht_auch_das_einzelrecht():
     assert m.entziehen == ["manage_badword_filter"]
 
 
-def test_ein_recht_ohne_zugeordnete_rolle_ist_nicht_geschuetzt():
-    """`submit_questions` zeigt auf keine Rolle in der Zuordnung. Es kommt
-    ueber Ideenschmied, Supporter oder Server Booster - wer keine davon
-    traegt, behaelt es auch nicht durch Einzelvergabe."""
+def test_ein_recht_ohne_zugeordnete_rolle_ueberlebt():
+    """Gegenprobe zu einem Fehler, der am 05.09.2026 echten Schaden anrichtete.
+
+    `create_giveaway` stand in keiner Zuordnung. Wer es vergeben bekam, loeste
+    damit keine Rolle aus - verlor also die Moderator-Auszeichnung. Und weil
+    die Manager-Rolle dasselbe Recht fuehrt, galt es als rollenverwaltet und
+    wurde ihm im selben Atemzug wieder entzogen. Am Ende hatte synthek gar
+    nichts mehr und verschwand aus der Benutzerverwaltung.
+
+    Ein Recht, das keine Rolle repraesentiert, kann auch an keiner haengen.
+    """
     m = rechteabgleich.massnahmen(
-        rollen={MODERATOR}, rollenrechte=OHNE_BUENDEL | {MANAGER: {"submit_questions"}},
-        eigene_rechte={"submit_questions"},
-        zuordnung=SPIEGEL_ZUORDNUNG, handverliehen={"submit_questions"},
+        rollen=set(), rollenrechte={MANAGER: {"create_giveaway"}},
+        eigene_rechte={"create_giveaway"},
+        zuordnung=SPIEGEL_ZUORDNUNG, handverliehen={"create_giveaway"},
     )
-    assert m.entziehen == ["submit_questions"]
+    assert m.entziehen == []
+
+
+def test_ein_zugeordnetes_recht_haengt_weiter_an_seiner_rolle():
+    """Die Sicherung darf die Regel vom Vormittag nicht aushebeln: Was einer
+    Rolle zugeordnet ist, gilt nur mit dieser Rolle."""
+    m = rechteabgleich.massnahmen(
+        rollen=set(), rollenrechte={MANAGER: {"moderate_members"}},
+        eigene_rechte={"moderate_members"},
+        zuordnung=SPIEGEL_ZUORDNUNG, handverliehen={"moderate_members"},
+    )
+    assert m.entziehen == ["moderate_members"]
 
 
 # --------------------------------------------------------------------------
@@ -582,3 +600,88 @@ def test_der_abgleich_erzeugt_keine_ausnahmen():
 
 def test_das_cog_reicht_die_ausnahmen_herein():
     assert "ausnahmen=database.ausnahmen(uid)" in COG
+
+
+# --------------------------------------------------------------------------
+# Die Fehler vom 05.09.2026 abends
+#
+# Patrick gab synthek nachtraeglich das Recht "Giveaway starten" - und danach
+# war die Person aus der Benutzerverwaltung verschwunden. Der Audit-Log zeigt
+# die Kette in zwei Sekunden:
+#
+#   19:34:22  set_user_permissions   create_giveaway
+#   19:34:22  revoke_permission      create_giveaway
+#   19:34:23  revoke_permission      manage_badword_filter
+#   19:34:23  rechtesync             verliert: create_giveaway
+#   19:34:23  rollen_angeglichen     -Moderator
+#
+# Vier Ursachen, die zusammenwirkten. Diese Tests halten jede einzeln fest.
+# --------------------------------------------------------------------------
+
+APP = (REPO / "backend" / "app.py").read_text(encoding="utf-8")
+USERS_HTML = (REPO / "backend" / "templates" / "users.html").read_text(encoding="utf-8")
+
+
+def test_das_formular_ergaenzt_statt_zu_ersetzen():
+    """Das Formular zeigt nicht an, was jemand schon hat. Als "genau diese
+    Rechte" gelesen, loeschte ein Nachtragen alles andere stillschweigend."""
+    assert "set_user_permissions" not in APP
+    assert "Ergaenzen, nicht ersetzen" in APP
+
+
+def test_der_hinweistext_verspricht_nichts_falsches():
+    assert "hinzugefügt" in USERS_HTML
+    assert "werden entfernt" not in USERS_HTML
+
+
+def test_die_benutzerverwaltung_kennt_modulrechte():
+    """`submit_questions` kommt aus dem Quizmodul und stand deshalb weder in
+    ALL_PERMISSIONS noch in PERMISSION_LABELS. Folge: In der Liste stand der
+    rohe Schluessel, das X daneben tat nichts, und vergeben liess es sich
+    ueber die Seite gar nicht."""
+    assert "all_permissions=database.alle_berechtigungen()" in APP
+    assert "permission_labels=_alle_rechte_labels()" in APP
+
+
+def test_das_x_funktioniert_auch_fuer_modulrechte():
+    stelle = APP[APP.index("def users_revoke_one"):]
+    assert "database.alle_berechtigungen()" in stelle[:900]
+
+
+def test_der_startabgleich_traegt_fehlende_rollen_nach():
+    """Ohne die Gegenrichtung loeste der Start jede Unstimmigkeit zerstoerend
+    auf: Wer ein Recht hatte, dessen Rolle fehlte, verlor das Recht."""
+    assert "async def rollen_nachziehen" in COG
+    assert "await self.rollen_nachziehen()" in COG
+
+
+def test_die_gegenrichtung_laeuft_vor_der_ableitung():
+    """Die Reihenfolge ist der ganze Punkt. Liefe sie danach, waeren die
+    Rechte schon entzogen, bevor die Rollen nachgetragen werden."""
+    assert COG.index("await self.rollen_nachziehen()") < COG.index("Abgleich nach Neustart")
+
+
+def test_der_startabgleich_entzieht_keine_rollen():
+    """Nur vergeben. Beim Start eine Rolle wegzunehmen, die vielleicht gerade
+    erst von Hand vergeben wurde, waere der gleiche Fehler in gruen."""
+    stelle = COG[COG.index("async def rollen_nachziehen"):COG.index("async def on_member_update")]
+    assert "remove_roles" not in stelle
+    assert "massnahme.entziehen" not in stelle
+
+
+def test_der_besitzer_bleibt_beim_startabgleich_aussen_vor():
+    stelle = COG[COG.index("async def rollen_nachziehen"):COG.index("async def on_member_update")]
+    assert "is_protected_owner" in stelle
+
+
+def test_der_merker_wird_vor_der_rollenvergabe_geschrieben():
+    """Discord meldet die Aenderung sofort zurueck. Stuende der Merker danach,
+    liefe on_member_update los, bevor die Zeile da ist - und leitete aus der
+    frisch vergebenen Rolle die ganze Grundausstattung ab. Beobachtet am
+    05.09.2026 im Log: erst drei Rechte dazu, eine Sekunde spaeter wieder weg.
+    """
+    for quelle, name in ((COG, "rechtesync.py"), (APP, "app.py")):
+        stelle = quelle[quelle.index("merke_rollenvergabe"):]
+        vor = quelle.index("merke_rollenvergabe")
+        # Das add_roles, das zu dieser Vergabe gehoert, kommt danach.
+        assert quelle.index("add_roles", vor) > vor, name
