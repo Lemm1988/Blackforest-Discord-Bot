@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% from "_xp_level_subnav.html" import xp_level_subnav with context %}
+{% block title %}Achievements einstellen - Blackforest Bot{% endblock %}
+{% block content %}
+<h3 class="h4">🏅 Achievements einstellen</h3>
+{{ xp_level_subnav('achievements_config') }}
+
+<p class="text-muted">
+    Hier steht, <strong>wann</strong> welche Auszeichnung fällt. Die Bedingungsart gehört zum
+    jeweiligen Modul und ist fest; der Wert daneben ist frei wählbar.
+</p>
+
+{% for eintrag in eintraege %}
+{% set art = arten.get(eintrag.bedingung_typ) %}
+<div class="card mb-3">
+    <div class="card-header d-flex flex-wrap gap-2 align-items-center">
+        <span class="badge bg-secondary">{{ eintrag.modul or '—' }}</span>
+        <code>{{ eintrag.id }}</code>
+        <span class="fw-semibold">{{ eintrag.name }}</span>
+        {% if not eintrag.aktiv %}<span class="badge bg-warning text-dark">aus</span>{% endif %}
+        {% if eintrag.secret %}<span class="badge bg-dark">geheim</span>{% endif %}
+        <span class="ms-auto text-muted small">{{ eintrag.vergeben_an }}× vergeben</span>
+    </div>
+    <div class="card-body">
+        {% if art is none %}
+        <p class="text-muted mb-0">
+            Die Bedingung <code>{{ eintrag.bedingung_typ or '—' }}</code> kennt der Bot nicht (mehr) —
+            vermutlich gehört sie zu einem Modul, das nicht installiert ist. Dieses Achievement
+            fällt deshalb nicht. Wer es bereits hat, behält es.
+        </p>
+        {% else %}
+        <form method="POST" action="{{ url_for('achievements_config_save') }}" class="row g-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="id" value="{{ eintrag.id }}">
+
+            <div class="col-12 col-md-4">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" class="form-control" value="{{ eintrag.name }}" required>
+            </div>
+            <div class="col-12 col-md-8">
+                <label class="form-label">Beschreibung</label>
+                <input type="text" name="beschreibung" class="form-control" value="{{ eintrag.description }}">
+            </div>
+
+            <div class="col-12">
+                <label class="form-label">{{ art.label }}</label>
+                <div class="row g-2 align-items-center">
+                    <div class="col-auto"><span class="text-muted small">{{ 'von' if art.spanne else 'ab' }}</span></div>
+                    <div class="col-4 col-md-2">
+                        <input type="number" name="wert" class="form-control" min="0" value="{{ eintrag.wert }}" required>
+                    </div>
+                    {% if art.spanne %}
+                    <div class="col-auto"><span class="text-muted small">bis unter</span></div>
+                    <div class="col-4 col-md-2">
+                        <input type="number" name="wert_bis" class="form-control" min="0" value="{{ eintrag.wert_bis }}" required>
+                    </div>
+                    {% endif %}
+                    <div class="col-auto"><span class="text-muted small">{{ art.einheit }}</span></div>
+                </div>
+                {% if art.hinweis %}<div class="form-text">{{ art.hinweis }}</div>{% endif %}
+            </div>
+
+            <div class="col-6 col-md-3">
+                <label class="form-label">XP-Belohnung</label>
+                <input type="number" name="xp_belohnung" class="form-control" min="0" value="{{ eintrag.xp_reward }}">
+            </div>
+            <div class="col-6 col-md-3 d-flex align-items-end">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="geheim" value="1"
+                           id="geheim_{{ eintrag.id }}" {% if eintrag.secret %}checked{% endif %}>
+                    <label class="form-check-label" for="geheim_{{ eintrag.id }}">
+                        Geheim <span class="text-muted small">(vorher als „???“)</span>
+                    </label>
+                </div>
+            </div>
+            <div class="col-6 col-md-3 d-flex align-items-end">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="aktiv" value="1"
+                           id="aktiv_{{ eintrag.id }}" {% if eintrag.aktiv %}checked{% endif %}>
+                    <label class="form-check-label" for="aktiv_{{ eintrag.id }}">Aktiv</label>
+                </div>
+            </div>
+
+            <div class="col-12 d-flex gap-2">
+                <button type="submit" class="btn btn-success">Speichern</button>
+            </div>
+        </form>
+
+        {% if eintrag.eigenbau %}
+        {# Nur selbst angelegte lassen sich loeschen: Ein Achievement aus dem
+           Modulcode kaeme beim naechsten Start ohnehin wieder. #}
+        <form method="POST" action="{{ url_for('achievements_config_delete', achievement_id=eintrag.id) }}"
+              class="mt-2"
+              onsubmit="return confirm('„{{ eintrag.name }}“ endgültig löschen? {{ eintrag.vergeben_an }} Freischaltung(en) verschwinden mit.');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Löschen</button>
+        </form>
+        {% endif %}
+        {% endif %}
+    </div>
+</div>
+{% else %}
+<p class="text-muted">Noch keine Achievements angelegt.</p>
+{% endfor %}
+
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">Neues Achievement anlegen</h5></div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('achievements_config_create') }}" class="row g-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-12 col-md-3">
+                <label class="form-label">Kennung</label>
+                <input type="text" name="id" class="form-control" placeholder="QUIZ_500" required>
+                <div class="form-text">Buchstaben, Ziffern, Unterstrich. Lässt sich später nicht mehr ändern.</div>
+            </div>
+            <div class="col-12 col-md-4">
+                <label class="form-label">Name</label>
+                <input type="text" name="name" class="form-control" placeholder="Quizmeister" required>
+            </div>
+            <div class="col-12 col-md-5">
+                <label class="form-label">Beschreibung</label>
+                <input type="text" name="beschreibung" class="form-control"
+                       placeholder="500 Quizfragen richtig beantwortet.">
+            </div>
+
+            <div class="col-12 col-md-5">
+                <label class="form-label">Bedingung</label>
+                <select name="bedingung_typ" class="form-select" id="neueBedingung" required>
+                    {% for art in arten_liste %}
+                    <option value="{{ art.schluessel }}" data-spanne="{{ 1 if art.spanne else 0 }}"
+                            data-einheit="{{ art.einheit }}" data-hinweis="{{ art.hinweis }}">
+                        {{ art.label }} ({{ art.modul }})
+                    </option>
+                    {% endfor %}
+                </select>
+                <div class="form-text" id="neueBedingungHinweis"></div>
+            </div>
+            <div class="col-6 col-md-2">
+                <label class="form-label"><span id="neueWertLabel">ab</span></label>
+                <input type="number" name="wert" class="form-control" min="0" value="1" required>
+            </div>
+            <div class="col-6 col-md-2" id="neueWertBisFeld" hidden>
+                <label class="form-label">bis unter</label>
+                <input type="number" name="wert_bis" class="form-control" min="0" value="0">
+            </div>
+            <div class="col-6 col-md-3">
+                <label class="form-label">XP-Belohnung</label>
+                <input type="number" name="xp_belohnung" class="form-control" min="0" value="20">
+            </div>
+
+            <div class="col-12">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" name="geheim" value="1" id="neuGeheim">
+                    <label class="form-check-label" for="neuGeheim">
+                        Geheim — wird erst nach dem Freischalten mit Namen angezeigt
+                    </label>
+                </div>
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary">Anlegen</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Zeitspannen brauchen zwei Werte, Schwellen nur einen. Das Feld auszublenden
+// statt es immer zu zeigen erspart die Frage, was ein "bis" bei einer
+// Fragenzahl bedeuten soll.
+document.addEventListener('DOMContentLoaded', () => {
+    const auswahl = document.getElementById('neueBedingung');
+    const bisFeld = document.getElementById('neueWertBisFeld');
+    const wertLabel = document.getElementById('neueWertLabel');
+    const hinweis = document.getElementById('neueBedingungHinweis');
+    if (!auswahl) return;
+    const anpassen = () => {
+        const gewaehlt = auswahl.options[auswahl.selectedIndex];
+        const spanne = gewaehlt.dataset.spanne === '1';
+        bisFeld.hidden = !spanne;
+        bisFeld.querySelector('input').required = spanne;
+        wertLabel.textContent = spanne ? 'von' : 'ab';
+        hinweis.textContent = gewaehlt.dataset.hinweis || '';
+    };
+    auswahl.addEventListener('change', anpassen);
+    anpassen();
+});
+</script>
+{% endblock %}

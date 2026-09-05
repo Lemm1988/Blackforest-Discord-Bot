@@ -9,7 +9,7 @@ import achievements
 import module
 import schema_helfer
 import verdiente_rollen
-from achievements import Achievement
+from achievements import Achievement, Bedingungstyp
 from verdiente_rollen import Bedingungsart
 
 
@@ -90,11 +90,20 @@ def _mindestens_level(stufe: int):
     return lambda kontext: kontext.get("neues_level", 0) >= stufe
 
 
+# Bedingungsart dieses Moduls - die Schwelle steht in der Datenbank und ist im
+# Backend aenderbar (siehe achievements.Bedingungstyp).
+achievements.BEDINGUNGEN.eintragen(
+    Bedingungstyp("level_erreicht", "Erreichtes Level", NAME, "level_up",
+                  "neues_level", einheit="Level",
+                  hinweis="Level ergibt sich aus allen gesammelten XP - Chat, Quiz und Zufallsereignisse.")
+)
+
+
 for _a in (
     Achievement("LEVEL_10", "Aufsteiger", "Level 10 erreicht.",
-                50, False, NAME, "level_up", _mindestens_level(10)),
+                50, False, NAME, "level_up", "level_erreicht", 10),
     Achievement("LEVEL_25", "Veteran", "Level 25 erreicht.",
-                150, False, NAME, "level_up", _mindestens_level(25)),
+                150, False, NAME, "level_up", "level_erreicht", 25),
 ):
     achievements.REGISTRATUR.eintragen(_a)
 

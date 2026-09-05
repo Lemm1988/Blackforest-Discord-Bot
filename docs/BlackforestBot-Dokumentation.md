@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 725 Tests)
+17. Testsuite (`tests/`, 768 Tests)
 18. Offene Punkte (Stand 03.09.2026, abends)
 19. Chronik des 03.09.2026
 
@@ -900,7 +900,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 725 Tests)
+## 17. Testsuite (`tests/`, 768 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -934,13 +934,14 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_reaktionsrollen.py` | 20 | Reaktionsrollen: Schema-Zusagen, Umzug der alten Regel, und dass Kanal und Rolle über IDs statt Namen angesprochen werden |
 | `test_rollenrechte.py` | 15 | Eine Rolle bringt Rechte mit: getrennte Tabellen für beide Richtungen, kein `is_admin` über Rollen, Befehl **und** Webformular abgesichert |
 | `test_rollenabgleich.py` | 28 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten |
-| `test_nutzertexte.py` | 106 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
-| `test_csrf_coverage.py` | 79 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
+| `test_nutzertexte.py` | 109 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
+| `test_csrf_coverage.py` | 81 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
 | `test_moderation_limits.py` | 33 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
 | `test_moderation_hierarchy.py` | 7 | Rollenhierarchie als eigene Schranke neben den Berechtigungen |
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
 | `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
+| `test_achievements_konfiguration.py` | 38 | Einstellbare Achievements: Schwellen und Zeitspannen samt ihrer Grenzen, unbrauchbare Werte aus dem Backend, und dass nur selbst angelegte gelöscht werden können |
 | `test_rechteabgleich.py` | 23 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, dass ohne Merker nichts entzogen wird und der Besitzer nie beschnitten werden kann |
 | `test_verstoesse.py` | 18 | Verstöße zurücksetzen (Zählung fällt, Historie bleibt) und endgültig löschen; insbesondere, dass die Reset-Grenze beim Löschen mit aufgeräumt wird — sonst würden spätere Verstöße stillschweigend nicht mehr zählen |
 | `test_interaktion.py` | 51 | Discords Drei-Sekunden-Frist: die Vorab-Bestätigung je Befehl, und eine Wache, dass die angegebene Antwortart zu dem passt, was der Befehl tatsächlich sendet |
@@ -1123,3 +1124,48 @@ niemand den Knopf drückte und die Gegenrichtung fehlte.
 
 Bewusst dieselbe Spalte statt einer eigenen Merker-Tabelle: Zwei Tabellen
 könnten auseinanderlaufen, und dann wüsste niemand, welche recht hat.
+
+### Achievements einstellbar (05.09.2026)
+
+Vorher steckte jede Auslösebedingung in einer Lambda-Funktion im Modulcode:
+
+```python
+Achievement("QUIZ_10", "Wissbegierig", ..., _mindestens_richtig(10))
+```
+
+Die Schwelle war damit Teil des Programms — für „ab wie vielen Fragen gibt es
+das?" brauchte es einen Codeeintrag und einen Neustart.
+
+Jetzt ist die Bedingung zweigeteilt:
+
+* Die **Art** (`achievements.Bedingungstyp`) steht im Code und gehört einem
+  Modul. Sie weiß, welche Zahl ein Ereignis überhaupt mitliefert — das lässt
+  sich nicht sinnvoll im Backend zusammenklicken.
+* Der **Wert** steht in der Tabelle `achievements` und ist unter
+  Admin-Werkzeuge → XP & Level → Achievements einstellen änderbar.
+
+Dasselbe Muster wie bei den verdienten Rollen (`verdiente_rollen.Bedingungsart`).
+Zwei verschiedene Denkweisen für dasselbe Problem wären der Anfang vom
+Auseinanderlaufen.
+
+Vier Bedingungsarten bringen die Module heute mit: richtig beantwortete
+Quizfragen, Quizfrage zu einer bestimmten Uhrzeit, selbst eingereichte Fragen
+(alle drei aus dem Quiz-Modul) und erreichtes Level (aus XP & Level).
+
+**Anlegen und Löschen:** Neue Achievements lassen sich im Backend anlegen; sie
+tragen `eigenbau = 1`. Nur diese lassen sich auch wieder löschen — ein
+Achievement aus dem Modulcode käme beim nächsten Start ohnehin zurück, das
+Löschen sähe aus wie ein Fehler. Solche werden stattdessen deaktiviert, und wer
+sie hat, behält sie.
+
+**Warum die Voreinstellungen im Code bleiben:** Ein frisch installiertes Modul
+soll sofort brauchbar sein. Die Definitionen werden beim Start per
+`INSERT OR IGNORE` übernommen, und das nachträgliche Füllen der
+Bedingungsfelder greift ausdrücklich nur dort, wo noch nichts steht — sonst
+spränge eine im Backend geänderte Schwelle bei jedem Neustart zurück.
+
+**Meine Achievements** (`/achievements`) zeigt seit diesem Tag nur noch, was
+jemand tatsächlich hat. Vorher stand dort die vollständige Liste samt der
+verschlossenen; auf einer Seite dieses Namens ist das eher Katalog als Vitrine.
+Wie viele es insgesamt gibt, bleibt als bloße Zahl stehen — das verrät keines
+und gibt trotzdem ein Ziel.

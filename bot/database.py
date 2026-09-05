@@ -223,12 +223,28 @@ CREATE TABLE IF NOT EXISTS audit_log (
 -- Achievements (Spec 1, Phase 6). Definitionen werden per Code vorbefuellt
 -- (siehe _seed_achievements()), nicht ueber die UI verwaltet - das waere ein
 -- spaeterer Ausbau. secret=1: Name/Beschreibung erst nach Freischaltung sichtbar.
+-- Seit dem 05.09.2026 steht hier nicht nur, WAS es gibt, sondern auch, WANN es
+-- faellt. Die Bedingungsart (modul, ereignis, bedingung_typ) bleibt Sache des
+-- Codes - sie braucht Wissen darueber, was ein Ereignis mitliefert. Der WERT
+-- ist im Backend aenderbar. Vorgabe Patrick: "archievments sollen einstellbar
+-- werden. wann man welches archievment bekommt."
+--
+-- eigenbau=1 kennzeichnet im Backend angelegte Achievements. Nur die duerfen
+-- geloescht werden: Ein Achievement aus dem Modulcode wuerde beim naechsten
+-- Start ohnehin wieder eingetragen, das Loeschen saehe also aus wie ein Fehler.
 CREATE TABLE IF NOT EXISTS achievements (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     description TEXT NOT NULL,
     xp_reward INTEGER DEFAULT 0,
-    secret INTEGER DEFAULT 0
+    secret INTEGER DEFAULT 0,
+    modul TEXT,
+    ereignis TEXT,
+    bedingung_typ TEXT,
+    wert INTEGER DEFAULT 1,
+    wert_bis INTEGER,
+    aktiv INTEGER DEFAULT 1,
+    eigenbau INTEGER DEFAULT 0
 );
 
 -- UNIQUE(discord_user_id, achievement_id) verhindert doppelte Freischaltung
@@ -394,10 +410,23 @@ def _seed_achievements(conn):
     """
     for achievement in achievements.REGISTRATUR.alle():
         conn.execute(
-            "INSERT OR IGNORE INTO achievements (id, name, description, xp_reward, secret) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "INSERT OR IGNORE INTO achievements "
+            "(id, name, description, xp_reward, secret, modul, ereignis, bedingung_typ, wert, wert_bis) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (achievement.id, achievement.name, achievement.beschreibung,
-             achievement.xp_belohnung, int(achievement.geheim)),
+             achievement.xp_belohnung, int(achievement.geheim), achievement.modul,
+             achievement.ereignis, achievement.bedingung_typ, achievement.wert,
+             achievement.wert_bis),
+        )
+        # Bestehende Zeilen aus der Zeit vor dem 05.09.2026 haben die
+        # Bedingungsfelder noch nicht. Sie werden EINMALIG nachgetragen -
+        # ausdruecklich nur, wo nichts steht, damit eine im Backend geaenderte
+        # Schwelle nicht bei jedem Neustart wieder zurueckspringt.
+        conn.execute(
+            "UPDATE achievements SET modul = ?, ereignis = ?, bedingung_typ = ?, "
+            "wert = ?, wert_bis = ? WHERE id = ? AND bedingung_typ IS NULL",
+            (achievement.modul, achievement.ereignis, achievement.bedingung_typ,
+             achievement.wert, achievement.wert_bis, achievement.id),
         )
 
 
@@ -529,6 +558,16 @@ def init_db():
         # bekommen automatisch 'badword' als Typ - SQLite füllt bei ALTER TABLE ADD
         # COLUMN mit einem konstanten DEFAULT alle bestehenden Zeilen damit auf.
         _ensure_column(conn, "badword_violations", "violation_type", "TEXT DEFAULT 'badword'")
+
+        # Achievements einstellbar (05.09.2026): Bestehende Datenbanken haben
+        # die Tabelle ohne diese Spalten. Die Werte kommen gleich danach aus
+        # den Moduldefinitionen - siehe _seed_achievements().
+        for _spalte, _typ in (
+            ("modul", "TEXT"), ("ereignis", "TEXT"), ("bedingung_typ", "TEXT"),
+            ("wert", "INTEGER DEFAULT 1"), ("wert_bis", "INTEGER"),
+            ("aktiv", "INTEGER DEFAULT 1"), ("eigenbau", "INTEGER DEFAULT 0"),
+        ):
+            _ensure_column(conn, "achievements", _spalte, _typ)
         # Tages-Zaehler fuer Nachrichten-XP (Spec 1: daily_xp_limit) - persistent
         # statt In-Memory, da er einen ganzen Tag und Bot-Neustarts ueberstehen muss.
         # Quiz-Serien (Streaks, Phase 11) - im bereits vorhandenen user_stats
@@ -1650,7 +1689,10 @@ def check_and_unlock_achievements(discord_user_id, event: str, **context) -> lis
         kontext["neues_level"] = context["new_level"]
     kontext.update(module.REGISTRATUR.kontext(event, uid))
 
-    candidates = achievements.REGISTRATUR.kandidaten(event, kontext)
+    # Aus der DATENBANK, nicht mehr aus der Moduldefinition: Die Schwellen sind
+    # seit dem 05.09.2026 im Backend aenderbar. Die Moduldefinitionen dienen nur
+    # noch als Voreinstellung beim ersten Start (siehe _seed_achievements()).
+    candidates = achievements.kandidaten_aus_regeln(event, kontext, get_achievement_rules())
     if not candidates:
         return []
 
@@ -1680,6 +1722,102 @@ def check_and_unlock_achievements(discord_user_id, event: str, **context) -> lis
             )
 
     return unlocked
+
+
+def get_achievement_rules() -> list:
+    """Die Ausloesebedingungen aller AKTIVEN Achievements.
+
+    Bewusst schlank gehalten: check_and_unlock_achievements() ruft das bei jedem
+    Quiz-Treffer und jedem Levelaufstieg auf und braucht dort weder Namen noch
+    Beschreibungen.
+    """
+    with get_connection() as conn:
+        return [
+            dict(r) for r in conn.execute(
+                "SELECT id, ereignis, bedingung_typ, wert, wert_bis, aktiv "
+                "FROM achievements WHERE aktiv = 1 AND bedingung_typ IS NOT NULL"
+            ).fetchall()
+        ]
+
+
+def get_achievement_definitions() -> list:
+    """Alle Achievements mit allen Feldern - fuer die Einstellungsseite.
+
+    Zusaetzlich, wie oft jedes bereits freigeschaltet wurde: Wer eine Schwelle
+    aendern oder ein Achievement loeschen will, soll vorher sehen, wie viele
+    Leute es betrifft.
+    """
+    with get_connection() as conn:
+        vergeben = {
+            r["achievement_id"]: r["c"] for r in conn.execute(
+                "SELECT achievement_id, COUNT(*) c FROM user_achievements GROUP BY achievement_id"
+            ).fetchall()
+        }
+        eintraege = []
+        for r in conn.execute("SELECT * FROM achievements ORDER BY modul, id").fetchall():
+            eintrag = dict(r)
+            eintrag["vergeben_an"] = vergeben.get(r["id"], 0)
+            eintraege.append(eintrag)
+        return eintraege
+
+
+def save_achievement(achievement_id, *, name, beschreibung, xp_belohnung, geheim,
+                     wert, wert_bis, aktiv) -> None:
+    """Aendert ein bestehendes Achievement.
+
+    Modul, Ereignis und Bedingungsart bleiben unangetastet - sie gehoeren zum
+    Code und nicht in ein Formular. Wer sie aendern koennte, koennte ein
+    Quiz-Achievement an ein Level-Ereignis haengen, wo es nie fallen wuerde.
+    """
+    with get_connection() as conn:
+        conn.execute(
+            "UPDATE achievements SET name = ?, description = ?, xp_reward = ?, "
+            "secret = ?, wert = ?, wert_bis = ?, aktiv = ? WHERE id = ?",
+            (name, beschreibung, int(xp_belohnung), int(bool(geheim)),
+             int(wert), wert_bis, int(bool(aktiv)), achievement_id),
+        )
+        conn.commit()
+
+
+def create_achievement(achievement_id, *, name, beschreibung, xp_belohnung, geheim,
+                       modul, ereignis, bedingung_typ, wert, wert_bis) -> bool:
+    """Legt ein im Backend erdachtes Achievement an.
+
+    Liefert False, wenn die ID schon vergeben ist - IDs stehen so in
+    user_achievements, zwei gleiche wuerden sich gegenseitig ueberschreiben.
+    """
+    with get_connection() as conn:
+        vorhanden = conn.execute(
+            "SELECT 1 FROM achievements WHERE id = ?", (achievement_id,)).fetchone()
+        if vorhanden:
+            return False
+        conn.execute(
+            "INSERT INTO achievements (id, name, description, xp_reward, secret, modul, "
+            "ereignis, bedingung_typ, wert, wert_bis, aktiv, eigenbau) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)",
+            (achievement_id, name, beschreibung, int(xp_belohnung), int(bool(geheim)),
+             modul, ereignis, bedingung_typ, int(wert), wert_bis),
+        )
+        conn.commit()
+        return True
+
+
+def delete_achievement(achievement_id) -> bool:
+    """Loescht ein im Backend angelegtes Achievement samt Freischaltungen.
+
+    NUR fuer eigenbau=1. Ein Achievement aus dem Modulcode kaeme beim naechsten
+    Start ohnehin wieder - das Loeschen saehe aus wie ein Fehler. Solche werden
+    stattdessen deaktiviert; wer sie hat, behaelt sie.
+    """
+    with get_connection() as conn:
+        row = conn.execute(
+            "SELECT eigenbau FROM achievements WHERE id = ?", (achievement_id,)).fetchone()
+        if not row or not row["eigenbau"]:
+            return False
+        conn.execute("DELETE FROM user_achievements WHERE achievement_id = ?", (achievement_id,))
+        conn.execute("DELETE FROM achievements WHERE id = ?", (achievement_id,))
+        conn.commit()
+        return True
 
 
 def get_achievements_overview(discord_user_id) -> list:

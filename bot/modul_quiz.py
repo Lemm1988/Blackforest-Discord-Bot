@@ -13,7 +13,7 @@ import achievements
 import module
 import schema_helfer
 import verdiente_rollen
-from achievements import Achievement
+from achievements import Achievement, Bedingungstyp
 from verdiente_rollen import Bedingungsart
 
 
@@ -201,36 +201,43 @@ def _kontext_frage_eingereicht(discord_user_id) -> dict:
 # Achievements
 # --------------------------------------------------------------------------
 
-def _mindestens_richtig(anzahl: int):
-    return lambda kontext: kontext.get("richtige_antworten", 0) >= anzahl
+# Die Bedingungsarten dieses Moduls. Die ART steht im Code (sie weiss, welche
+# Zahl ein Ereignis mitliefert), der WERT steht in der Datenbank und ist im
+# Backend aenderbar - siehe achievements.Bedingungstyp.
+for _t in (
+    Bedingungstyp("quiz_richtig_gesamt", "Richtig beantwortete Quizfragen", NAME,
+                  "quiz_correct", "richtige_antworten", einheit="Fragen",
+                  hinweis="Z\u00e4hlt alle richtigen Antworten seit Beginn."),
+    Bedingungstyp("quiz_uhrzeit", "Quizfrage zu einer bestimmten Uhrzeit", NAME,
+                  "quiz_correct", "stunde", spanne=True, einheit="Uhr",
+                  hinweis="Von-Stunde einschliesslich, Bis-Stunde ausschliesslich: "
+                          "0 bis 4 meint 0:00 bis 3:59."),
+    Bedingungstyp("quiz_eingereicht", "Selbst eingereichte Fragen", NAME,
+                  "question_submitted", "eingereichte_fragen", einheit="Fragen",
+                  hinweis="Z\u00e4hlt eingereichte Fragen, unabh\u00e4ngig von der Verifizierung."),
+):
+    achievements.BEDINGUNGEN.eintragen(_t)
 
 
-def _in_stunden(von: int, bis: int):
-    """Fehlt die Stunde im Kontext, trifft die Bedingung NICHT zu - lieber ein
-    Achievement zu spaet als eines, das jemand ohne Zutun bekommt."""
-    def pruefen(kontext):
-        stunde = kontext.get("stunde")
-        return stunde is not None and von <= stunde < bis
-    return pruefen
-
-
+# Die Voreinstellungen dieses Moduls. Sie werden beim Start per INSERT OR IGNORE
+# in die Datenbank uebernommen - ein frisch installiertes Modul ist damit sofort
+# brauchbar, und spaetere Aenderungen im Backend ueberleben ein Update.
 for _a in (
     Achievement("FIRST_QUIZ", "Erste Schritte", "Deine erste Quizfrage richtig beantwortet.",
-                20, False, NAME, "quiz_correct", _mindestens_richtig(1)),
+                20, False, NAME, "quiz_correct", "quiz_richtig_gesamt", 1),
     Achievement("QUIZ_10", "Wissbegierig", "10 Quizfragen insgesamt richtig beantwortet.",
-                50, False, NAME, "quiz_correct", _mindestens_richtig(10)),
+                50, False, NAME, "quiz_correct", "quiz_richtig_gesamt", 10),
     Achievement("QUIZ_100", "Pflanzenexperte", "100 Quizfragen insgesamt richtig beantwortet.",
-                100, False, NAME, "quiz_correct", _mindestens_richtig(100)),
+                100, False, NAME, "quiz_correct", "quiz_richtig_gesamt", 100),
     Achievement("NIGHT_OWL", "Nachteule",
                 "Eine Quizfrage zwischen 0 und 4 Uhr nachts richtig beantwortet.",
-                30, True, NAME, "quiz_correct", _in_stunden(0, 4)),
+                30, True, NAME, "quiz_correct", "quiz_uhrzeit", 0, 4),
     Achievement("EARLY_BIRD", "Fr\u00fchaufsteher",
                 "Eine Quizfrage zwischen 5 und 7 Uhr morgens richtig beantwortet.",
-                30, True, NAME, "quiz_correct", _in_stunden(5, 7)),
+                30, True, NAME, "quiz_correct", "quiz_uhrzeit", 5, 7),
     Achievement("COMMUNITY_MEMBER", "Community-Mitglied",
                 "Deine erste eigene Quizfrage eingereicht.",
-                20, False, NAME, "question_submitted",
-                lambda kontext: kontext.get("eingereichte_fragen", 0) >= 1),
+                20, False, NAME, "question_submitted", "quiz_eingereicht", 1),
 ):
     achievements.REGISTRATUR.eintragen(_a)
 

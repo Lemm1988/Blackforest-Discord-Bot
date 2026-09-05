@@ -81,7 +81,7 @@ def test_ids_sind_eindeutig_ueber_module_hinweg():
     doppelt = achievements.Achievement(
         id="FIRST_QUIZ", name="Kopie", beschreibung="", xp_belohnung=0,
         geheim=False, modul="fremdmodul", ereignis="quiz_correct",
-        bedingung=lambda k: True,
+        bedingung_typ="quiz_richtig_gesamt", wert=1,
     )
     with pytest.raises(ValueError, match="doppelt"):
         R.eintragen(doppelt)

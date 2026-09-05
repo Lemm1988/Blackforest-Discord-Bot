@@ -18,6 +18,7 @@ from flask import Flask, flash, redirect, render_template, request, session, url
 from markupsafe import escape
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+import achievements
 import config
 import database
 import modul_xp_level
@@ -508,7 +509,24 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     @app.route("/achievements")
     @require_guild_member
     def achievements_page():
-        return render_template("achievements.html", overview=database.get_achievements_overview(session["discord_user_id"]))
+        """Die EIGENEN Auszeichnungen eines Mitglieds.
+
+        Zeigt seit dem 05.09.2026 nur noch das, was jemand tatsaechlich hat -
+        Vorgabe Patrick: "Meine archievments sollte dem User nur seine
+        archievments anzeigen." Vorher stand hier die vollstaendige Liste aller
+        Achievements samt der noch verschlossenen; auf einer Seite, die "Meine
+        Achievements" heisst, ist das eher Katalog als Vitrine.
+
+        Wie viele es insgesamt gibt, bleibt als blosse Zahl stehen - das
+        verraet keines und gibt trotzdem ein Ziel.
+        """
+        alle = database.get_achievements_overview(session["discord_user_id"])
+        meine = [e for e in alle if e["unlocked"]]
+        return render_template(
+            "achievements.html",
+            overview=meine,
+            offen=len(alle) - len(meine),
+        )
 
     # Registry aller Spiele, die der Bot hat (Spec 1, Phase B1). Aktuell nur das
     # Pflanzenquiz - die Uebersichtsseite iteriert ueber diese Liste, ein neues
@@ -668,6 +686,129 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             key: database.get_setting(key, config.DEFAULT_SETTINGS[key]) for key in XP_LEVEL_SETTING_KEYS
         }
         return render_template("xp_level.html", settings=settings)
+
+    # --- Achievements einstellen (05.09.2026) ---------------------------
+    #
+    # Getrennt von /achievements, das die EIGENEN Auszeichnungen eines
+    # Mitglieds zeigt. Hier wird eingestellt, wann welche faellt - Vorgabe
+    # Patrick: "im adminbereich unter level und Xp soll man archievents
+    # hinzufuegen und entfernen koennen."
+
+    def _bedingungsarten():
+        """Die Bedingungsarten der INSTALLIERTEN Module.
+
+        Ohne Quiz-Modul soll im Formular auch keine Quiz-Bedingung zur Auswahl
+        stehen - sonst liesse sich ein Achievement anlegen, das nie faellt.
+        """
+        installiert = set(module.INSTALLIERT)
+        return [a for a in achievements.BEDINGUNGEN.alle() if a.modul in installiert]
+
+    @app.route("/xp-level/achievements")
+    @require_permission("manage_game_settings")
+    def achievements_config_page():
+        return render_template(
+            "achievements_config.html",
+            eintraege=database.get_achievement_definitions(),
+            arten={a.schluessel: a for a in _bedingungsarten()},
+            arten_liste=_bedingungsarten(),
+        )
+
+    def _formularwerte(form, art):
+        """Liest Schwelle und Obergrenze passend zur Bedingungsart."""
+        try:
+            wert = int(form.get("wert", "1"))
+        except (TypeError, ValueError):
+            wert = 1
+        wert_bis = None
+        if art is not None and art.spanne:
+            try:
+                wert_bis = int(form.get("wert_bis", "0"))
+            except (TypeError, ValueError):
+                wert_bis = None
+        return wert, wert_bis
+
+    @app.route("/xp-level/achievements/save", methods=["POST"])
+    @require_permission("manage_game_settings")
+    def achievements_config_save():
+        form = request.form
+        achievement_id = form.get("id", "").strip()
+        vorhanden = {e["id"]: e for e in database.get_achievement_definitions()}
+        if achievement_id not in vorhanden:
+            flash("Dieses Achievement gibt es nicht (mehr).", "error")
+            return redirect(url_for("achievements_config_page"))
+
+        art = achievements.BEDINGUNGEN.holen(vorhanden[achievement_id]["bedingung_typ"])
+        wert, wert_bis = _formularwerte(form, art)
+        if art is not None and art.spanne and (wert_bis is None or wert_bis <= wert):
+            flash("Bei einer Zeitspanne muss der Bis-Wert groesser als der Von-Wert sein.", "error")
+            return redirect(url_for("achievements_config_page"))
+
+        database.save_achievement(
+            achievement_id,
+            name=form.get("name", "").strip() or vorhanden[achievement_id]["name"],
+            beschreibung=form.get("beschreibung", "").strip(),
+            xp_belohnung=max(0, int(form.get("xp_belohnung") or 0)),
+            geheim=form.get("geheim") == "1",
+            wert=wert, wert_bis=wert_bis,
+            aktiv=form.get("aktiv") == "1",
+        )
+        database.log_audit(session["discord_user_id"], "achievement_save",
+                           target_id=achievement_id, detail=f"Schwelle {wert}")
+        flash(f"„{form.get('name') or achievement_id}" + "\u201c gespeichert.", "success")
+        return redirect(url_for("achievements_config_page"))
+
+    @app.route("/xp-level/achievements/create", methods=["POST"])
+    @require_permission("manage_game_settings")
+    def achievements_config_create():
+        form = request.form
+        # Die ID steht so in user_achievements und laesst sich spaeter nicht
+        # mehr aendern, ohne Freischaltungen zu verlieren - deshalb streng.
+        achievement_id = "".join(
+            c for c in form.get("id", "").strip().upper() if c.isalnum() or c == "_"
+        )
+        if not achievement_id:
+            flash("Bitte eine Kennung angeben (Buchstaben, Ziffern, Unterstrich).", "error")
+            return redirect(url_for("achievements_config_page"))
+
+        art = achievements.BEDINGUNGEN.holen(form.get("bedingung_typ", ""))
+        if art is None or art.modul not in set(module.INSTALLIERT):
+            flash("Unbekannte Bedingung.", "error")
+            return redirect(url_for("achievements_config_page"))
+
+        wert, wert_bis = _formularwerte(form, art)
+        if art.spanne and (wert_bis is None or wert_bis <= wert):
+            flash("Bei einer Zeitspanne muss der Bis-Wert groesser als der Von-Wert sein.", "error")
+            return redirect(url_for("achievements_config_page"))
+
+        angelegt = database.create_achievement(
+            achievement_id,
+            name=form.get("name", "").strip() or achievement_id,
+            beschreibung=form.get("beschreibung", "").strip(),
+            xp_belohnung=max(0, int(form.get("xp_belohnung") or 0)),
+            geheim=form.get("geheim") == "1",
+            modul=art.modul, ereignis=art.ereignis, bedingung_typ=art.schluessel,
+            wert=wert, wert_bis=wert_bis,
+        )
+        if not angelegt:
+            flash(f"Die Kennung {achievement_id} ist schon vergeben.", "error")
+        else:
+            database.log_audit(session["discord_user_id"], "achievement_create",
+                               target_id=achievement_id, detail=art.label)
+            flash(f"Achievement {achievement_id} angelegt.", "success")
+        return redirect(url_for("achievements_config_page"))
+
+    @app.route("/xp-level/achievements/<achievement_id>/delete", methods=["POST"])
+    @require_permission("manage_game_settings")
+    def achievements_config_delete(achievement_id):
+        if database.delete_achievement(achievement_id):
+            database.log_audit(session["discord_user_id"], "achievement_delete",
+                               target_id=achievement_id)
+            flash(f"Achievement {achievement_id} geloescht.", "success")
+        else:
+            flash("Nur selbst angelegte Achievements lassen sich loeschen. "
+                  "Ein Achievement aus dem Modulcode kaeme beim naechsten Start wieder - "
+                  "deaktiviere es stattdessen, dann behaelt jeder, der es hat.", "error")
+        return redirect(url_for("achievements_config_page"))
 
     @app.route("/xp-level/settings", methods=["POST"])
     @require_permission("manage_game_settings")

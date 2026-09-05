@@ -1,14 +1,18 @@
 {% extends "base.html" %}
-{% from "_xp_level_subnav.html" import xp_level_subnav with context %}
 {% block title %}Achievements - Blackforest Bot{% endblock %}
 {% block content %}
-<h3 class="h4">🧠 XP &amp; Level</h3>
-{{ xp_level_subnav('achievements') }}
-<h4 class="h5 mb-3">Deine Achievements</h4>
+<h3 class="h4">🏅 Meine Achievements</h3>
+{% if overview %}
 <p class="text-muted">
-    Freigeschaltete Achievements zeigen Datum und XP-Bonus. Geheime, noch nicht
-    freigeschaltete Achievements werden nur als "???" angezeigt.
+    Alles, was du bisher freigeschaltet hast — mit Datum und XP-Bonus.
+    {% if offen %}Es {{ 'gibt noch eines' if offen == 1 else 'gibt noch ' ~ offen ~ ' weitere' }} zu entdecken.{% endif %}
 </p>
+{% else %}
+<p class="text-muted">
+    Du hast noch keine Auszeichnung. {% if offen %}Es {{ 'gibt eine' if offen == 1 else 'gibt ' ~ offen }} zu holen —
+    am schnellsten geht es mit <code>/frage</code> im Discord.{% endif %}
+</p>
+{% endif %}
 
 <div class="row g-3">
     {% for entry in overview %}
