@@ -1,0 +1,109 @@
+"""Die Testbox: Was würde mit dieser Nachricht passieren?
+
+Anlass (Plan 14, Teil 2, dritte Schwaeche): "Man sieht nicht, was der Filter
+tut. Erst wenn jemand sich beschwert, merkt man, dass ein Wort zu scharf
+eingestellt war."
+
+Patrick am 06.09.2026: "ich sehe keine testbox wenn ich über die app auf das
+backend zugreife? wo hast du das bitte eingebaut?" - zu Recht, sie war bis
+dahin nur beschrieben. Diese Datei sichert, dass es sie gibt und vor allem,
+dass sie ein Trockenlauf bleibt.
+"""
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+REPO = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO / "bot"))
+
+import wortfilter  # noqa: E402
+
+APP = (REPO / "backend" / "app.py").read_text(encoding="utf-8")
+SEITE = (REPO / "backend" / "templates" / "moderation.html").read_text(encoding="utf-8")
+ROUTE = APP[APP.index("def moderation_testen"):APP.index("def moderation_link_blacklist_add")]
+
+
+# --- Die Wortpruefung ist aus dem Cog heraus ---------------------------------
+
+
+def test_die_wortpruefung_liegt_in_einem_eigenen_modul():
+    """Vorher stand sie mitten im Cog, zwischen Loeschen und Timeout - das
+    Backend kam gar nicht heran, und genau deshalb konnte es die Testbox nicht
+    geben."""
+    assert (REPO / "bot" / "wortfilter.py").exists()
+
+
+@pytest.mark.parametrize("verboten", ["import discord", "import sqlite3", "import flask"])
+def test_das_modul_bleibt_frei_von_schweren_abhaengigkeiten(verboten):
+    assert verboten not in (REPO / "bot" / "wortfilter.py").read_text(encoding="utf-8")
+
+
+def test_das_cog_benutzt_dieselbe_pruefung():
+    """Sonst urteilen Bot und Testbox verschieden - und die Box waere wertlos."""
+    quelle = (REPO / "bot" / "cogs" / "moderation.py").read_text(encoding="utf-8")
+    assert "from wortfilter import find_matched_word" in quelle
+
+
+def test_wortgrenzen_bleiben_erhalten():
+    """Der wichtigste Schutz vor Fehlalarmen: `ass` in `Klasse` schlaegt nicht
+    an, `mist` in `Pferdemist` ebensowenig."""
+    assert wortfilter.find_matched_word("eine gute Klasse", ["ass"]) is None
+    assert wortfilter.find_matched_word("frischer Pferdemist", ["mist"]) is None
+    assert wortfilter.find_matched_word("das ist doch Mist", ["mist"]) == "mist"
+
+
+def test_verschleierte_schreibweisen_werden_erkannt():
+    assert wortfilter.find_matched_word("sch.eiss", ["scheiss"])
+    assert wortfilter.find_matched_word("s c h e i s s e", ["scheisse"])
+
+
+# --- Die Box selbst ----------------------------------------------------------
+
+
+def test_es_gibt_eine_route_und_ein_formular():
+    assert '@app.route("/moderation/testen"' in APP
+    assert "url_for('moderation_testen')" in SEITE
+
+
+def test_die_box_darf_nur_wer_den_filter_verwaltet():
+    kopf = APP[APP.index('@app.route("/moderation/testen"'):APP.index("def moderation_testen")]
+    assert '@require_permission("manage_badword_filter")' in kopf
+
+
+def test_die_box_prueft_beide_filter():
+    assert "wortfilter.find_matched_word" in ROUTE
+    assert "linkfilter.pruefe_nachricht" in ROUTE
+
+
+@pytest.mark.parametrize("verboten", ["log_badword_violation", "message.delete",
+                                      "set_setting", "grant_permission"])
+def test_die_box_veraendert_nichts(verboten):
+    """Das ist der Kern. Ein Trockenlauf, der Verstoesse zaehlt oder Nachrichten
+    loescht, waere schlimmer als keiner."""
+    assert verboten not in ROUTE
+
+
+def test_die_box_erklaert_die_annahme_bei_neuen_mitgliedern():
+    """Sonst wundert sich jemand, warum die Regel im Test greift und im Chat
+    nicht - oder umgekehrt."""
+    assert "ungünstigste" in SEITE
+
+
+def test_die_eingabe_ist_begrenzt():
+    assert 'maxlength="500"' in SEITE and "text[:500]" in ROUTE
+
+
+def test_das_ergebnis_ueberlebt_die_weiterleitung():
+    """Die Route leitet auf die Seite zurueck; ohne Zwischenspeicher waere das
+    Ergebnis weg, bevor es jemand sieht."""
+    assert 'session["automod_test"]' in ROUTE
+    assert 'session.pop("automod_test", None)' in APP
+
+
+def test_die_box_steht_ueber_den_reitern():
+    """Sie gilt fuer beide Filter und soll auffindbar sein - Patrick hat sie
+    genau deshalb gesucht und nicht gefunden."""
+    assert SEITE.index("Filter ausprobieren") < SEITE.index('id="automodTabs"')

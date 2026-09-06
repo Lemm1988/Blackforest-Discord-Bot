@@ -21,6 +21,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import achievements
 import config
 import database
+import linkfilter
 import modul_xp_level
 import modul_quiz
 import module
@@ -29,6 +30,7 @@ import rollenabgleich
 import scheduling
 import verdiente_rollen
 import vergabewege
+import wortfilter
 from . import oauth
 from .moderation_rules import moderation_block_reason
 
@@ -1245,6 +1247,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         return render_template(
             "moderation.html",
             badwords=database.get_badwords_full(),
+            test_ergebnis=session.pop("automod_test", None),
             violations=database.get_badword_violations(50),
             settings=_filter_settings(),
             spam_settings=_spam_settings(),
@@ -1347,6 +1350,56 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     @require_permission("manage_badword_filter")
     def moderation_link_whitelist_remove(domain_id):
         database.remove_link_domain(domain_id)
+        return redirect(url_for("moderation_page"))
+
+    @app.route("/moderation/testen", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def moderation_testen():
+        """Trockenlauf: Was würde mit dieser Nachricht passieren?
+
+        Bis zum 06.09.2026 sah man nicht, was die Filter tun — erst wenn sich
+        jemand beschwerte, merkte man, dass ein Wort zu scharf eingestellt war.
+        Hier läuft dieselbe Entscheidung wie im Bot, aber es wird nichts
+        gelöscht, nichts gezählt und niemand verwarnt.
+        """
+        text = (request.form.get("text") or "").strip()
+        if not text:
+            return redirect(url_for("moderation_page"))
+
+        aggressiv = database.get_setting(
+            "badword_aggressive_normalization_enabled",
+            config.DEFAULT_SETTINGS["badword_aggressive_normalization_enabled"],
+        ) == "1"
+        wort = None
+        if database.get_setting("badword_filter_enabled",
+                                config.DEFAULT_SETTINGS["badword_filter_enabled"]) == "1":
+            wort = wortfilter.find_matched_word(
+                text, database.get_badwords(), aggressive=aggressiv)
+
+        link = linkfilter.Entscheidung(False)
+        if database.get_setting("link_filter_enabled",
+                                config.DEFAULT_SETTINGS["link_filter_enabled"]) == "1":
+            an = lambda s: database.get_setting(s, config.DEFAULT_SETTINGS[s]) == "1"
+            link = linkfilter.pruefe_nachricht(
+                text,
+                gesperrt=database.get_link_blacklist(),
+                erlaubt=database.get_link_whitelist(),
+                alles_blockieren=an("link_filter_block_all_enabled"),
+                erlaubtliste_aktiv=an("link_filter_whitelist_enabled"),
+                neue_mitglieder_aktiv=an("link_filter_new_members_enabled"),
+                # Fuer den Trockenlauf der ungünstigste Fall: Wer wissen will,
+                # ob die Regel greift, will sie ausgeloest sehen.
+                ist_neues_mitglied=an("link_filter_new_members_enabled"),
+            )
+
+        session["automod_test"] = {
+            "text": text[:500],
+            "wort": wort,
+            "link_verstoss": link.verstoss,
+            "link_domain": link.domain,
+            "link_grund": link.begruendung,
+            "sauber": not wort and not link.verstoss,
+        }
         return redirect(url_for("moderation_page"))
 
     @app.route("/moderation/link_blacklist/add", methods=["POST"])

@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 914 Tests)
+17. Testsuite (`tests/`, 932 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -1106,7 +1106,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 914 Tests)
+## 17. Testsuite (`tests/`, 932 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1142,6 +1142,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_rollenabgleich.py` | 31 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten und dass eine vom Bot vergebene Rolle mit dem letzten zugeordneten Recht wieder verschwindet |
 | `test_nutzertexte.py` | 109 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
 | `test_csrf_coverage.py` | 81 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
+| `test_testbox.py` | 18 | Dass die Testbox beide Filter prüft und dabei **nichts** verändert — die Route wird auf `log_badword_violation`, `delete` und `set_setting` durchsucht |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
 | `test_moderation_limits.py` | 33 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
 | `test_linkfilter.py` | 33 | Die Reihenfolge der Linkfilter-Regeln — insbesondere dass die Sperrliste vor der Erlaubtliste greift, dass Unterdomains eingeschlossen sind und `notexample.com` nicht unter `example.com` fällt |
@@ -1292,6 +1293,59 @@ Seite ohne Javascript.
 `tests/test_automod_seite.py` prüft, dass jede der sechs Karten noch da ist und
 in **genau einem** Reiter liegt — sonst steht beim nächsten Umbau etwas doppelt
 oder fällt heraus.
+
+### Schimpfwortfilter: Testbox und Wortliste (06.09.2026)
+
+#### Die Testbox
+
+Bis dahin sah niemand, was die Filter tun — erst wenn sich jemand beschwerte,
+merkte man, dass ein Wort zu scharf eingestellt war. Über den Reitern auf
+`/moderation` steht jetzt **„🧪 Filter ausprobieren"**: Text eingeben, und beide
+Filter melden mit den aktuellen Einstellungen, ob und warum sie anschlagen.
+
+Es ist ein **Trockenlauf**. Nichts wird gelöscht, nichts gezählt, niemand
+verwarnt — `tests/test_testbox.py` prüft das ausdrücklich, indem es die Route
+nach `log_badword_violation`, `message.delete` und `set_setting` durchsucht. Ein
+Probelauf, der Verstöße zählt, wäre schlimmer als keiner.
+
+Beim Linkfilter wird der **ungünstigste Fall** angenommen: Ist die Regel für
+neue Mitglieder aktiv, tut die Box so, als wäre der Schreiber neu. Sonst sähe
+man nie, ob die Regel greift. Rollen- und Kanal-Ausnahmen bleiben außen vor —
+sie hängen an einer Person und einem Ort, nicht am Text.
+
+Damit die Box überhaupt möglich war, musste die Worterkennung aus
+`cogs/moderation.py` heraus. Sie liegt jetzt in `bot/wortfilter.py`, nach
+demselben Muster wie `linkfilter.py`: kein discord.py, keine Datenbank, kein
+Schreibzugriff. Der Bot importiert von dort, das Backend ebenso — beide urteilen
+also garantiert gleich.
+
+#### Die Wortliste
+
+Auf Patricks Wunsch wurden drei öffentliche deutsche Listen heruntergeladen
+(LDNOOBW, chucknorris-io, washyourmouthoutwithsoap) und **von Hand** sortiert.
+Die Sortierung liegt nachvollziehbar in
+`~/Desktop/pläne/wortlisten/sortierung.py`.
+
+Von 164 neuen Wörtern wurden **70 übernommen** und 94 verworfen:
+
+| Gruppe | Anzahl | Warum |
+|---|---|---|
+| übernommen | 70 | eindeutige Beleidigungen, Vulgärsprache, explizit Sexuelles |
+| harmlos | 60 | würden echte Nachrichten löschen |
+| fremdsprachig | 25 | Reste der maschinellen Übersetzung, greifen nie |
+| unsicher | 10 | anatomisch/medizinisch plus `nazi` — Patricks Entscheidung |
+
+Die verworfenen sind der interessante Teil. **`samen`** stand in einer der
+Listen — in einer Grow-Gruppe undenkbar. Ebenso `rosette` (Blattrosette),
+`stechen` (Stecklinge), `abstand` (Pflanzabstand), `nippel` (am
+Bewässerungsschlauch), `mist` (Dünger), `geil` (dort schlicht ein Lob) und
+`hündin` (auf dem Server wird über Haustiere geredet).
+
+Gegengeprüft mit vierzehn typischen Sätzen aus der Gruppe: **kein einziger
+Fehlalarm**, während „du bist ein arschloch" zuverlässig erkannt wird. Der
+Wortgrenzen-Abgleich trägt dabei die Hauptlast — `mist` in `Pferdemist` schlägt
+nicht an.
+
 
 ## 18. Offene Punkte (Stand 05.09.2026)
 

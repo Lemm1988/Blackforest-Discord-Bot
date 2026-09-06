@@ -6,6 +6,58 @@
 {{ moderation_subnav('automod') }}
 <p class="text-muted">Die vier Automod-Bereiche liegen auf eigenen Reitern — Einstellungen und Listen jeweils beisammen. Willkommensnachricht und Regel-Rolle liegen unter <a href="{{ url_for('server_setup_page') }}">Bot-Setup</a>.</p>
 
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">🧪 Filter ausprobieren</h5></div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Trockenlauf mit deinen aktuellen Einstellungen: Schimpfwort- und Linkfilter
+            werden geprüft, aber <strong>nichts gelöscht, nichts gezählt und niemand
+            verwarnt</strong>. Gut, um vor dem Eintragen eines Wortes zu sehen, ob es
+            harmlose Sätze mitnimmt.
+        </p>
+        <form method="POST" action="{{ url_for('moderation_testen') }}" class="row g-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-12 col-md-9">
+                <input type="text" name="text" class="form-control" maxlength="500"
+                       placeholder="z.B. Die Pflanze wächst geil, schau mal auf example.com"
+                       value="{{ test_ergebnis.text if test_ergebnis else '' }}"
+                       required autocomplete="off">
+            </div>
+            <div class="col-12 col-md-3">
+                <button type="submit" class="btn btn-outline-primary w-100">Prüfen</button>
+            </div>
+        </form>
+
+        {% if test_ergebnis %}
+        <div class="mt-3">
+            {% if test_ergebnis.sauber %}
+            <div class="alert alert-success mb-0 py-2">
+                ✅ Diese Nachricht würde <strong>durchgehen</strong>.
+            </div>
+            {% else %}
+            {% if test_ergebnis.wort %}
+            <div class="alert alert-danger mb-2 py-2">
+                🤬 <strong>Schimpfwortfilter</strong> schlägt an — erkanntes Wort:
+                <code>{{ test_ergebnis.wort }}</code>
+            </div>
+            {% endif %}
+            {% if test_ergebnis.link_verstoss %}
+            <div class="alert alert-danger mb-0 py-2">
+                🔗 <strong>Linkfilter</strong> schlägt an bei
+                <code>{{ test_ergebnis.link_domain }}</code> — {{ test_ergebnis.link_grund }}
+            </div>
+            {% endif %}
+            {% endif %}
+            <p class="text-muted small mb-0 mt-2">
+                Beim Linkfilter wird der ungünstigste Fall angenommen: Ist die Regel für neue
+                Mitglieder aktiv, wird so getan, als wäre der Schreiber neu — sonst sähe man
+                nie, ob sie greift. Rollen- und Kanal-Ausnahmen bleiben unberücksichtigt.
+            </p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
 <ul class="nav nav-tabs mb-4" id="automodTabs" role="tablist">
     <li class="nav-item" role="presentation">
         <button class="nav-link active" id="tab-woerter" data-bs-toggle="tab"
