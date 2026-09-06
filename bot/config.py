@@ -57,6 +57,11 @@ BADWORDS_FILE = DATA_DIR / "badwords.txt"
 
 # Standardwerte für konfigurierbare Bot-Settings (Erststart, danach in DB änderbar über settings-Tabelle)
 DEFAULT_SETTINGS = {
+    # Kanal fuer die Meldung manueller Moderationsaktionen (Kick, Bann,
+    # Entbannung, Timeout). Leer = keine Meldung. Bewusst ein eigener Kanal und
+    # nicht der Willkommenskanal: Wer wen warum gekickt hat, geht das Team an
+    # und nicht jeden Neuzugang.
+    "moderation_log_channel_id": "",
     "welcome_channel_id": "1239923799420567595",
 
     # --- Taegliche Guten-Morgen-Nachricht (03.09.2026) ---

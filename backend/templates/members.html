@@ -10,6 +10,30 @@
     Klick auf einen Namen für Details, Verstoß-Historie und Moderationsaktionen.
 </p>
 
+<div class="card mb-4">
+    <div class="card-header"><h5 class="h6 mb-0">📣 Meldekanal für Moderationsaktionen</h5></div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Kick, Bann, Entbannung und Timeout werden hier gemeldet — mit Betroffenem,
+            Moderator, Grund und Dauer. Leer lassen schaltet die Meldungen ab.
+            Wähle einen Kanal, den nur das Team sieht: Wer wen warum gekickt hat, geht
+            nicht jeden etwas an.
+        </p>
+        <form method="POST" action="{{ url_for('members_meldekanal') }}" class="row g-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-12 col-md-6">
+                <select class="form-select channel-picker" name="channel_id"
+                        data-current="{{ meldekanal }}">
+                    <option value="">— keine Meldungen —</option>
+                </select>
+            </div>
+            <div class="col-12 col-md-3">
+                <button type="submit" class="btn btn-primary w-100">Speichern</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <div class="table-responsive">
     <table class="table table-sm table-striped align-middle">
         <thead>

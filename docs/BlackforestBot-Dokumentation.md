@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 955 Tests)
+17. Testsuite (`tests/`, 972 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -1106,7 +1106,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 955 Tests)
+## 17. Testsuite (`tests/`, 972 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1146,6 +1146,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
 | `test_moderation_limits.py` | 33 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
 | `test_linkfilter.py` | 33 | Die Reihenfolge der Linkfilter-Regeln — insbesondere dass die Sperrliste vor der Erlaubtliste greift, dass Unterdomains eingeschlossen sind und `notexample.com` nicht unter `example.com` fällt |
+| `test_moderationsmeldung.py` | 17 | Dass Kick, Bann, Entbannung und Timeout gemeldet werden — erst nach dem Erfolg, und dass ein Fehlschlag beim Melden die Aktion nicht abbricht |
 | `test_moderation_hierarchy.py` | 7 | Rollenhierarchie als eigene Schranke neben den Berechtigungen |
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
 | `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
@@ -1438,6 +1439,40 @@ Gegengeprüft mit vierzehn typischen Sätzen aus der Gruppe: **kein einziger
 Fehlalarm**, während „du bist ein arschloch" zuverlässig erkannt wird. Der
 Wortgrenzen-Abgleich trägt dabei die Hauptlast — `mist` in `Pferdemist` schlägt
 nicht an.
+
+
+### Moderationsaktionen werden gemeldet (06.09.2026)
+
+Patrick: „kick ban habe ich schon getestet das hat funktioniert sollte aber auch
+angekündigt werden in einem kanal und den sollte man einstellen können."
+
+Bis dahin landeten Kick, Bann, Entbannung und Timeout nur im Audit-Log des Bots
+— man musste also wissen, dass etwas passiert ist, um es nachzusehen.
+
+Der Kanal wird unter **Moderation → Aktionen & Überwachung** eingestellt
+(`moderation_log_channel_id`). **Leer heißt: keine Meldung** — wer nichts
+einstellt, bekommt auch nichts. Empfohlen ist ein Kanal, den nur das Team sieht:
+Wer wen warum gekickt hat, geht nicht jeden etwas an.
+
+Die Meldung ist ein Embed mit Betroffenem, Moderator, Grund und je nach Aktion
+einem Zusatz — beim Bann der gelöschte Nachrichtenzeitraum, beim Timeout die
+Dauer. Beides ist sonst nirgends im Kanal zu sehen.
+
+Drei Feinheiten, die im Code festgehalten sind:
+
+**Die Meldung kommt erst nach dem Erfolg.** Sie steht im `else`-Zweig hinter
+`except discord.Forbidden` — eine Meldung über einen Kick, der an Discords
+Rollenhierarchie gescheitert ist, wäre schlimmer als keine.
+
+**Ein Fehlschlag beim Melden bricht die Aktion nicht ab.** Gekickt ist gekickt,
+auch wenn der Meldekanal gelöscht wurde; es gibt dann nur eine Warnung im
+Backend.
+
+**Der Betroffene wird über `bot.get_user()` aufgelöst, nicht `get_member()`.**
+Nach einem Kick oder Bann ist die Person kein Mitglied mehr — `get_member`
+liefert dann nichts, `get_user` meist noch den Namen. Der Moderator wiederum
+wird **vor** dem Sprung auf den Bot-Thread aus der Sitzung gelesen: Dort gibt es
+keinen Flask-Kontext mehr.
 
 
 ## 18. Offene Punkte (Stand 06.09.2026)

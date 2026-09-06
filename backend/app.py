@@ -2811,7 +2811,28 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         # Überwachungs-Aufgabe ("wer braucht gerade Aufmerksamkeit").
         members.sort(key=lambda m: m["violation_count"], reverse=True)
 
-        return render_template("members.html", members=members)
+        return render_template(
+            "members.html", members=members,
+            meldekanal=database.get_setting(
+                "moderation_log_channel_id",
+                config.DEFAULT_SETTINGS["moderation_log_channel_id"]),
+        )
+
+    @app.route("/members/meldekanal", methods=["POST"])
+    @require_permission("moderate_members")
+    def members_meldekanal():
+        """Wohin Kick, Bann, Entbannung und Timeout gemeldet werden."""
+        kanal = (request.form.get("channel_id") or "").strip()
+        if kanal and not kanal.isdigit():
+            flash("Ungültiger Kanal.", "error")
+            return redirect(url_for("members_overview"))
+        alt = database.get_setting(
+            "moderation_log_channel_id", config.DEFAULT_SETTINGS["moderation_log_channel_id"])
+        database.set_setting("moderation_log_channel_id", kanal)
+        database.log_audit(session["discord_user_id"], "config_change",
+                           detail=f"moderation_log_channel_id: {alt!r} -> {kanal!r}")
+        flash("Meldekanal gespeichert." if kanal else "Meldungen abgeschaltet.", "success")
+        return redirect(url_for("members_overview"))
 
     # Fuer das Bann-Formular auf der Mitgliederseite.
     @app.context_processor
@@ -2863,6 +2884,61 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             is_owner=database.is_protected_owner(user_id),
         )
 
+    #: Wie eine Moderationsaktion im Meldekanal aussieht.
+    MODERATIONS_MELDUNGEN = {
+        "kick": ("👢 Gekickt", 0xE67E22),
+        "ban": ("🔨 Gebannt", 0xC0392B),
+        "unban": ("🕊️ Entbannt", 0x27AE60),
+        "timeout": ("🔇 Stummgeschaltet", 0xF1C40F),
+    }
+
+    def _melde_moderation(aktion: str, user_id: str, grund: str = "", zusatz: str = "") -> None:
+        """Schreibt eine Moderationsaktion in den eingestellten Meldekanal.
+
+        Leerer Kanal heisst: keine Meldung. Ein Fehlschlag beim Senden darf die
+        Aktion selbst nie beruehren - gekickt ist gekickt, auch wenn der
+        Meldekanal geloescht wurde. Deshalb wird hier nur gewarnt.
+
+        Der Moderator wird VOR dem Sprung auf den Bot-Thread aufgeloest: Dort
+        gibt es keinen Flask-Kontext mehr, `session` waere nicht erreichbar.
+        """
+        kanal_id = database.get_setting(
+            "moderation_log_channel_id", config.DEFAULT_SETTINGS["moderation_log_channel_id"])
+        if not kanal_id:
+            return
+        titel, farbe = MODERATIONS_MELDUNGEN.get(aktion, ("Moderationsaktion", 0x95A5A6))
+        moderator_id = session.get("discord_user_id")
+
+        async def _senden():
+            kanal = bot.get_channel(int(kanal_id))
+            if kanal is None:
+                return "Der eingestellte Meldekanal existiert nicht mehr."
+            # get_user statt get_member: Nach einem Kick oder Bann ist die
+            # Person kein Mitglied mehr, im Cache aber meist noch vorhanden.
+            betroffen = bot.get_user(int(user_id))
+            moderator = bot.get_user(int(moderator_id)) if moderator_id else None
+
+            embed = discord.Embed(title=titel, colour=farbe, timestamp=datetime.now(timezone.utc))
+            embed.add_field(name="Betroffen",
+                            value=f"{betroffen.mention if betroffen else f'<@{user_id}>'}\n"
+                                  f"`{betroffen if betroffen else user_id}`", inline=True)
+            embed.add_field(name="Moderator",
+                            value=str(moderator) if moderator else f"`{moderator_id or 'unbekannt'}`",
+                            inline=True)
+            if zusatz:
+                embed.add_field(name="Dauer", value=zusatz, inline=True)
+            embed.add_field(name="Grund", value=(grund or "Kein Grund angegeben")[:1024], inline=False)
+            await kanal.send(embed=embed)
+            return None
+
+        try:
+            fehler = run_on_bot(_senden())
+        except Exception as exc:
+            log.exception("Moderationsmeldung fehlgeschlagen (%s, user_id=%s)", aktion, user_id)
+            fehler = str(exc)
+        if fehler:
+            flash(f"Die Aktion lief durch, die Meldung im Kanal aber nicht: {fehler}", "warning")
+
     @app.route("/members/<user_id>/kick", methods=["POST"])
     @require_permission("moderate_members")
     def member_kick(user_id):
@@ -2896,6 +2972,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             flash(f"Kick fehlgeschlagen: {exc}", "error")
         else:
             database.log_audit(session["discord_user_id"], "member_kick", target_id=user_id, detail=f"Grund: {reason_voll}")
+            _melde_moderation("kick", user_id, reason_voll)
             flash("Nutzer wurde gekickt.", "success")
         return redirect(url_for("members_overview"))
 
@@ -2944,6 +3021,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
                 session["discord_user_id"], "member_ban", target_id=user_id,
                 detail=f"Grund: {reason_voll} | Nachrichten gelöscht: {loesch_label}",
             )
+            _melde_moderation("ban", user_id, reason_voll, zusatz=f"Nachrichten gelöscht: {loesch_label}")
             if loesch_sekunden:
                 flash(f"Nutzer wurde gebannt. Nachrichten gelöscht: {loesch_label.lower()}.", "success")
             else:
@@ -2973,6 +3051,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             flash(f"Unban fehlgeschlagen: {exc}", "error")
         else:
             database.log_audit(session["discord_user_id"], "member_unban", target_id=user_id)
+            _melde_moderation("unban", user_id)
             flash("Nutzer wurde entbannt.", "success")
         return redirect(url_for("member_detail", user_id=user_id))
 
@@ -3016,6 +3095,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
                 session["discord_user_id"], "member_timeout", target_id=user_id,
                 detail=f"{duration_minutes} Minuten, Grund: {reason_voll}",
             )
+            _melde_moderation("timeout", user_id, reason_voll, zusatz=f"{duration_minutes} Minuten")
             flash(f"Nutzer wurde für {duration_minutes} Minuten stummgeschaltet.", "success")
         return redirect(url_for("member_detail", user_id=user_id))
 
