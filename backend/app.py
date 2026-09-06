@@ -1250,6 +1250,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             spam_settings=_spam_settings(),
             link_settings=_link_settings(),
             link_whitelist=database.get_link_whitelist_full(),
+            link_blacklist=database.get_link_blacklist_full(),
             whitelisted_roles=whitelisted_roles,
             exempt_channels=exempt_channels,
         )
@@ -1346,6 +1347,22 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     @require_permission("manage_badword_filter")
     def moderation_link_whitelist_remove(domain_id):
         database.remove_link_domain(domain_id)
+        return redirect(url_for("moderation_page"))
+
+    @app.route("/moderation/link_blacklist/add", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def moderation_link_blacklist_add():
+        domain = request.form.get("domain", "").strip()
+        if domain:
+            database.add_blocked_domain(domain, session["discord_user_id"])
+            flash(f"{domain} gesperrt.", "success")
+        return redirect(url_for("moderation_page"))
+
+    @app.route("/moderation/link_blacklist/remove/<int:domain_id>", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def moderation_link_blacklist_remove(domain_id):
+        database.remove_blocked_domain(domain_id)
+        flash("Domain von der Sperrliste entfernt.", "success")
         return redirect(url_for("moderation_page"))
 
     @app.route("/moderation/settings", methods=["POST"])

@@ -21,6 +21,7 @@ import announcements
 from cogs import verdiente_rollen
 import config
 import database
+import linkfilter
 import modul_xp_level
 import modul_quiz
 import mood
@@ -389,44 +390,33 @@ class Moderation(commands.Cog):
         if str(message.channel.id) in database.get_link_filter_exempt_channel_ids():
             return False
 
-        # Drei unabhaengig kombinierbare Regeln statt eines exklusiven Modus
-        # (Link-Filter-Ueberarbeitung, ersetzt das fruehere link_filter_mode) -
-        # ein Link ist ein Verstoss, wenn IRGENDEINE aktive Regel zutrifft:
-        #   A) block_all: JEDER Link ist ein Verstoss, unabhaengig von Domain/Alter.
-        #   B) whitelist: ein Verstoss, AUSSER die Domain steht auf der Whitelist.
-        #   C) new_members: ein Verstoss, WENN der Autor juenger als das
-        #      eingestellte Mitgliedsalter ist - unabhaengig von der Domain (auch
-        #      eine an sich erlaubte/gewhitelistete Domain zaehlt hier, damit
-        #      neue Mitglieder wirklich GAR KEINE Links posten koennen, wenn
-        #      diese Regel aktiv ist).
-        # Sind A und B gleichzeitig aktiv, dominiert A (blockt ausnahmslos) -
-        # das ist kein Fehler, sondern die einzig sinnvolle Aufloesung eines
-        # "blocke alles" + "erlaube diese Domains"-Widerspruchs: wer beides will,
-        # sollte A ausschalten.
-        block_all = database.get_setting(
-            "link_filter_block_all_enabled", config.DEFAULT_SETTINGS["link_filter_block_all_enabled"]
-        ) == "1"
-        whitelist_rule = database.get_setting(
-            "link_filter_whitelist_enabled", config.DEFAULT_SETTINGS["link_filter_whitelist_enabled"]
-        ) == "1"
-        new_members_rule = database.get_setting(
-            "link_filter_new_members_enabled", config.DEFAULT_SETTINGS["link_filter_new_members_enabled"]
-        ) == "1"
+        # Die Regeln greifen ineinander; das Urteil steht deshalb in
+        # linkfilter.py und ist ohne laufenden Bot pruefbar. Reihenfolge dort:
+        # Sperrliste, dann "alles blockieren", dann Erlaubtliste, dann neue
+        # Mitglieder. Die Sperrliste kommt zuerst - wer eine Domain
+        # ausdruecklich verbietet, meint es.
+        holen = lambda schluessel: database.get_setting(
+            schluessel, config.DEFAULT_SETTINGS[schluessel]) == "1"
 
-        domain = extract_domain(match.group(0))
-        is_whitelisted_domain = whitelist_rule and is_domain_whitelisted(domain, database.get_link_whitelist())
+        ist_neu = False
+        if holen("link_filter_new_members_enabled"):
+            tage = int(database.get_setting(
+                "link_filter_new_member_days",
+                config.DEFAULT_SETTINGS["link_filter_new_member_days"]))
+            beigetreten = getattr(message.author, "joined_at", None)
+            if beigetreten is not None:
+                ist_neu = (discord.utils.utcnow() - beigetreten).days < tage
 
-        is_new_member = False
-        if new_members_rule:
-            days_limit = int(database.get_setting(
-                "link_filter_new_member_days", config.DEFAULT_SETTINGS["link_filter_new_member_days"]
-            ))
-            joined_at = getattr(message.author, "joined_at", None)
-            if joined_at is not None:
-                member_age_days = (discord.utils.utcnow() - joined_at).days
-                is_new_member = member_age_days < days_limit
-
-        violation = block_all or (whitelist_rule and not is_whitelisted_domain) or (new_members_rule and is_new_member)
+        urteil = linkfilter.pruefe(
+            url=match.group(0),
+            gesperrt=database.get_link_blacklist(),
+            erlaubt=database.get_link_whitelist(),
+            alles_blockieren=holen("link_filter_block_all_enabled"),
+            erlaubtliste_aktiv=holen("link_filter_whitelist_enabled"),
+            neue_mitglieder_aktiv=holen("link_filter_new_members_enabled"),
+            ist_neues_mitglied=ist_neu,
+        )
+        violation = urteil.verstoss
         if not violation:
             return False
 

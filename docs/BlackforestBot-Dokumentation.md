@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 864 Tests)
+17. Testsuite (`tests/`, 897 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -1106,7 +1106,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 864 Tests)
+## 17. Testsuite (`tests/`, 897 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1144,6 +1144,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_csrf_coverage.py` | 81 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
 | `test_moderation_limits.py` | 33 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
+| `test_linkfilter.py` | 33 | Die Reihenfolge der Linkfilter-Regeln — insbesondere dass die Sperrliste vor der Erlaubtliste greift, dass Unterdomains eingeschlossen sind und `notexample.com` nicht unter `example.com` fällt |
 | `test_moderation_hierarchy.py` | 7 | Rollenhierarchie als eigene Schranke neben den Berechtigungen |
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
 | `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
@@ -1209,6 +1210,63 @@ Bot-Rolle vergrößert den Kreis derer, die der Bot entfernen kann — Vorschlä
 diesen Zusammenhang immer mitnennen.
 
 ---
+
+### Linkfilter: die Sperrliste (06.09.2026)
+
+Aufgabe (Patrick, 04.09.2026): „der Linkfilter sollte nicht nur white sondern
+auch blacklisting können und mehrere einstellungen haben."
+
+Bis dahin gab es drei Regeln — alles blockieren, Erlaubtliste, nur neue
+Mitglieder — aber keine Möglichkeit, **eine einzelne Domain** zu verbieten, ohne
+gleich alle Links zu sperren. `grep -n "blacklist" bot/ backend/` fand keinen
+Treffer.
+
+#### Die Reihenfolge der Regeln
+
+Zuerst greifen die **Ausnahmen für Rollen und Kanäle**: Sie sagen „diese Person"
+oder „dieser Kanal" ist außen vor, und das ist eine Frage des Kontexts, nicht des
+Links. Danach entscheidet `bot/linkfilter.py` in dieser Reihenfolge:
+
+| # | Regel | Wirkung |
+|---|---|---|
+| 1 | **Sperrliste** | Die Domain ist gesperrt — auch wenn sonst alles erlaubt wäre |
+| 2 | Alles blockieren | Jeder Link ist ein Verstoß |
+| 3 | Erlaubtliste | Ein Verstoß, außer die Domain steht darauf |
+| 4 | Neue Mitglieder | Ein Verstoß, wenn der Autor noch nicht lange dabei ist |
+
+**Die Sperrliste steht bewusst vorn.** Wer eine Domain ausdrücklich verbietet,
+meint es. Stünde die Erlaubtliste davor, wäre die Sperre wirkungslos, sobald
+jemand dieselbe Domain versehentlich in beide Listen einträgt.
+
+Regel 4 gilt unabhängig von der Domain — sonst könnten neue Mitglieder über eine
+erlaubte Domain doch Links posten, und die Regel wäre keine.
+
+#### Schreibweisen
+
+`example.com` deckt auch alle Unterdomains, also `cdn.example.com`. Die
+umgekehrte Richtung gilt nicht. Geprüft wird dabei auf den Punkt, nicht auf den
+bloßen Textanfang: `notexample.com` fällt **nicht** unter `example.com`.
+
+`*.example.com` wird angenommen und auf `example.com` reduziert. Die
+Schreibweise liegt nahe, und ein Eintrag, der stillschweigend nie greift, ist bei
+einer Sperrliste das Schlimmste, was passieren kann. Auch eine ganze Adresse
+(`https://www.example.com/pfad`) wird beim Eintragen auf die Domain reduziert.
+
+#### Warum ein eigenes Modul
+
+Die Entscheidung steckte vorher mitten im Cog, verwoben mit dem Löschen der
+Nachricht, dem Verwarnen und dem Timeout — prüfbar nur, indem man den Bot
+startete und eine Nachricht schrieb. In `bot/linkfilter.py` steht jetzt nur das
+Urteil: kein discord.py, keine Datenbank, kein Schreibzugriff.
+
+Das zahlt sich zweimal aus. Die 33 Tests in `tests/test_linkfilter.py` laufen
+ohne Server, und die für Teil 2 geplante **Testbox im Backend** („Text eingeben,
+sehen ob der Filter anschlägt und warum") kann dieselbe Entscheidung benutzen,
+ohne dabei etwas zu löschen. `Entscheidung.begruendung` liefert den Satz dazu.
+
+Im Chat bekommt der Betroffene die Regel **nicht** genannt — das wäre eine
+Anleitung zum Umgehen. Die Begründung ist für das Backend gedacht.
+
 
 ## 18. Offene Punkte (Stand 05.09.2026)
 

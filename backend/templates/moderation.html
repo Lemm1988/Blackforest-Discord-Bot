@@ -286,6 +286,37 @@
             <p class="text-muted mb-0">Keine Domains in der Whitelist.</p>
             {% endfor %}
         </div>
+
+        <hr>
+        <h6>Gesperrte Domains</h6>
+        <p class="text-muted small">
+            Diese Domains sind <strong>immer</strong> gesperrt — auch wenn sonst alles erlaubt
+            wäre und unabhängig davon, welche der Regeln oben aktiv sind. Unterdomains sind
+            eingeschlossen: <code>example.com</code> sperrt auch <code>cdn.example.com</code>.
+            Ausgenommen bleiben nur die Rollen und Kanäle aus den Ausnahmelisten oben.
+        </p>
+        <form method="POST" action="{{ url_for('moderation_link_blacklist_add') }}" class="row g-2 mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-8 col-md-4">
+                <input type="text" name="domain" class="form-control" placeholder="z.B. spam.example" required autocomplete="off">
+            </div>
+            <div class="col-4 col-md-2">
+                <button type="submit" class="btn btn-danger w-100">Sperren</button>
+            </div>
+        </form>
+        <div class="d-flex flex-wrap gap-2">
+            {% for d in link_blacklist %}
+            <form method="POST" action="{{ url_for('moderation_link_blacklist_remove', domain_id=d['id']) }}" class="d-inline"
+                  onsubmit="return confirm('Sperre für &quot;{{ d['domain'] }}&quot; wirklich aufheben?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="badge bg-danger border-0 d-inline-flex align-items-center gap-1 px-2 py-2">
+                    {{ d['domain'] }} <span aria-hidden="true">✕</span>
+                </button>
+            </form>
+            {% else %}
+            <p class="text-muted mb-0">Keine Domain gesperrt.</p>
+            {% endfor %}
+        </div>
     </div>
 </div>
 

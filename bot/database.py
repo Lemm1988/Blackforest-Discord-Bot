@@ -7,6 +7,7 @@ from pathlib import Path
 
 import achievements
 import config
+import linkfilter
 import module
 import schema_helfer
 import mood
@@ -177,6 +178,17 @@ CREATE TABLE IF NOT EXISTS link_whitelist (
 -- Rollen, die komplett vom Link-Filter ausgenommen sind (Link-Filter-
 -- Ueberarbeitung) - nur die role_id wird gespeichert, der Anzeigename wird bei
 -- Bedarf live ueber den Bot aufgeloest statt redundant/veraltbar gecacht.
+-- Domains, die IMMER gesperrt sind (06.09.2026). Die Sperrliste greift vor
+-- allen anderen Regeln: Eine gesperrte Domain bleibt gesperrt, auch wenn sonst
+-- alles erlaubt waere. Aufbau bewusst identisch zur link_whitelist - es ist
+-- dieselbe Art von Liste, nur mit umgekehrtem Vorzeichen.
+CREATE TABLE IF NOT EXISTS link_blacklist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    domain TEXT NOT NULL UNIQUE,
+    added_by TEXT,
+    added_at TEXT DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS link_filter_whitelisted_roles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     role_id TEXT NOT NULL UNIQUE,
@@ -1667,6 +1679,48 @@ def add_link_domain(domain: str, added_by):
 def remove_link_domain(domain_id: int):
     with get_connection() as conn:
         conn.execute("DELETE FROM link_whitelist WHERE id = ?", (domain_id,))
+        conn.commit()
+
+
+# --- Link-Sperrliste (06.09.2026) ---
+#
+# Die Gegenrichtung zur Whitelist. Sie fehlte bis zum 06.09.2026 vollstaendig -
+# `grep -n "blacklist" bot/ backend/` fand keinen einzigen Treffer -, obwohl sie
+# der naheliegende Fall ist: Eine einzelne Domain verbieten, ohne gleich alle
+# Links zu sperren.
+
+def get_link_blacklist():
+    with get_connection() as conn:
+        return [r["domain"] for r in conn.execute(
+            "SELECT domain FROM link_blacklist ORDER BY domain").fetchall()]
+
+
+def get_link_blacklist_full():
+    with get_connection() as conn:
+        return conn.execute("SELECT * FROM link_blacklist ORDER BY domain").fetchall()
+
+
+def add_blocked_domain(domain: str, added_by):
+    """Traegt eine Domain in die Sperrliste ein.
+
+    Normalisiert wie bei der Whitelist, damit `https://www.example.com/pfad`
+    und `example.com` denselben Eintrag ergeben. `*.example.com` wird
+    angenommen und auf `example.com` reduziert - Unterdomains sind ohnehin
+    eingeschlossen, und ein Eintrag, der stillschweigend nie greift, waere bei
+    einer Sperrliste das Schlimmste.
+    """
+    domain = linkfilter._eintrag_normalisieren(domain)
+    if not domain:
+        return
+    with get_connection() as conn:
+        conn.execute("INSERT OR IGNORE INTO link_blacklist (domain, added_by) VALUES (?, ?)",
+                     (domain, str(added_by)))
+        conn.commit()
+
+
+def remove_blocked_domain(domain_id: int):
+    with get_connection() as conn:
+        conn.execute("DELETE FROM link_blacklist WHERE id = ?", (domain_id,))
         conn.commit()
 
 
