@@ -181,3 +181,89 @@ def test_die_testbox_nennt_stufe_und_reaktion():
 
 def test_eine_unbekannte_stufe_wird_abgewiesen():
     assert 'raise ValueError(f"Unbekannte Stufe' in DATABASE
+
+
+# --------------------------------------------------------------------------
+# Punktesystem (06.09.2026)
+#
+# Patrick: "man soll die Punkte einstellen können. machen wir 5. ein schwerer
+# verstoß gibt 3 Punkte Mittel 2 und leicht 1 Punkt."
+#
+# Vorher zaehlte der Filter nur, WIE OFT jemand angeeckt ist. Drei "scheisse"
+# wogen damit genauso schwer wie drei rassistische Beschimpfungen.
+# --------------------------------------------------------------------------
+
+CONFIG = (REPO / "bot" / "config.py").read_text(encoding="utf-8")
+
+
+def test_es_gibt_punkte_je_stufe_und_eine_schwelle():
+    for schluessel in ("badword_punkte_leicht", "badword_punkte_mittel",
+                       "badword_punkte_schwer", "badword_punkte_schwelle"):
+        assert schluessel in CONFIG
+
+
+def test_die_verstoesse_merken_sich_die_stufe():
+    """Ohne sie liessen sich keine Punkte summieren - die Tabelle wusste nur
+    DASS, nicht WIE SCHWER."""
+    assert '"badword_violations", "stufe"' in DATABASE
+    assert "def verstoss_punkte" in DATABASE
+
+
+def test_altbestand_zaehlt_als_mittel():
+    """Verstoesse von vor der Umstellung haben keine Stufe. Sie einfach zu
+    ignorieren wuerde jedem sein Konto leeren."""
+    stelle = DATABASE[DATABASE.index("def verstoss_punkte"):][:2200]
+    assert "wortfilter.STANDARDSTUFE" in stelle
+
+
+def test_die_punkte_folgen_demselben_zeitfenster():
+    """Verjaehrung und manueller Reset muessen fuer Punkte genauso gelten wie
+    fuer die Zaehlung - sonst raeumt ein Reset die Verstoesse weg, das
+    Punktekonto bleibt aber stehen."""
+    stelle = DATABASE[DATABASE.index("def verstoss_punkte"):][:2200]
+    assert "_violation_reset_key" in stelle
+    assert "-30 days" in stelle
+    assert "manual_only" in stelle
+
+
+def test_auch_ein_leichter_verstoss_wird_geprueft():
+    """Der Timeout haengt am Konto, nicht an der Reaktion dieser einen Stufe.
+    Stuende die Pruefung hinter dem vorzeitigen Ausstieg bei "nur loeschen",
+    koennte ein leichter Verstoss das Fass nie zum Ueberlaufen bringen."""
+    stelle = COG[COG.index("async def _check_badwords"):]
+    stelle = stelle[:stelle.index("@commands.Cog.listener")]
+    ausstieg = stelle.index('if action != "delete_only"')
+    pruefung = stelle.index("badword_punkte_schwelle")
+    assert pruefung > ausstieg
+    assert "return True" not in stelle[ausstieg:pruefung]
+
+
+def test_der_timeout_nennt_die_einheit():
+    """"3 Punkte" statt "3 Verstoesse" - sonst wundert sich jemand, warum er
+    nach zwei Nachrichten stumm ist."""
+    assert 'einheit="Punkte"' in COG
+
+
+def test_analyse_bleibt_frei_anal_nicht():
+    """Patricks Pruefstein am 06.09.2026: "der wortfilter der analyse nicht als
+    schimpfwort durchgehen lässt anal aber schon"."""
+    liste = {"anal": "leicht"}
+    assert not wortfilter.pruefe("Die Analyse der Bodenprobe", liste).getroffen
+    assert not wortfilter.pruefe("analytisch betrachtet", liste).getroffen
+    assert wortfilter.pruefe("das ist doch anal", liste).getroffen
+
+
+def test_das_backend_kann_die_punkte_einstellen():
+    assert "punkte_schwelle" in APP and "badword_punkte_" in APP
+    assert 'name="punkte_schwelle"' in SEITE
+
+
+def test_null_punkte_sind_erlaubt():
+    """0 heisst "zaehlt gar nicht mit" - eine sinnvolle Einstellung fuer
+    leichte Woerter, die nur weggeraeumt werden sollen."""
+    stelle = APP[APP.index('punkte = max(0, int(form.get(f"punkte_'):][:200]
+    assert "max(0," in stelle
+
+
+def test_die_testbox_nennt_die_punkte():
+    assert "test_ergebnis.punkte" in SEITE

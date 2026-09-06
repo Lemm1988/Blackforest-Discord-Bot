@@ -39,10 +39,10 @@
             <div class="alert alert-danger mb-2 py-2">
                 🤬 <strong>Schimpfwortfilter</strong> schlägt an — erkanntes Wort:
                 <code>{{ test_ergebnis.wort }}</code>
-                (Stufe <strong>{{ test_ergebnis.stufe }}</strong>, Reaktion:
-                {% if test_ergebnis.reaktion == 'delete_only' %}nur löschen
-                {% elif test_ergebnis.reaktion == 'delete_warn' %}löschen + verwarnen
-                {% else %}löschen + verwarnen + Timeout ab der Schwelle{% endif %})
+                (Stufe <strong>{{ test_ergebnis.stufe }}</strong>,
+                {% if test_ergebnis.reaktion == 'delete_only' %}nur löschen{% else %}löschen + verwarnen{% endif %},
+                <strong>{{ test_ergebnis.punkte }} Punkte</strong> von
+                {{ test_ergebnis.punkte_schwelle }} bis zum Timeout)
             </div>
             {% endif %}
             {% if test_ergebnis.link_verstoss %}
@@ -137,13 +137,35 @@
                             {% if stufe == 'leicht' %}🟢{% elif stufe == 'mittel' %}🟡{% else %}🔴{% endif %}
                             {{ stufe }}
                         </label>
-                        <select class="form-select form-select-sm" id="aktion_{{ stufe }}" name="aktion_{{ stufe }}">
+                        <select class="form-select form-select-sm mb-1" id="aktion_{{ stufe }}" name="aktion_{{ stufe }}">
                             <option value="delete_only" {% if settings.aktionen[stufe] == 'delete_only' %}selected{% endif %}>Nur löschen</option>
-                            <option value="delete_warn" {% if settings.aktionen[stufe] == 'delete_warn' %}selected{% endif %}>Löschen + Verwarnung</option>
-                            <option value="delete_warn_timeout" {% if settings.aktionen[stufe] == 'delete_warn_timeout' %}selected{% endif %}>Löschen + Verwarnung + Timeout</option>
+                            <option value="delete_warn" {% if settings.aktionen[stufe] != 'delete_only' %}selected{% endif %}>Löschen + Verwarnung</option>
                         </select>
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">Punkte</span>
+                            <input type="number" class="form-control" min="0" max="99"
+                                   name="punkte_{{ stufe }}" value="{{ settings.punkte[stufe] }}">
+                        </div>
                     </div>
                     {% endfor %}
+                </div>
+                <div class="row g-2 mt-2">
+                    <div class="col-12 col-md-4">
+                        <div class="input-group input-group-sm">
+                            <span class="input-group-text">Timeout ab</span>
+                            <input type="number" class="form-control" min="1" max="999"
+                                   name="punkte_schwelle" value="{{ settings.punkte_schwelle }}">
+                            <span class="input-group-text">Punkten</span>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-8">
+                        <p class="text-muted small mb-0">
+                            Jeder Verstoß bringt Punkte aufs Konto — auch einer, der nur gelöscht
+                            wird. Erreicht das Konto die Schwelle, folgt der Timeout. Punkte
+                            verjähren wie die Verstöße und lassen sich unter „Verstöße"
+                            zurücksetzen.
+                        </p>
+                    </div>
                 </div>
                 <label class="form-label d-block small text-muted">Vorlage für neue Stufen (wirkt nicht mehr direkt)</label>
                 <div class="form-check">

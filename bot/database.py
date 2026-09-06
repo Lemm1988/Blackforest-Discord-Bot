@@ -672,6 +672,12 @@ def init_db():
         # gesetzt - so aendert sich beim Umstieg fuer kein einziges Wort etwas.
         _ensure_column(conn, "badwords", "stufe", "TEXT NOT NULL DEFAULT 'mittel'")
         _migriere_wortstufen(conn)
+
+        # Die Stufe wandert in die Verstoss-Historie (06.09.2026). Ohne sie
+        # liessen sich keine Punkte summieren - die Tabelle wusste bis dahin
+        # nur DASS, nicht WIE SCHWER. Altbestand bleibt leer und zaehlt als
+        # "mittel", die bisherige Voreinstellung.
+        _ensure_column(conn, "badword_violations", "stufe", "TEXT")
         _cleanup_veraltetes(conn)
         _migrate_link_filter_mode(conn)
         _seed_achievements(conn)
@@ -1530,16 +1536,67 @@ def import_badwords_from_list(words):
         return imported
 
 
-def log_badword_violation(discord_user_id, message_excerpt: str, matched_word: str, violation_type: str = "badword"):
+def log_badword_violation(discord_user_id, message_excerpt: str, matched_word: str,
+                          violation_type: str = "badword", stufe: str = None):
     """violation_type: 'badword' | 'spam' | 'link' - eine gemeinsame Tabelle für
-    alle drei Automod-Filter statt drei fast identischer Tabellen."""
+    alle drei Automod-Filter statt drei fast identischer Tabellen.
+
+    `stufe` gibt es nur beim Schimpfwortfilter; sie entscheidet, wie viele
+    Punkte der Verstoß auf das Konto bringt (siehe verstoss_punkte).
+    """
     with get_connection() as conn:
         conn.execute(
-            "INSERT INTO badword_violations (discord_user_id, message_excerpt, matched_word, violation_type) "
-            "VALUES (?, ?, ?, ?)",
-            (str(discord_user_id), (message_excerpt or "")[:60], matched_word, violation_type),
+            "INSERT INTO badword_violations (discord_user_id, message_excerpt, matched_word, "
+            "violation_type, stufe) VALUES (?, ?, ?, ?, ?)",
+            (str(discord_user_id), (message_excerpt or "")[:60], matched_word, violation_type, stufe),
         )
         conn.commit()
+
+
+#: Punkte je Stufe und die Schwelle, ab der ein Timeout faellt. Alle vier sind
+#: im Backend einstellbar - Vorgabe Patrick, 06.09.2026: "man soll die Punkte
+#: einstellen können. machen wir 5. ein schwerer verstoß gibt 3 Punkte Mittel 2
+#: und leicht 1 Punkt."
+PUNKTE_SCHLUESSEL = {stufe: f"badword_punkte_{stufe}" for stufe in wortfilter.STUFEN}
+
+
+def verstoss_punkte(discord_user_id) -> int:
+    """Punktekonto dieses Users im selben Zeitfenster wie count_user_violations().
+
+    Ein Punktesystem statt einer blossen Anzahl, weil drei "scheisse" nicht
+    dasselbe wiegen wie drei rassistische Beschimpfungen. Verjaehrung und
+    manueller Reset gelten unveraendert - deshalb wird hier dieselbe Bedingung
+    gebaut wie bei der Zaehlung.
+
+    Verstoesse ohne eingetragene Stufe (Altbestand vor dem 06.09.2026) zaehlen
+    als "mittel" - das war bis dahin die einzige Einstufung.
+    """
+    punkte = {
+        stufe: int(get_setting(schluessel, config.DEFAULT_SETTINGS[schluessel]) or 0)
+        for stufe, schluessel in PUNKTE_SCHLUESSEL.items()
+    }
+    with get_connection() as conn:
+        reset_row = conn.execute(
+            "SELECT value FROM settings WHERE key = ?",
+            (_violation_reset_key(discord_user_id, "badword"),),
+        ).fetchone()
+        grenze = int(reset_row["value"]) if reset_row else 0
+        modus_row = conn.execute(
+            "SELECT value FROM settings WHERE key = 'badword_violation_expiry_mode'").fetchone()
+        modus = modus_row["value"] if modus_row else "auto_30d"
+
+        sql = ("SELECT stufe, COUNT(*) c FROM badword_violations "
+               "WHERE discord_user_id = ? AND violation_type = 'badword' AND id > ?")
+        werte = [str(discord_user_id), grenze]
+        if modus != "manual_only":
+            sql += " AND timestamp >= datetime('now', '-30 days')"
+        sql += " GROUP BY stufe"
+
+        summe = 0
+        for zeile in conn.execute(sql, werte):
+            stufe = zeile["stufe"] or wortfilter.STANDARDSTUFE
+            summe += punkte.get(stufe, punkte[wortfilter.STANDARDSTUFE]) * zeile["c"]
+        return summe
 
 
 def get_badword_violations(limit: int = 50, violation_type: str = None):

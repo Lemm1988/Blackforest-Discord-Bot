@@ -88,6 +88,12 @@ DEFAULT_SETTINGS = {
     "badword_filter_enabled": "1",
     # Eine Reaktion je Wortstufe (06.09.2026). badword_filter_action bleibt als
     # einmalige Migrationsquelle stehen (siehe database._migriere_wortstufen).
+    # Punktesystem statt blosser Zaehlung (06.09.2026): Drei "scheisse" wiegen
+    # nicht dasselbe wie drei rassistische Beschimpfungen.
+    "badword_punkte_leicht": "1",
+    "badword_punkte_mittel": "2",
+    "badword_punkte_schwer": "3",
+    "badword_punkte_schwelle": "5",
     "badword_action_leicht": "delete_only",
     "badword_action_mittel": "delete_warn",
     "badword_action_schwer": "delete_warn_timeout",

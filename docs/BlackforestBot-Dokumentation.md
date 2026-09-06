@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 944 Tests)
+17. Testsuite (`tests/`, 954 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -1106,7 +1106,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 944 Tests)
+## 17. Testsuite (`tests/`, 954 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1142,7 +1142,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_rollenabgleich.py` | 31 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten und dass eine vom Bot vergebene Rolle mit dem letzten zugeordneten Recht wieder verschwindet |
 | `test_nutzertexte.py` | 109 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
 | `test_csrf_coverage.py` | 81 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
-| `test_testbox.py` | 30 | Dass die Testbox beide Filter prüft und dabei **nichts** verändert — die Route wird auf `log_badword_violation`, `delete` und `set_setting` durchsucht — dazu die Wortstufen und dass eine erlaubte Wendung sich nicht zum Durchschmuggeln missbrauchen lässt |
+| `test_testbox.py` | 40 | Dass die Testbox beide Filter prüft und dabei **nichts** verändert — die Route wird auf `log_badword_violation`, `delete` und `set_setting` durchsucht — dazu die Wortstufen und dass eine erlaubte Wendung sich nicht zum Durchschmuggeln missbrauchen lässt |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
 | `test_moderation_limits.py` | 33 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
 | `test_linkfilter.py` | 33 | Die Reihenfolge der Linkfilter-Regeln — insbesondere dass die Sperrliste vor der Erlaubtliste greift, dass Unterdomains eingeschlossen sind und `notexample.com` nicht unter `example.com` fällt |
@@ -1349,25 +1349,45 @@ Migrationsquelle stehen, so wie `link_filter_mode` beim Linkfilter.
 Die Einteilung liegt nachlesbar in `~/Desktop/pläne/wortlisten/stufen.py`.
 Verschleierte Schreibweisen (`f0tze`, `hu$o`) stehen bei ihrer Grundform.
 
-##### Die Verstoß-Zählung kennt keine Stufen
+##### Das Punktesystem
 
-Das ist der Punkt, der überrascht. `badword_violations` speichert **keine
-Stufe**, und `count_user_violations()` zählt alle Schimpfwort-Verstöße der
-letzten 30 Tage gleich. Die Stufe entscheidet nur über die **sofortige**
-Reaktion, nicht über das Gewicht im Zähler.
+Bis zum 06.09.2026 zählte der Filter nur, **wie oft** jemand angeeckt ist. Drei
+„scheisse" wogen damit genauso schwer wie drei rassistische Beschimpfungen.
+Patrick: „man soll die Punkte einstellen können. machen wir 5. ein schwerer
+verstoß gibt 3 Punkte Mittel 2 und leicht 1 Punkt."
 
-Daraus folgen zwei Dinge, die man kennen muss:
+| Stufe | Punkte | Sichtbare Reaktion |
+|---|---:|---|
+| 🟢 leicht | 1 | nur löschen |
+| 🟡 mittel | 2 | löschen + Verwarnung |
+| 🔴 schwer | 3 | löschen + Verwarnung |
 
-**Ein leichter Verstoß zählt mit, löst aber selbst nichts aus.** Er wird
-protokolliert wie jeder andere, aber weil „leicht" auf *nur löschen* steht, wird
-die Timeout-Prüfung gar nicht erst aufgerufen. Der Zähler steht danach trotzdem
-höher — der nächste mittlere oder schwere Verstoß kann also über die Schwelle
-kippen, obwohl er für sich genommen erst der zweite wäre.
+**Timeout ab 5 Punkten**, für 10 Minuten. Alle vier Werte sind im Backend
+einstellbar; 0 Punkte sind erlaubt und bedeuten „zählt gar nicht mit".
 
-**Drei schwere Verstöße lösen genauso aus wie drei mittlere.** Beide stehen auf
-„löschen + verwarnen + Timeout", die Schwelle ist dieselbe. Wer schwere Wörter
-härter bestrafen will, braucht entweder eine eigene Schwelle je Stufe oder eine
-Gewichtung im Zähler — beides gibt es bewusst noch nicht.
+Wie sich das auswirkt:
+
+| Verlauf | Konto | |
+|---|---|---|
+| schwer, schwer | 3 → 6 | Timeout schon beim **zweiten** |
+| mittel, mittel, leicht | 2 → 4 → 5 | Timeout beim dritten |
+| leicht ×5 | 1 → 2 → 3 → 4 → 5 | Timeout beim fünften |
+| schwer, mittel | 3 → 5 | Timeout beim zweiten |
+
+**Der Timeout hängt am Konto, nicht an der Reaktion der einzelnen Stufe.** Auch
+ein leichter Verstoß, der nur gelöscht wird, bringt seinen Punkt und kann das
+Fass zum Überlaufen bringen. Die Prüfung steht deshalb hinter der Warnung, aber
+**vor** jedem vorzeitigen Ausstieg — genau das sichert ein Test ab, weil es beim
+ersten Anlauf falsch herum stand.
+
+Die Stufe wandert dafür in die Verstoß-Historie (`badword_violations.stufe`).
+Verstöße von vor der Umstellung haben keine und zählen als „mittel" — das war
+bis dahin die einzige Einstufung. Punkte folgen demselben Zeitfenster wie die
+Zählung: dieselbe 30-Tage-Verjährung, derselbe manuelle Reset. Sonst räumte ein
+Reset die Verstöße weg, während das Punktekonto stehen bliebe.
+
+Die Timeout-Meldung im Kanal nennt jetzt **Punkte** statt Verstöße — sonst
+wundert sich jemand, warum er nach zwei Nachrichten stumm ist.
 
 #### Erlaubte Wendungen
 

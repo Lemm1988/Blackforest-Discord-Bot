@@ -1153,6 +1153,15 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             "action": database.get_setting(
                 "badword_filter_action", config.DEFAULT_SETTINGS["badword_filter_action"]
             ),
+            # Punkte je Stufe und die Schwelle fuer den Timeout (06.09.2026).
+            "punkte": {
+                stufe: database.get_setting(
+                    f"badword_punkte_{stufe}", config.DEFAULT_SETTINGS[f"badword_punkte_{stufe}"]
+                ) for stufe in wortfilter.STUFEN
+            },
+            "punkte_schwelle": database.get_setting(
+                "badword_punkte_schwelle", config.DEFAULT_SETTINGS["badword_punkte_schwelle"]
+            ),
             # Eine Reaktion je Wortstufe (06.09.2026).
             "aktionen": {
                 stufe: database.get_setting(
@@ -1429,6 +1438,12 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             "text": text[:500],
             "wort": wort,
             "stufe": treffer.stufe,
+            "punkte": database.get_setting(
+                f"badword_punkte_{treffer.stufe}",
+                config.DEFAULT_SETTINGS.get(f"badword_punkte_{treffer.stufe}", "0"),
+            ) if treffer.getroffen else "",
+            "punkte_schwelle": database.get_setting(
+                "badword_punkte_schwelle", config.DEFAULT_SETTINGS["badword_punkte_schwelle"]),
             "reaktion": database.get_setting(
                 f"badword_action_{treffer.stufe}",
                 config.DEFAULT_SETTINGS.get(f"badword_action_{treffer.stufe}", ""),
@@ -1472,6 +1487,19 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             wert = form.get(f"aktion_{stufe}", "")
             if wert in ("delete_only", "delete_warn", "delete_warn_timeout"):
                 database.set_setting(f"badword_action_{stufe}", wert)
+            try:
+                # 0 ist erlaubt und heisst "zaehlt gar nicht mit".
+                punkte = max(0, int(form.get(f"punkte_{stufe}", "")))
+            except (TypeError, ValueError):
+                punkte = None
+            if punkte is not None:
+                database.set_setting(f"badword_punkte_{stufe}", str(punkte))
+
+        try:
+            schwelle = max(1, int(form.get("punkte_schwelle", "")))
+            database.set_setting("badword_punkte_schwelle", str(schwelle))
+        except (TypeError, ValueError):
+            pass
 
         try:
             threshold = max(1, int(form.get("timeout_threshold", "3")))

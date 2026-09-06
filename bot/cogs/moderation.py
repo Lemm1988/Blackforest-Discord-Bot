@@ -130,7 +130,8 @@ class Moderation(commands.Cog):
             return False
 
         matched = treffer.wort
-        database.log_badword_violation(message.author.id, message.content, matched, violation_type="badword")
+        database.log_badword_violation(message.author.id, message.content, matched,
+                                       violation_type="badword", stufe=treffer.stufe)
 
         # Die Reaktion haengt an der Stufe des Wortes: Ein derber Fluch loest
         # nicht denselben Timeout aus wie eine Beleidigung. Vorgabe Patrick,
@@ -149,21 +150,27 @@ class Moderation(commands.Cog):
                     "Ich kann diese Nachricht nicht löschen, da mir die Berechtigungen fehlen."
                 )
 
-        if action == "delete_only":
-            return True
-
-        await message.channel.send(
-            f":warning: {message.author.mention}, bitte bleib respektvoll! Verwende keine Schimpfwörter."
-        )
-
-        if action == "delete_warn_timeout":
-            await self._maybe_timeout(
-                message,
-                violation_type="badword",
-                threshold_key="badword_timeout_threshold",
-                duration_key="badword_timeout_duration_minutes",
-                reason_label="Schimpfwort-Verstöße",
+        if action != "delete_only":
+            await message.channel.send(
+                f":warning: {message.author.mention}, bitte bleib respektvoll! "
+                "Verwende keine Schimpfwörter."
             )
+
+        # Der Timeout haengt am Punktekonto, nicht an der Reaktion dieser einen
+        # Stufe. Auch ein leichter Verstoss, der nur geloescht wird, bringt
+        # Punkte und kann das Fass zum Ueberlaufen bringen - deshalb steht die
+        # Pruefung HINTER der Warnung, aber VOR jedem vorzeitigen Ausstieg.
+        # "Nur loeschen" heisst, dass keine Warnung im Kanal steht, nicht dass
+        # der Verstoss folgenlos bleibt.
+        await self._maybe_timeout(
+            message,
+            violation_type="badword",
+            threshold_key="badword_punkte_schwelle",
+            duration_key="badword_timeout_duration_minutes",
+            reason_label="Schimpfwort-Punkte",
+            stand=database.verstoss_punkte(message.author.id),
+            einheit="Punkte",
+        )
 
         return True
 
@@ -325,9 +332,15 @@ class Moderation(commands.Cog):
 
     # --- Gemeinsame Timeout-Eskalation (Schimpfwort + Link; Spam timeoutet direkt) ---
 
-    async def _maybe_timeout(self, message: discord.Message, violation_type: str, threshold_key: str, duration_key: str, reason_label: str):
-        """Timeoutet den Autor, wenn er die konfigurierte Verstoß-Schwelle (für
-        DIESEN violation_type) erreicht/überschritten hat.
+    async def _maybe_timeout(self, message: discord.Message, violation_type: str,
+                             threshold_key: str, duration_key: str, reason_label: str,
+                             stand=None, einheit: str = "Verstöße"):
+        """Timeoutet den Autor, wenn er die konfigurierte Schwelle erreicht hat.
+
+        `stand` ist der aktuelle Wert; ohne Angabe wird die Anzahl der Verstöße
+        dieses Typs gezählt. Der Schimpfwortfilter reicht stattdessen sein
+        Punktekonto herein — drei „scheisse" wiegen nicht dasselbe wie drei
+        rassistische Beschimpfungen.
 
         Läuft komplett unter einem Lock pro discord_user_id, damit zwei nahezu
         gleichzeitige Verstöße desselben Users (zwei parallele on_message-Tasks)
@@ -348,7 +361,8 @@ class Moderation(commands.Cog):
             if message.author.timed_out_until and message.author.timed_out_until > discord.utils.utcnow():
                 return
 
-            count = database.count_user_violations(message.author.id, violation_type=violation_type)
+            count = (database.count_user_violations(message.author.id, violation_type=violation_type)
+                     if stand is None else stand)
             if count < threshold:
                 return
 
@@ -358,8 +372,8 @@ class Moderation(commands.Cog):
                     reason=f"Automatischer Timeout: {count} {reason_label} erreicht",
                 )
                 await message.channel.send(
-                    f"🔇 {message.author.mention} wurde wegen wiederholter Verstöße ({count}) "
-                    f"für {duration_minutes} Minuten stummgeschaltet."
+                    f"🔇 {message.author.mention} wurde wegen wiederholter Verstöße "
+                    f"({count} {einheit}) für {duration_minutes} Minuten stummgeschaltet."
                 )
             except discord.Forbidden:
                 await message.channel.send(
