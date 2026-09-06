@@ -1338,6 +1338,37 @@ Filter, der Nachrichten löscht und Leute stummschaltet, ist eine stille
 Verhaltensänderung das Letzte, was man will. `badword_filter_action` bleibt als
 Migrationsquelle stehen, so wie `link_filter_mode` beim Linkfilter.
 
+##### Wie die 267 Wörter eingeteilt sind
+
+| Stufe | Wörter | Maßstab | Reaktion |
+|---|---:|---|---|
+| 🟢 leicht | 79 | mildes Fluchen ohne Adressat, harmlose Neckerei, anatomische Begriffe | nur löschen |
+| 🟡 mittel | 143 | gezielte Beleidigungen, derbe Vulgärsprache | löschen + verwarnen + Timeout |
+| 🔴 schwer | 45 | trifft eine Person für das, was sie **ist** — Herkunft, Hautfarbe, sexuelle Orientierung, Geschlecht, Behinderung; dazu sexualisierte Gewalt | löschen + verwarnen + Timeout |
+
+Die Einteilung liegt nachlesbar in `~/Desktop/pläne/wortlisten/stufen.py`.
+Verschleierte Schreibweisen (`f0tze`, `hu$o`) stehen bei ihrer Grundform.
+
+##### Die Verstoß-Zählung kennt keine Stufen
+
+Das ist der Punkt, der überrascht. `badword_violations` speichert **keine
+Stufe**, und `count_user_violations()` zählt alle Schimpfwort-Verstöße der
+letzten 30 Tage gleich. Die Stufe entscheidet nur über die **sofortige**
+Reaktion, nicht über das Gewicht im Zähler.
+
+Daraus folgen zwei Dinge, die man kennen muss:
+
+**Ein leichter Verstoß zählt mit, löst aber selbst nichts aus.** Er wird
+protokolliert wie jeder andere, aber weil „leicht" auf *nur löschen* steht, wird
+die Timeout-Prüfung gar nicht erst aufgerufen. Der Zähler steht danach trotzdem
+höher — der nächste mittlere oder schwere Verstoß kann also über die Schwelle
+kippen, obwohl er für sich genommen erst der zweite wäre.
+
+**Drei schwere Verstöße lösen genauso aus wie drei mittlere.** Beide stehen auf
+„löschen + verwarnen + Timeout", die Schwelle ist dieselbe. Wer schwere Wörter
+härter bestrafen will, braucht entweder eine eigene Schwelle je Stufe oder eine
+Gewichtung im Zähler — beides gibt es bewusst noch nicht.
+
 #### Erlaubte Wendungen
 
 Die zweite benannte Schwäche war der fehlende Kontext. Dafür gibt es jetzt
