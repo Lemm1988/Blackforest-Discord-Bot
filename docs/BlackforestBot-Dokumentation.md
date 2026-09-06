@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 897 Tests)
+17. Testsuite (`tests/`, 914 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -1106,7 +1106,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 897 Tests)
+## 17. Testsuite (`tests/`, 914 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1154,6 +1154,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_zeitanzeige.py` | 5 | Dass jeder angezeigte Zeitstempel durch den `lokalzeit`-Filter geht — SQLite schreibt UTC, und ein Audit-Log, das zwei Stunden neben der Systemuhr liegt, lässt eine Fehlersuche ins Leere laufen |
 | `test_verstoesse.py` | 18 | Verstöße zurücksetzen (Zählung fällt, Historie bleibt) und endgültig löschen; insbesondere, dass die Reset-Grenze beim Löschen mit aufgeräumt wird — sonst würden spätere Verstöße stillschweigend nicht mehr zählen |
 | `test_interaktion.py` | 51 | Discords Drei-Sekunden-Frist: die Vorab-Bestätigung je Befehl, und eine Wache, dass die angegebene Antwortart zu dem passt, was der Befehl tatsächlich sendet |
+| `test_automod_seite.py` | 17 | Dass die vier Reiter der Automod-Seite vollständig sind, keine Karte beim Umbau verlorenging und jede in genau einem Reiter liegt |
 | `test_befehlsfehler.py` | 27 | Jeder absehbare Befehlsfehler sagt etwas; Prüfungen antworten nicht mehr selbst |
 | `test_achievements_module.py` | 43 | Modultrennung der Achievements und alle Auslöseschwellen; prüft ausdrücklich, dass `database.py` keinen Achievement-Namen mehr kennt |
 | `test_morning_greeting.py` | 38 | Zeitlogik der täglichen Guten-Morgen-Nachricht: Fenster, Tagesmerker gegen doppelte Grüße nach einem Neustart, Randuhrzeiten um Mitternacht, unbrauchbare Eingaben |
@@ -1267,6 +1268,30 @@ ohne dabei etwas zu löschen. `Entscheidung.begruendung` liefert den Satz dazu.
 Im Chat bekommt der Betroffene die Regel **nicht** genannt — das wäre eine
 Anleitung zum Umgehen. Die Begründung ist für das Backend gedacht.
 
+
+### Die Automod-Seite hat Reiter (06.09.2026)
+
+Die Seite trug vier Filter, ihre Einstellungen, die Wortliste, das Zurücksetzen
+**und** die Verstoßhistorie auf einer einzigen Seite — über vierhundert Zeilen
+Formular am Stück. Dass Patrick eine vorhandene Einstellung übersah
+(`link_filter_new_member_days`, „wie lange zählt jemand als neuer User"), war
+dafür ein gutes Indiz.
+
+Jetzt gibt es vier Reiter: **Schimpfwörter**, **Links**, **Spam**, **Verstöße**.
+Einstellungen und zugehörige Listen liegen jeweils beisammen — der
+Schimpfwortfilter mit seiner Wortliste, der Linkfilter mit Erlaubt- und
+Sperrliste, das Zurücksetzen mit der Historie. Wer eine Zählung zurückgesetzt
+hat, will danach sehen, was noch dasteht.
+
+Der zuletzt geöffnete Reiter wird im Browser gemerkt. Ohne das landet man nach
+jeder Änderung wieder beim ersten — jede Aktion leitet auf dieselbe Seite
+zurück. Der Zugriff auf den Speicher ist abgesichert: In privaten Fenstern und
+bei blockierten Site-Daten wirft er, und ohne `try`/`catch` bliebe die ganze
+Seite ohne Javascript.
+
+`tests/test_automod_seite.py` prüft, dass jede der sechs Karten noch da ist und
+in **genau einem** Reiter liegt — sonst steht beim nächsten Umbau etwas doppelt
+oder fällt heraus.
 
 ## 18. Offene Punkte (Stand 05.09.2026)
 

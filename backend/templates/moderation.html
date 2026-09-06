@@ -4,8 +4,41 @@
 {% block content %}
 <h3 class="h4">Moderation</h3>
 {{ moderation_subnav('automod') }}
-<p class="text-muted">Schimpfwortfilter, Spam-/Flutschutz und Link-Filter verwalten. Willkommensnachricht und Regel-Rolle liegen jetzt unter <a href="{{ url_for('server_setup_page') }}">Bot-Setup</a>.</p>
+<p class="text-muted">Die vier Automod-Bereiche liegen auf eigenen Reitern — Einstellungen und Listen jeweils beisammen. Willkommensnachricht und Regel-Rolle liegen unter <a href="{{ url_for('server_setup_page') }}">Bot-Setup</a>.</p>
 
+<ul class="nav nav-tabs mb-4" id="automodTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-woerter" data-bs-toggle="tab"
+                data-bs-target="#pane-woerter" type="button" role="tab"
+                aria-controls="pane-woerter" aria-selected="true">
+            🤬 Schimpfwörter
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-links" data-bs-toggle="tab"
+                data-bs-target="#pane-links" type="button" role="tab"
+                aria-controls="pane-links" aria-selected="false">
+            🔗 Links
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-spam" data-bs-toggle="tab"
+                data-bs-target="#pane-spam" type="button" role="tab"
+                aria-controls="pane-spam" aria-selected="false">
+            🚨 Spam
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-verstoesse" data-bs-toggle="tab"
+                data-bs-target="#pane-verstoesse" type="button" role="tab"
+                aria-controls="pane-verstoesse" aria-selected="false">
+            📋 Verstöße
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+<div class="tab-pane fade show active" id="pane-woerter" role="tabpanel" aria-labelledby="tab-woerter">
 <div class="card mb-4">
     <div class="card-header">
         <h5 class="h6 mb-0">
@@ -91,82 +124,41 @@
 </div>
 
 <div class="card mb-4">
-    <div class="card-header">
-        <h5 class="h6 mb-0">
-            🚨 Spam-/Flutschutz
-            <span tabindex="0" role="button" data-bs-toggle="tooltip" data-bs-placement="right"
-                  title="Ablauf: schreibt ein User mehr als die eingestellte Anzahl Nachrichten innerhalb des Zeitfensters, werden alle diese Nachrichten gelöscht → Verstoß wird gezählt → je nach Aktion zusätzlich Warnung/Timeout, sofort beim ersten Ausbruch (keine Verstoß-Schwelle wie beim Schimpfwortfilter)."
-                  class="text-muted" style="cursor: help;">ℹ️</span>
-        </h5>
-    </div>
+    <div class="card-header"><h5 class="h6 mb-0">Schimpfwortliste</h5></div>
     <div class="card-body">
-        <p class="text-muted small">
-            Löst sofort aus, sobald ein User mehr als die angegebene Anzahl Nachrichten
-            innerhalb des Zeitfensters postet — z.B. bei automatisiertem Spam.
-        </p>
-        <form method="POST" action="{{ url_for('moderation_spam_settings') }}">
+        <form method="POST" action="{{ url_for('moderation_add_word') }}" class="row g-2 mb-3">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="form-check form-switch mb-3">
-                <input class="form-check-input" type="checkbox" role="switch" id="spamEnabled"
-                       name="spam_enabled" value="1" {% if spam_settings.enabled %}checked{% endif %}>
-                <label class="form-check-label" for="spamEnabled">Spam-/Flutschutz aktiv</label>
+            <div class="col-8 col-md-4">
+                <input type="text" name="word" class="form-control" placeholder="Neues Wort" required autocomplete="off">
             </div>
-
-            <div class="row g-3 mb-3">
-                <div class="col-6 col-md-3">
-                    <label for="spamThreshold" class="form-label">Max. Nachrichten</label>
-                    <input type="number" min="1" class="form-control" id="spamThreshold"
-                           name="spam_threshold" value="{{ spam_settings.threshold }}">
-                </div>
-                <div class="col-6 col-md-3">
-                    <label for="spamWindow" class="form-label">Zeitfenster (Sekunden)</label>
-                    <input type="number" min="1" class="form-control" id="spamWindow"
-                           name="spam_window" value="{{ spam_settings.window }}">
-                </div>
+            <div class="col-4 col-md-2">
+                <button type="submit" class="btn btn-success w-100">Hinzufügen</button>
             </div>
-
-            <div class="mb-3">
-                <label class="form-label d-block">Aktion bei erkannter Flut</label>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="spam_action" id="spamActionDeleteOnly"
-                           value="delete_only" {% if spam_settings.action == 'delete_only' %}checked{% endif %}>
-                    <label class="form-check-label" for="spamActionDeleteOnly">Nur löschen</label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="spam_action" id="spamActionDeleteWarn"
-                           value="delete_warn" {% if spam_settings.action == 'delete_warn' %}checked{% endif %}>
-                    <label class="form-check-label" for="spamActionDeleteWarn">Löschen + Verwarnung im Kanal</label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="spam_action" id="spamActionTimeout"
-                           value="delete_warn_timeout" {% if spam_settings.action == 'delete_warn_timeout' %}checked{% endif %}>
-                    <label class="form-check-label" for="spamActionTimeout">Löschen + Verwarnung + sofortiger Timeout</label>
-                </div>
-            </div>
-
-            <div class="row g-3 mb-3" id="spamTimeoutOptions">
-                <div class="col-6 col-md-4">
-                    <label for="spamDuration" class="form-label">Timeout-Dauer (Minuten)</label>
-                    <input type="number" min="1" class="form-control" id="spamDuration"
-                           name="spam_duration" value="{{ spam_settings.duration }}">
-                </div>
-            </div>
-            <p class="text-muted small">
-                Kein zusätzlicher Verstöße-Schwellwert nötig — schon ein einzelner
-                erkannter Flut-Ausbruch löst direkt die gewählte Aktion aus.
-            </p>
-
-            <button type="submit" class="btn btn-primary">Spam-/Flutschutz speichern</button>
         </form>
+        <div class="d-flex flex-wrap gap-2">
+            {% for w in badwords %}
+            <form method="POST" action="{{ url_for('moderation_remove_word', word_id=w['id']) }}" class="d-inline"
+                  onsubmit="return confirm('Wort &quot;{{ w['word'] }}&quot; wirklich entfernen?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="badge bg-secondary border-0 d-inline-flex align-items-center gap-1 px-2 py-2">
+                    {{ w['word'] }} <span aria-hidden="true">✕</span>
+                </button>
+            </form>
+            {% else %}
+            <p class="text-muted mb-0">Keine Wörter in der Liste.</p>
+            {% endfor %}
+        </div>
     </div>
 </div>
+</div>
 
+<div class="tab-pane fade" id="pane-links" role="tabpanel" aria-labelledby="tab-links">
 <div class="card mb-4">
     <div class="card-header">
         <h5 class="h6 mb-0">
             🔗 Link-Filter
             <span tabindex="0" role="button" data-bs-toggle="tooltip" data-bs-placement="right"
-                  title="Ablauf: erkannte Links werden zuerst gegen Rollen-Whitelist und Kanal-Ausnahmeliste geprüft (dort komplett befreit) → dann gegen die aktiven Regeln unten (kombinierbar: ein Link ist ein Verstoß, wenn IRGENDEINE aktive Regel zutrifft) → bei Verstoß gelöscht + ggf. Warnung → Verstoß wird gezählt → ab der eingestellten Verstoß-Zahl Timeout."
+                  title="Ablauf: erkannte Links werden zuerst gegen Rollen-Whitelist und Kanal-Ausnahmeliste geprüft (dort komplett befreit) → dann greift die Sperrliste (eine gesperrte Domain bleibt gesperrt, auch wenn sonst alles erlaubt wäre) → danach die kombinierbaren Regeln: ein Link ist ein Verstoß, wenn IRGENDEINE aktive Regel zutrifft → bei Verstoß gelöscht + ggf. Warnung → Verstoß wird gezählt → ab der eingestellten Verstoß-Zahl Timeout."
                   class="text-muted" style="cursor: help;">ℹ️</span>
         </h5>
     </div>
@@ -319,35 +311,82 @@
         </div>
     </div>
 </div>
-
-<div class="card mb-4">
-    <div class="card-header"><h5 class="h6 mb-0">Schimpfwortliste</h5></div>
-    <div class="card-body">
-        <form method="POST" action="{{ url_for('moderation_add_word') }}" class="row g-2 mb-3">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="col-8 col-md-4">
-                <input type="text" name="word" class="form-control" placeholder="Neues Wort" required autocomplete="off">
-            </div>
-            <div class="col-4 col-md-2">
-                <button type="submit" class="btn btn-success w-100">Hinzufügen</button>
-            </div>
-        </form>
-        <div class="d-flex flex-wrap gap-2">
-            {% for w in badwords %}
-            <form method="POST" action="{{ url_for('moderation_remove_word', word_id=w['id']) }}" class="d-inline"
-                  onsubmit="return confirm('Wort &quot;{{ w['word'] }}&quot; wirklich entfernen?');">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="badge bg-secondary border-0 d-inline-flex align-items-center gap-1 px-2 py-2">
-                    {{ w['word'] }} <span aria-hidden="true">✕</span>
-                </button>
-            </form>
-            {% else %}
-            <p class="text-muted mb-0">Keine Wörter in der Liste.</p>
-            {% endfor %}
-        </div>
-    </div>
 </div>
 
+<div class="tab-pane fade" id="pane-spam" role="tabpanel" aria-labelledby="tab-spam">
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="h6 mb-0">
+            🚨 Spam-/Flutschutz
+            <span tabindex="0" role="button" data-bs-toggle="tooltip" data-bs-placement="right"
+                  title="Ablauf: schreibt ein User mehr als die eingestellte Anzahl Nachrichten innerhalb des Zeitfensters, werden alle diese Nachrichten gelöscht → Verstoß wird gezählt → je nach Aktion zusätzlich Warnung/Timeout, sofort beim ersten Ausbruch (keine Verstoß-Schwelle wie beim Schimpfwortfilter)."
+                  class="text-muted" style="cursor: help;">ℹ️</span>
+        </h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted small">
+            Löst sofort aus, sobald ein User mehr als die angegebene Anzahl Nachrichten
+            innerhalb des Zeitfensters postet — z.B. bei automatisiertem Spam.
+        </p>
+        <form method="POST" action="{{ url_for('moderation_spam_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="spamEnabled"
+                       name="spam_enabled" value="1" {% if spam_settings.enabled %}checked{% endif %}>
+                <label class="form-check-label" for="spamEnabled">Spam-/Flutschutz aktiv</label>
+            </div>
+
+            <div class="row g-3 mb-3">
+                <div class="col-6 col-md-3">
+                    <label for="spamThreshold" class="form-label">Max. Nachrichten</label>
+                    <input type="number" min="1" class="form-control" id="spamThreshold"
+                           name="spam_threshold" value="{{ spam_settings.threshold }}">
+                </div>
+                <div class="col-6 col-md-3">
+                    <label for="spamWindow" class="form-label">Zeitfenster (Sekunden)</label>
+                    <input type="number" min="1" class="form-control" id="spamWindow"
+                           name="spam_window" value="{{ spam_settings.window }}">
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label d-block">Aktion bei erkannter Flut</label>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="spam_action" id="spamActionDeleteOnly"
+                           value="delete_only" {% if spam_settings.action == 'delete_only' %}checked{% endif %}>
+                    <label class="form-check-label" for="spamActionDeleteOnly">Nur löschen</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="spam_action" id="spamActionDeleteWarn"
+                           value="delete_warn" {% if spam_settings.action == 'delete_warn' %}checked{% endif %}>
+                    <label class="form-check-label" for="spamActionDeleteWarn">Löschen + Verwarnung im Kanal</label>
+                </div>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="spam_action" id="spamActionTimeout"
+                           value="delete_warn_timeout" {% if spam_settings.action == 'delete_warn_timeout' %}checked{% endif %}>
+                    <label class="form-check-label" for="spamActionTimeout">Löschen + Verwarnung + sofortiger Timeout</label>
+                </div>
+            </div>
+
+            <div class="row g-3 mb-3" id="spamTimeoutOptions">
+                <div class="col-6 col-md-4">
+                    <label for="spamDuration" class="form-label">Timeout-Dauer (Minuten)</label>
+                    <input type="number" min="1" class="form-control" id="spamDuration"
+                           name="spam_duration" value="{{ spam_settings.duration }}">
+                </div>
+            </div>
+            <p class="text-muted small">
+                Kein zusätzlicher Verstöße-Schwellwert nötig — schon ein einzelner
+                erkannter Flut-Ausbruch löst direkt die gewählte Aktion aus.
+            </p>
+
+            <button type="submit" class="btn btn-primary">Spam-/Flutschutz speichern</button>
+        </form>
+    </div>
+</div>
+</div>
+
+<div class="tab-pane fade" id="pane-verstoesse" role="tabpanel" aria-labelledby="tab-verstoesse">
 <div class="card mb-4">
     <div class="card-header"><h5 class="h6 mb-0">Verstöße zurücksetzen oder löschen</h5></div>
     <div class="card-body">
@@ -445,11 +484,31 @@
     </div>
 </div>
 {% endblock %}
+</div>
+
+</div>
 
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='js/member-picker.js') }}"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    // Den zuletzt geöffneten Reiter merken. Jede Änderung leitet auf diese
+    // Seite zurück; ohne das landet man nach dem Sperren einer Domain wieder
+    // beim Schimpfwortfilter und muss sich neu zurechtfinden.
+    const SCHLUESSEL = 'automod-reiter';
+    const holen = (fn) => { try { return fn(); } catch (e) { return null; } };
+    const gemerkt = holen(() => localStorage.getItem(SCHLUESSEL));
+    const start = location.hash ? location.hash.replace('#', '') : gemerkt;
+    if (start) {
+        const knopf = document.querySelector(`#tab-${CSS.escape(start)}`);
+        if (knopf) { bootstrap.Tab.getOrCreateInstance(knopf).show(); }
+    }
+    document.querySelectorAll('#automodTabs button[data-bs-toggle="tab"]').forEach((knopf) => {
+        knopf.addEventListener('shown.bs.tab', () => {
+            holen(() => localStorage.setItem(SCHLUESSEL, knopf.id.replace('tab-', '')));
+        });
+    });
+
     attachMemberPicker('resetUserId', 'resetUserPreview');
     attachMemberPicker('deleteUserId', 'deleteUserPreview');
 
