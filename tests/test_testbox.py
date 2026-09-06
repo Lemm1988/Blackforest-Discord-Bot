@@ -267,3 +267,17 @@ def test_null_punkte_sind_erlaubt():
 
 def test_die_testbox_nennt_die_punkte():
     assert "test_ergebnis.punkte" in SEITE
+
+
+def test_die_alte_verstoss_schwelle_ist_weg():
+    """`badword_timeout_threshold` (3 Verstoesse) wurde vom Punktekonto
+    abgeloest. Patrick am 06.09.2026: "schwelle von 3 wird nichtmehr benötigt
+    ist ja jetzt 5 Punkte." Bliebe das Feld in der Oberflaeche stehen, wuerde
+    jemand daran drehen und sich wundern, dass nichts passiert.
+
+    Der Linkfilter hat seine eigene Schwelle und ist davon nicht betroffen.
+    """
+    for quelle, name in ((APP, "app.py"), (SEITE, "moderation.html"), (CONFIG, "config.py")):
+        assert "badword_timeout_threshold" not in quelle, name
+    assert "timeout_threshold" not in SEITE.replace("link_threshold", "").replace("spam_threshold", "")
+    assert "link_filter_timeout_threshold" in APP, "Der Linkfilter braucht seine Schwelle weiter"

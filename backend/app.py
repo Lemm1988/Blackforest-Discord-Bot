@@ -1168,9 +1168,6 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
                     f"badword_action_{stufe}", config.DEFAULT_SETTINGS[f"badword_action_{stufe}"]
                 ) for stufe in wortfilter.STUFEN
             },
-            "threshold": database.get_setting(
-                "badword_timeout_threshold", config.DEFAULT_SETTINGS["badword_timeout_threshold"]
-            ),
             "duration": database.get_setting(
                 "badword_timeout_duration_minutes", config.DEFAULT_SETTINGS["badword_timeout_duration_minutes"]
             ),
@@ -1502,14 +1499,9 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             pass
 
         try:
-            threshold = max(1, int(form.get("timeout_threshold", "3")))
-        except (TypeError, ValueError):
-            threshold = 3
-        try:
             duration = max(1, int(form.get("timeout_duration", "10")))
         except (TypeError, ValueError):
             duration = 10
-        database.set_setting("badword_timeout_threshold", str(threshold))
         database.set_setting("badword_timeout_duration_minutes", str(duration))
 
         expiry_mode = form.get("violation_expiry_mode", "auto_30d")

@@ -98,7 +98,6 @@ DEFAULT_SETTINGS = {
     "badword_action_mittel": "delete_warn",
     "badword_action_schwer": "delete_warn_timeout",
     "badword_filter_action": "delete_warn",  # delete_only | delete_warn | delete_warn_timeout
-    "badword_timeout_threshold": "3",
     "badword_timeout_duration_minutes": "10",
     "badword_violation_expiry_mode": "auto_30d",  # auto_30d | manual_only - gilt einheitlich
         # für Schimpfwort- UND Link-Verstöße (bewusst EIN gemeinsamer Verjährungs-Modus
