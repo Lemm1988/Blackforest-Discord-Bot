@@ -86,6 +86,11 @@ DEFAULT_SETTINGS = {
     "welcome_message_enabled": "1",
     # Schimpfwortfilter-Verhalten, einstellbar über die Backend-Seite "/moderation".
     "badword_filter_enabled": "1",
+    # Eine Reaktion je Wortstufe (06.09.2026). badword_filter_action bleibt als
+    # einmalige Migrationsquelle stehen (siehe database._migriere_wortstufen).
+    "badword_action_leicht": "delete_only",
+    "badword_action_mittel": "delete_warn",
+    "badword_action_schwer": "delete_warn_timeout",
     "badword_filter_action": "delete_warn",  # delete_only | delete_warn | delete_warn_timeout
     "badword_timeout_threshold": "3",
     "badword_timeout_duration_minutes": "10",

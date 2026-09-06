@@ -22,6 +22,7 @@ Drei Durchläufe, in dieser Reihenfolge:
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 LEET_MAP = str.maketrans({
     "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "@": "a", "$": "s", "!": "i",
@@ -146,3 +147,111 @@ def find_matched_word(content: str, badwords, aggressive: bool = True):
             return obfuscated
 
     return None
+
+
+# --------------------------------------------------------------------------
+# Wortstufen und Ausnahmen (06.09.2026)
+#
+# Patrick am 05.09.2026 auf die Frage, ob Stufen den Pflegeaufwand wert sind:
+# ja, mit je eigener Reaktion. Bis dahin war jedes Wort gleich schlimm - ein
+# derber Fluch loeste denselben Timeout aus wie eine Beleidigung, die einen
+# Rauswurf rechtfertigt.
+# --------------------------------------------------------------------------
+
+LEICHT = "leicht"
+MITTEL = "mittel"
+SCHWER = "schwer"
+
+#: Reihenfolge fuer die Anzeige und fuer den Vergleich "was wiegt schwerer".
+STUFEN = (LEICHT, MITTEL, SCHWER)
+
+STUFEN_LABELS = {
+    LEICHT: "leicht",
+    MITTEL: "mittel",
+    SCHWER: "schwer",
+}
+
+#: Die Stufe eines Wortes, wenn keine eingetragen ist. Beim Umstieg bekamen
+#: alle vorhandenen Woerter diese Stufe, und die Reaktion dafuer wurde auf den
+#: bisherigen Wert gesetzt - damit sich das Verhalten nicht stillschweigend
+#: aendert.
+STANDARDSTUFE = MITTEL
+
+
+@dataclass(frozen=True)
+class Treffer:
+    """Was der Filter in einer Nachricht gefunden hat."""
+
+    wort: str = ""
+    stufe: str = ""
+
+    @property
+    def getroffen(self) -> bool:
+        return bool(self.wort)
+
+
+def _ausnahme_spannen(normalisiert: str, ausnahmen) -> list:
+    """Wo im Text stehen erlaubte Wendungen?
+
+    Eine Ausnahme ist eine ganze Wendung, kein einzelnes Wort. Ein Treffer
+    zaehlt nur dann nicht, wenn er **innerhalb** einer solchen Wendung liegt.
+    Wuerde schon das blosse Vorkommen der Wendung irgendwo in der Nachricht
+    genuegen, koennte man jede Beleidigung durch Anhaengen eines harmlosen
+    Satzes durchschmuggeln.
+    """
+    spannen = []
+    for wendung in ausnahmen or ():
+        text = normalize(str(wendung or ""), aggressive=False).strip()
+        if not text:
+            continue
+        start = 0
+        while True:
+            treffer = normalisiert.find(text, start)
+            if treffer < 0:
+                break
+            spannen.append((treffer, treffer + len(text)))
+            start = treffer + 1
+    return spannen
+
+
+def _liegt_in_ausnahme(spanne, ausnahme_spannen) -> bool:
+    a, b = spanne
+    return any(anfang <= a and b <= ende for anfang, ende in ausnahme_spannen)
+
+
+def pruefe(
+    content: str,
+    woerter,
+    *,
+    aggressive: bool = True,
+    ausnahmen=(),
+) -> Treffer:
+    """Wie find_matched_word(), aber mit Stufe und Ausnahmeliste.
+
+    `woerter` ist eine Zuordnung {Wort: Stufe} oder eine Folge von Woertern
+    (dann gilt für alle die Standardstufe).
+
+    Die Ausnahmen greifen nur im ersten Durchlauf, dem Wortgrenzen-Abgleich.
+    Wer "sch.eiss" schreibt, verschleiert absichtlich - eine erlaubte Wendung
+    ist das dann nicht mehr, und die Ausnahme würde nur ein Schlupfloch
+    aufmachen.
+    """
+    if not woerter:
+        return Treffer()
+    stufen = dict(woerter) if isinstance(woerter, dict) else {w: STANDARDSTUFE for w in woerter}
+
+    normalisiert = normalize(content, aggressive=aggressive)
+    erlaubte = _ausnahme_spannen(normalisiert, ausnahmen)
+
+    for wort in stufen:
+        if not wort:
+            continue
+        muster = rf"(?<![{_WORDCHARS}]){re.escape(wort)}(?![{_WORDCHARS}])"
+        for fund in re.finditer(muster, normalisiert):
+            if not _liegt_in_ausnahme(fund.span(), erlaubte):
+                return Treffer(wort, stufen.get(wort) or STANDARDSTUFE)
+
+    rest = find_matched_word(content, [w for w in stufen if w], aggressive=aggressive)
+    if rest:
+        return Treffer(rest, stufen.get(rest) or STANDARDSTUFE)
+    return Treffer()

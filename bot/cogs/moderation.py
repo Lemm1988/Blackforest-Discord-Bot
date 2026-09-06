@@ -116,17 +116,30 @@ class Moderation(commands.Cog):
         if database.get_setting("badword_filter_enabled", config.DEFAULT_SETTINGS["badword_filter_enabled"]) != "1":
             return False
 
-        badwords = database.get_badwords()
         aggressive = database.get_setting(
             "badword_aggressive_normalization_enabled",
             config.DEFAULT_SETTINGS["badword_aggressive_normalization_enabled"],
         ) == "1"
-        matched = find_matched_word(message.content, badwords, aggressive=aggressive)
-        if not matched:
+        treffer = wortfilter.pruefe(
+            message.content,
+            database.get_badwords_mit_stufe(),
+            aggressive=aggressive,
+            ausnahmen=database.get_badword_ausnahmen(),
+        )
+        if not treffer.getroffen:
             return False
 
+        matched = treffer.wort
         database.log_badword_violation(message.author.id, message.content, matched, violation_type="badword")
-        action = database.get_setting("badword_filter_action", config.DEFAULT_SETTINGS["badword_filter_action"])
+
+        # Die Reaktion haengt an der Stufe des Wortes: Ein derber Fluch loest
+        # nicht denselben Timeout aus wie eine Beleidigung. Vorgabe Patrick,
+        # 05.09.2026 - vorher war jedes Wort gleich schlimm.
+        schluessel = f"badword_action_{treffer.stufe}"
+        action = database.get_setting(
+            schluessel,
+            config.DEFAULT_SETTINGS.get(schluessel, config.DEFAULT_SETTINGS["badword_filter_action"]),
+        )
 
         try:
             await message.delete()

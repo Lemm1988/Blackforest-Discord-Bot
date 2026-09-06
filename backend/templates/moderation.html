@@ -39,6 +39,10 @@
             <div class="alert alert-danger mb-2 py-2">
                 🤬 <strong>Schimpfwortfilter</strong> schlägt an — erkanntes Wort:
                 <code>{{ test_ergebnis.wort }}</code>
+                (Stufe <strong>{{ test_ergebnis.stufe }}</strong>, Reaktion:
+                {% if test_ergebnis.reaktion == 'delete_only' %}nur löschen
+                {% elif test_ergebnis.reaktion == 'delete_warn' %}löschen + verwarnen
+                {% else %}löschen + verwarnen + Timeout ab der Schwelle{% endif %})
             </div>
             {% endif %}
             {% if test_ergebnis.link_verstoss %}
@@ -121,7 +125,27 @@
             </div>
 
             <div class="mb-3">
-                <label class="form-label d-block">Aktion bei Verstoß</label>
+                <label class="form-label d-block">Reaktion je Wortstufe</label>
+                <p class="text-muted small mb-2">
+                    Jedes Wort hat eine Stufe (unten in der Liste einstellbar). Ein derber Fluch
+                    muss nicht denselben Timeout auslösen wie eine Beleidigung.
+                </p>
+                <div class="row g-2 mb-3">
+                    {% for stufe in wortstufen %}
+                    <div class="col-12 col-md-4">
+                        <label class="form-label small mb-1" for="aktion_{{ stufe }}">
+                            {% if stufe == 'leicht' %}🟢{% elif stufe == 'mittel' %}🟡{% else %}🔴{% endif %}
+                            {{ stufe }}
+                        </label>
+                        <select class="form-select form-select-sm" id="aktion_{{ stufe }}" name="aktion_{{ stufe }}">
+                            <option value="delete_only" {% if settings.aktionen[stufe] == 'delete_only' %}selected{% endif %}>Nur löschen</option>
+                            <option value="delete_warn" {% if settings.aktionen[stufe] == 'delete_warn' %}selected{% endif %}>Löschen + Verwarnung</option>
+                            <option value="delete_warn_timeout" {% if settings.aktionen[stufe] == 'delete_warn_timeout' %}selected{% endif %}>Löschen + Verwarnung + Timeout</option>
+                        </select>
+                    </div>
+                    {% endfor %}
+                </div>
+                <label class="form-label d-block small text-muted">Vorlage für neue Stufen (wirkt nicht mehr direkt)</label>
                 <div class="form-check">
                     <input class="form-check-input" type="radio" name="filter_action" id="actionDeleteOnly"
                            value="delete_only" {% if settings.action == 'delete_only' %}checked{% endif %}>
@@ -180,24 +204,79 @@
     <div class="card-body">
         <form method="POST" action="{{ url_for('moderation_add_word') }}" class="row g-2 mb-3">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="col-8 col-md-4">
+            <div class="col-12 col-md-5">
                 <input type="text" name="word" class="form-control" placeholder="Neues Wort" required autocomplete="off">
             </div>
-            <div class="col-4 col-md-2">
+            <div class="col-7 col-md-4">
+                <select name="stufe" class="form-select">
+                    {% for stufe in wortstufen %}
+                    <option value="{{ stufe }}" {% if stufe == 'mittel' %}selected{% endif %}>
+                        {% if stufe == 'leicht' %}🟢{% elif stufe == 'mittel' %}🟡{% else %}🔴{% endif %} {{ stufe }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-5 col-md-3">
                 <button type="submit" class="btn btn-success w-100">Hinzufügen</button>
             </div>
         </form>
-        <div class="d-flex flex-wrap gap-2">
+
+        <p class="text-muted small mb-2">
+            {{ badwords | length }} Wörter. Die Stufe speichert sofort beim Umstellen.
+        </p>
+        <div class="d-flex flex-wrap gap-2" style="max-height: 26rem; overflow-y: auto;">
             {% for w in badwords %}
-            <form method="POST" action="{{ url_for('moderation_remove_word', word_id=w['id']) }}" class="d-inline"
-                  onsubmit="return confirm('Wort &quot;{{ w['word'] }}&quot; wirklich entfernen?');">
+            {% set stufe = w['stufe'] or 'mittel' %}
+            <span class="d-inline-flex align-items-center gap-1 border rounded px-2 py-1 {% if stufe == 'schwer' %}border-danger{% elif stufe == 'leicht' %}border-success{% endif %}">
+                <span class="small">{{ w['word'] }}</span>
+                <form method="POST" action="{{ url_for('moderation_word_stufe', word_id=w['id']) }}" class="d-inline">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="badge bg-secondary border-0 d-inline-flex align-items-center gap-1 px-2 py-2">
-                    {{ w['word'] }} <span aria-hidden="true">✕</span>
+                    <select name="stufe" class="form-select form-select-sm border-0 p-0 bg-transparent" style="width: 2.4rem;"
+                            onchange="this.form.submit();" title="Stufe von &quot;{{ w['word'] }}&quot;">
+                        {% for s in wortstufen %}
+                        <option value="{{ s }}" {% if s == stufe %}selected{% endif %}>{% if s == 'leicht' %}🟢{% elif s == 'mittel' %}🟡{% else %}🔴{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </form>
+                <form method="POST" action="{{ url_for('moderation_remove_word', word_id=w['id']) }}" class="d-inline"
+                      onsubmit="return confirm('Wort &quot;{{ w['word'] }}&quot; wirklich entfernen?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-link text-muted p-0 border-0" aria-label="entfernen">✕</button>
+                </form>
+            </span>
+            {% else %}
+            <p class="text-muted mb-0">Keine Wörter in der Liste.</p>
+            {% endfor %}
+        </div>
+
+        <hr>
+        <h6>Erlaubte Wendungen</h6>
+        <p class="text-muted small">
+            Ein Treffer zählt <strong>nicht</strong>, wenn er innerhalb einer dieser Wendungen
+            liegt — nicht schon dann, wenn die Wendung irgendwo in der Nachricht steht. Sonst
+            ließe sich jede Beleidigung durch Anhängen eines harmlosen Satzes durchschmuggeln.
+        </p>
+        <form method="POST" action="{{ url_for('moderation_ausnahme_add') }}" class="row g-2 mb-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="col-8 col-md-6">
+                <input type="text" name="wendung" class="form-control"
+                       placeholder="z.B. analyse der bodenprobe" required autocomplete="off">
+            </div>
+            <div class="col-4 col-md-3">
+                <button type="submit" class="btn btn-outline-success w-100">Erlauben</button>
+            </div>
+        </form>
+        <div class="d-flex flex-wrap gap-2">
+            {% for a in badword_ausnahmen %}
+            <form method="POST" action="{{ url_for('moderation_ausnahme_remove', eintrag_id=a['id']) }}" class="d-inline"
+                  onsubmit="return confirm('Wendung &quot;{{ a['wendung'] }}&quot; wirklich entfernen?');">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="badge bg-success border-0 d-inline-flex align-items-center gap-1 px-2 py-2">
+                    {{ a['wendung'] }} <span aria-hidden="true">✕</span>
                 </button>
             </form>
             {% else %}
-            <p class="text-muted mb-0">Keine Wörter in der Liste.</p>
+            <p class="text-muted mb-0">Keine Ausnahmen eingetragen.</p>
             {% endfor %}
         </div>
     </div>

@@ -9,6 +9,7 @@ import achievements
 import config
 import linkfilter
 import module
+import wortfilter
 import schema_helfer
 import mood
 
@@ -150,6 +151,17 @@ CREATE TABLE IF NOT EXISTS giveaways (
 CREATE TABLE IF NOT EXISTS badwords (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     word TEXT NOT NULL UNIQUE,
+    added_by TEXT,
+    added_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Erlaubte Wendungen (06.09.2026). Ein Treffer zaehlt nicht, wenn er INNERHALB
+-- einer dieser Wendungen liegt - nicht schon dann, wenn die Wendung irgendwo in
+-- der Nachricht steht. Sonst liesse sich jede Beleidigung durch Anhaengen eines
+-- harmlosen Satzes durchschmuggeln.
+CREATE TABLE IF NOT EXISTS badword_ausnahmen (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wendung TEXT NOT NULL UNIQUE,
     added_by TEXT,
     added_at TEXT DEFAULT (datetime('now'))
 );
@@ -481,6 +493,26 @@ def _seed_personality_texts(conn):
             )
 
 
+def _migriere_wortstufen(conn):
+    """Uebernimmt die bisherige Reaktion einmalig als Reaktion fuer "mittel".
+
+    Vorher gab es EINE Reaktion fuer alle Woerter (badword_filter_action).
+    Wuerde die neue Einstellung mit ihrem eigenen Standard starten, aenderte
+    sich das Verhalten still - bei einem Filter, der Nachrichten loescht und
+    Leute stummschaltet, ist das das Letzte, was man will.
+    """
+    vorhanden = conn.execute(
+        "SELECT 1 FROM settings WHERE key = 'badword_action_mittel'").fetchone()
+    if vorhanden:
+        return
+    alt = conn.execute(
+        "SELECT value FROM settings WHERE key = 'badword_filter_action'").fetchone()
+    wert = alt["value"] if alt else config.DEFAULT_SETTINGS["badword_filter_action"]
+    conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                 ("badword_action_mittel", wert))
+    conn.commit()
+
+
 def _migrate_link_filter_mode(conn):
     """Einmalige Migration vom frueheren EXKLUSIVEN link_filter_mode
     (block_all/whitelist/new_members_only) zu den drei unabhaengig
@@ -634,6 +666,12 @@ def init_db():
         # Merker ist "hat nicht" von "hatte noch nie" nicht zu unterscheiden,
         # und jeder gezielte Entzug waere beim naechsten Lauf rueckgaengig.
         _ensure_column(conn, "user_permissions", "ausnahme", "INTEGER NOT NULL DEFAULT 0")
+
+        # Wortstufen (06.09.2026). Alle vorhandenen Woerter bekommen "mittel",
+        # und die Reaktion fuer "mittel" wird einmalig auf den bisherigen Wert
+        # gesetzt - so aendert sich beim Umstieg fuer kein einziges Wort etwas.
+        _ensure_column(conn, "badwords", "stufe", "TEXT NOT NULL DEFAULT 'mittel'")
+        _migriere_wortstufen(conn)
         _cleanup_veraltetes(conn)
         _migrate_link_filter_mode(conn)
         _seed_achievements(conn)
@@ -1403,7 +1441,51 @@ def get_badwords():
 def get_badwords_full():
     """Volle Zeilen (für die Verwaltungsseite im Backend)."""
     with get_connection() as conn:
-        return conn.execute("SELECT * FROM badwords ORDER BY word").fetchall()
+        return conn.execute("SELECT * FROM badwords ORDER BY stufe DESC, word").fetchall()
+
+
+def get_badwords_mit_stufe() -> dict:
+    """{Wort: Stufe} - was der Filter zum Urteilen braucht."""
+    with get_connection() as conn:
+        return {r["word"]: (r["stufe"] or wortfilter.STANDARDSTUFE)
+                for r in conn.execute("SELECT word, stufe FROM badwords")}
+
+
+def set_badword_stufe(word_id: int, stufe: str) -> None:
+    if stufe not in wortfilter.STUFEN:
+        raise ValueError(f"Unbekannte Stufe: {stufe}")
+    with get_connection() as conn:
+        conn.execute("UPDATE badwords SET stufe = ? WHERE id = ?", (stufe, int(word_id)))
+        conn.commit()
+
+
+# --- Erlaubte Wendungen (06.09.2026) ---
+
+def get_badword_ausnahmen():
+    with get_connection() as conn:
+        return [r["wendung"] for r in conn.execute(
+            "SELECT wendung FROM badword_ausnahmen ORDER BY wendung")]
+
+
+def get_badword_ausnahmen_full():
+    with get_connection() as conn:
+        return conn.execute("SELECT * FROM badword_ausnahmen ORDER BY wendung").fetchall()
+
+
+def add_badword_ausnahme(wendung: str, added_by) -> None:
+    wendung = " ".join((wendung or "").split()).lower()
+    if not wendung:
+        return
+    with get_connection() as conn:
+        conn.execute("INSERT OR IGNORE INTO badword_ausnahmen (wendung, added_by) VALUES (?, ?)",
+                     (wendung, str(added_by)))
+        conn.commit()
+
+
+def remove_badword_ausnahme(eintrag_id: int) -> None:
+    with get_connection() as conn:
+        conn.execute("DELETE FROM badword_ausnahmen WHERE id = ?", (int(eintrag_id),))
+        conn.commit()
 
 
 def add_badword(word: str, added_by):

@@ -1153,6 +1153,12 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             "action": database.get_setting(
                 "badword_filter_action", config.DEFAULT_SETTINGS["badword_filter_action"]
             ),
+            # Eine Reaktion je Wortstufe (06.09.2026).
+            "aktionen": {
+                stufe: database.get_setting(
+                    f"badword_action_{stufe}", config.DEFAULT_SETTINGS[f"badword_action_{stufe}"]
+                ) for stufe in wortfilter.STUFEN
+            },
             "threshold": database.get_setting(
                 "badword_timeout_threshold", config.DEFAULT_SETTINGS["badword_timeout_threshold"]
             ),
@@ -1248,6 +1254,8 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             "moderation.html",
             badwords=database.get_badwords_full(),
             test_ergebnis=session.pop("automod_test", None),
+            badword_ausnahmen=database.get_badword_ausnahmen_full(),
+            wortstufen=wortfilter.STUFEN,
             violations=database.get_badword_violations(50),
             settings=_filter_settings(),
             spam_settings=_spam_settings(),
@@ -1352,6 +1360,29 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         database.remove_link_domain(domain_id)
         return redirect(url_for("moderation_page"))
 
+    @app.route("/moderation/word/<int:word_id>/stufe", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def moderation_word_stufe(word_id):
+        stufe = (request.form.get("stufe") or "").strip()
+        if stufe in wortfilter.STUFEN:
+            database.set_badword_stufe(word_id, stufe)
+        return redirect(url_for("moderation_page"))
+
+    @app.route("/moderation/ausnahme/add", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def moderation_ausnahme_add():
+        wendung = (request.form.get("wendung") or "").strip()
+        if wendung:
+            database.add_badword_ausnahme(wendung, session["discord_user_id"])
+            flash("Wendung erlaubt.", "success")
+        return redirect(url_for("moderation_page"))
+
+    @app.route("/moderation/ausnahme/remove/<int:eintrag_id>", methods=["POST"])
+    @require_permission("manage_badword_filter")
+    def moderation_ausnahme_remove(eintrag_id):
+        database.remove_badword_ausnahme(eintrag_id)
+        return redirect(url_for("moderation_page"))
+
     @app.route("/moderation/testen", methods=["POST"])
     @require_permission("manage_badword_filter")
     def moderation_testen():
@@ -1370,11 +1401,13 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             "badword_aggressive_normalization_enabled",
             config.DEFAULT_SETTINGS["badword_aggressive_normalization_enabled"],
         ) == "1"
-        wort = None
+        treffer = wortfilter.Treffer()
         if database.get_setting("badword_filter_enabled",
                                 config.DEFAULT_SETTINGS["badword_filter_enabled"]) == "1":
-            wort = wortfilter.find_matched_word(
-                text, database.get_badwords(), aggressive=aggressiv)
+            treffer = wortfilter.pruefe(
+                text, database.get_badwords_mit_stufe(), aggressive=aggressiv,
+                ausnahmen=database.get_badword_ausnahmen())
+        wort = treffer.wort or None
 
         link = linkfilter.Entscheidung(False)
         if database.get_setting("link_filter_enabled",
@@ -1395,6 +1428,11 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         session["automod_test"] = {
             "text": text[:500],
             "wort": wort,
+            "stufe": treffer.stufe,
+            "reaktion": database.get_setting(
+                f"badword_action_{treffer.stufe}",
+                config.DEFAULT_SETTINGS.get(f"badword_action_{treffer.stufe}", ""),
+            ) if treffer.getroffen else "",
             "link_verstoss": link.verstoss,
             "link_domain": link.domain,
             "link_grund": link.begruendung,
@@ -1429,6 +1467,11 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         if action not in ("delete_only", "delete_warn", "delete_warn_timeout"):
             action = "delete_warn"
         database.set_setting("badword_filter_action", action)
+
+        for stufe in wortfilter.STUFEN:
+            wert = form.get(f"aktion_{stufe}", "")
+            if wert in ("delete_only", "delete_warn", "delete_warn_timeout"):
+                database.set_setting(f"badword_action_{stufe}", wert)
 
         try:
             threshold = max(1, int(form.get("timeout_threshold", "3")))
@@ -1527,8 +1570,14 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     @require_permission("manage_badword_filter")
     def moderation_add_word():
         word = request.form.get("word", "").strip()
+        stufe = (request.form.get("stufe") or wortfilter.STANDARDSTUFE).strip()
         if word:
             database.add_badword(word, session["discord_user_id"])
+            if stufe in wortfilter.STUFEN and stufe != wortfilter.STANDARDSTUFE:
+                eintrag = next((z for z in database.get_badwords_full()
+                                if z["word"].lower() == word.lower()), None)
+                if eintrag:
+                    database.set_badword_stufe(eintrag["id"], stufe)
         return redirect(url_for("moderation_page"))
 
     @app.route("/moderation/remove/<int:word_id>", methods=["POST"])

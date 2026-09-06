@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 932 Tests)
+17. Testsuite (`tests/`, 944 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -1106,7 +1106,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 932 Tests)
+## 17. Testsuite (`tests/`, 944 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1142,7 +1142,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_rollenabgleich.py` | 31 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten und dass eine vom Bot vergebene Rolle mit dem letzten zugeordneten Recht wieder verschwindet |
 | `test_nutzertexte.py` | 109 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
 | `test_csrf_coverage.py` | 81 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
-| `test_testbox.py` | 18 | Dass die Testbox beide Filter prüft und dabei **nichts** verändert — die Route wird auf `log_badword_violation`, `delete` und `set_setting` durchsucht |
+| `test_testbox.py` | 30 | Dass die Testbox beide Filter prüft und dabei **nichts** verändert — die Route wird auf `log_badword_violation`, `delete` und `set_setting` durchsucht — dazu die Wortstufen und dass eine erlaubte Wendung sich nicht zum Durchschmuggeln missbrauchen lässt |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
 | `test_moderation_limits.py` | 33 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
 | `test_linkfilter.py` | 33 | Die Reihenfolge der Linkfilter-Regeln — insbesondere dass die Sperrliste vor der Erlaubtliste greift, dass Unterdomains eingeschlossen sind und `notexample.com` nicht unter `example.com` fällt |
@@ -1318,6 +1318,41 @@ Damit die Box überhaupt möglich war, musste die Worterkennung aus
 demselben Muster wie `linkfilter.py`: kein discord.py, keine Datenbank, kein
 Schreibzugriff. Der Bot importiert von dort, das Backend ebenso — beide urteilen
 also garantiert gleich.
+
+#### Wortstufen
+
+Bis zum 06.09.2026 war jedes Wort gleich schlimm: Ein derber Fluch löste
+denselben Timeout aus wie eine Beleidigung, die einen Rauswurf rechtfertigt.
+Patrick auf die Frage, ob Stufen den Pflegeaufwand wert sind: ja, mit je eigener
+Reaktion.
+
+Jedes Wort trägt jetzt eine Stufe — 🟢 **leicht**, 🟡 **mittel**, 🔴 **schwer** —
+und je Stufe wird eingestellt, was passiert: nur löschen, löschen + verwarnen,
+oder zusätzlich Timeout ab der Verstoß-Schwelle. Die Stufe steht direkt neben dem
+Wort in der Liste und speichert beim Umstellen sofort.
+
+**Der Umstieg ändert für kein einziges Wort etwas.** Alle 267 vorhandenen Wörter
+bekamen „mittel", und `database._migriere_wortstufen()` setzt die Reaktion für
+„mittel" einmalig auf den bisherigen Wert von `badword_filter_action`. Bei einem
+Filter, der Nachrichten löscht und Leute stummschaltet, ist eine stille
+Verhaltensänderung das Letzte, was man will. `badword_filter_action` bleibt als
+Migrationsquelle stehen, so wie `link_filter_mode` beim Linkfilter.
+
+#### Erlaubte Wendungen
+
+Die zweite benannte Schwäche war der fehlende Kontext. Dafür gibt es jetzt
+`badword_ausnahmen`: ganze Wendungen, innerhalb derer ein Treffer nicht zählt.
+
+**Entscheidend ist das Wort „innerhalb".** Ein Treffer wird nur dann verworfen,
+wenn er *in* der Wendung liegt — nicht schon, wenn die Wendung irgendwo in der
+Nachricht steht. Sonst ließe sich jede Beleidigung durch Anhängen eines
+harmlosen Satzes durchschmuggeln. `tests/test_testbox.py` sichert genau das:
+„analyse der bodenprobe" entschärft `anal`, aber „analyse der bodenprobe du
+anal" bleibt ein Verstoß.
+
+Ausnahmen greifen **nur im Wortgrenzen-Durchlauf**. Wer `a.n.a.l` schreibt,
+verschleiert absichtlich und meint keine Bodenprobe — dort wäre eine Ausnahme
+nur ein Schlupfloch.
 
 #### Die Wortliste
 

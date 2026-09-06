@@ -74,7 +74,7 @@ def test_die_box_darf_nur_wer_den_filter_verwaltet():
 
 
 def test_die_box_prueft_beide_filter():
-    assert "wortfilter.find_matched_word" in ROUTE
+    assert "wortfilter.pruefe(" in ROUTE
     assert "linkfilter.pruefe_nachricht" in ROUTE
 
 
@@ -107,3 +107,77 @@ def test_die_box_steht_ueber_den_reitern():
     """Sie gilt fuer beide Filter und soll auffindbar sein - Patrick hat sie
     genau deshalb gesucht und nicht gefunden."""
     assert SEITE.index("Filter ausprobieren") < SEITE.index('id="automodTabs"')
+
+
+# --------------------------------------------------------------------------
+# Wortstufen und erlaubte Wendungen (06.09.2026)
+#
+# Patrick auf die Frage, ob Stufen den Pflegeaufwand wert sind: ja, mit je
+# eigener Reaktion. Vorher war jedes Wort gleich schlimm - ein derber Fluch
+# loeste denselben Timeout aus wie eine Beleidigung.
+# --------------------------------------------------------------------------
+
+DATABASE = (REPO / "bot" / "database.py").read_text(encoding="utf-8")
+COG = (REPO / "bot" / "cogs" / "moderation.py").read_text(encoding="utf-8")
+
+
+def test_es_gibt_drei_stufen():
+    assert wortfilter.STUFEN == ("leicht", "mittel", "schwer")
+
+
+def test_die_stufe_kommt_mit_dem_treffer_zurueck():
+    assert wortfilter.pruefe("du arschloch", {"arschloch": "schwer"}).stufe == "schwer"
+
+
+def test_ohne_eingetragene_stufe_gilt_die_standardstufe():
+    assert wortfilter.pruefe("du arschloch", ["arschloch"]).stufe == wortfilter.STANDARDSTUFE
+
+
+def test_der_bot_reagiert_je_nach_stufe():
+    assert 'f"badword_action_{treffer.stufe}"' in COG
+
+
+def test_die_bisherige_reaktion_wird_uebernommen():
+    """Sonst aendert sich beim Umstieg still das Verhalten - bei einem Filter,
+    der Nachrichten loescht und Leute stummschaltet, das Letzte was man will."""
+    assert "_migriere_wortstufen" in DATABASE
+    assert "badword_action_mittel" in DATABASE
+
+
+def test_eine_erlaubte_wendung_entschaerft_den_treffer():
+    assert not wortfilter.pruefe(
+        "die analyse der bodenprobe", {"anal": "mittel"},
+        ausnahmen=["analyse der bodenprobe"]).getroffen
+
+
+def test_eine_wendung_laesst_sich_nicht_zum_durchschmuggeln_missbrauchen():
+    """Der entscheidende Punkt. Zaehlte schon das blosse Vorkommen der Wendung,
+    haenge man sie einfach an jede Beleidigung an."""
+    assert wortfilter.pruefe(
+        "analyse der bodenprobe du anal", {"anal": "mittel"},
+        ausnahmen=["analyse der bodenprobe"]).getroffen
+
+
+def test_ausnahmen_gelten_nicht_fuer_verschleiertes():
+    """Wer 'a.n.a.l' schreibt, meint keine Bodenprobe."""
+    assert wortfilter.pruefe(
+        "an.al", {"anal": "mittel"}, ausnahmen=["analyse"]).getroffen
+
+
+def test_die_ausnahmen_haben_eine_eigene_tabelle():
+    assert "CREATE TABLE IF NOT EXISTS badword_ausnahmen" in DATABASE
+
+
+def test_das_backend_kann_stufen_und_wendungen_pflegen():
+    assert "moderation_word_stufe" in APP
+    assert "moderation_ausnahme_add" in APP
+    assert "moderation_ausnahme_remove" in APP
+
+
+def test_die_testbox_nennt_stufe_und_reaktion():
+    """Sonst sieht man zwar, DASS es anschlaegt, aber nicht was passiert."""
+    assert "test_ergebnis.stufe" in SEITE and "test_ergebnis.reaktion" in SEITE
+
+
+def test_eine_unbekannte_stufe_wird_abgewiesen():
+    assert 'raise ValueError(f"Unbekannte Stufe' in DATABASE
