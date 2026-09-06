@@ -1382,27 +1382,20 @@ Wortgrenzen-Abgleich trägt dabei die Hauptlast — `mist` in `Pferdemist` schl�
 nicht an.
 
 
-## 18. Offene Punkte (Stand 05.09.2026)
+## 18. Offene Punkte (Stand 06.09.2026)
 
 ### Warten auf eine Entscheidung von Patrick
 
-- **Linkfilter: die Sperrliste fehlt.** Es gibt drei Regeln (alles blockieren,
-  Whitelist, nur neue Mitglieder), aber keine Blacklist. Entwurf liegt in
-  `~/Desktop/pläne/14-filter-ueberarbeiten.md`, Teil 1 — klein und ohne offene
-  Fragen.
-- **Schimpfwortfilter überarbeiten.** Patrick am 04.09.2026: „irgendwie gefällt
-  mir die funktion so noch nicht." Drei benannte Schwächen (flache Wortliste
-  ohne Stufen, kein Kontext, keine Möglichkeit zum Ausprobieren) und der
-  Vorschlag, eine öffentliche Wortliste **einmalig zur Durchsicht** zu
-  importieren statt sie zur Laufzeit zu laden. Zwei Rückfragen offen: ob
-  Wortstufen den Pflegeaufwand wert sind, und welche Liste.
-- **Die Rollenreihenfolge in Discord passt nicht zur Reihenfolge des
-  Verdienens.** Keimling 🌱 steht über den höheren Stufen, Discord zeigt deshalb
-  dessen Farbe. Ein Sortiervorschlag liegt vor; die Umsetzung ist Handarbeit in
-  Discord und damit Patricks Entscheidung.
-- **Alle elf verdienten Rollen stehen auf „Sammlung".** Ob die Treuestufen
-  stattdessen eine Rangleiter sein sollen (nur die höchste wird getragen), ist
-  offen.
+- **Der Import öffentlicher Wortlisten hat keine Oberfläche.** Die drei Listen
+  wurden am 06.09.2026 einmalig heruntergeladen, von Hand sortiert und
+  übernommen (siehe „Schimpfwortfilter: Testbox und Wortliste"). Ein Werkzeug im
+  Backend, das man einmal benutzt und das danach gepflegt werden will, wurde
+  bewusst nicht gebaut — auf Nachfrage kommt es.
+- **`create_giveaway` und `manage_game_settings` hängen an der Manager-Rolle**,
+  die der Bot nicht vergeben kann. Das ist so gewollt (Patrick, 06.09.2026:
+  „der bot hat nicht das recht einen Manager zu ernennen aber die rechte kann
+  ein Moderator trotzdem haben") — es bleibt hier nur stehen, damit sich niemand
+  über den Hinweis in der Übersicht wundert.
 
 ### Nicht geprüft, weil nur im echten Betrieb prüfbar
 
@@ -1433,6 +1426,12 @@ Der Vollständigkeit halber, weil diese Punkte hier lange als offen standen:
 
 | War offen | Erledigt durch |
 |---|---|
+| **Linkfilter ohne Sperrliste** | `link_blacklist` plus vierte Regel, die vor allen anderen greift (06.09.2026) |
+| **Schimpfwortfilter „gefällt mir so noch nicht"** | Wortstufen mit je eigener Reaktion, erlaubte Wendungen, Testbox; Wortliste von 187 auf 267 kuratiert (06.09.2026) |
+| **Automod-Seite zu voll** | Vier Reiter: Schimpfwörter, Links, Spam, Verstöße (06.09.2026) |
+| **Rollenreihenfolge stand auf dem Kopf** | Am 06.09.2026 auf Patricks Auftrag umsortiert: Keimling 🌱 ganz unten, jede Leiter aufsteigend, alle elf weiterhin unter der Bot-Rolle |
+| **Sammlung oder Rangleiter?** | Entschieden am 06.09.2026: Es bleibt bei **Sammlung** — jede erreichte Stufe wird weiter getragen |
+| **Guten-Morgen-Nachricht nie ausgelöst** | Lief am 06.09.2026 um 08:00; sie protokolliert seitdem auch den Erfolgsfall |
 | Kein einziger Slash-Befehl registriert | `bot.tree.sync()` mit Änderungserkennung; 16 Befehle registriert, `>` abgeschaltet |
 | Keine Fehlerbehandlung für Befehle | Zentraler `on_command_error` plus `tree.on_error`, Meldungen nur für den Aufrufer |
 | Moderationsgründe ohne 512-Zeichen-Grenze | Kürzung nach **URL-kodierter** Länge; das eigene Audit-Log behält den vollen Text |
