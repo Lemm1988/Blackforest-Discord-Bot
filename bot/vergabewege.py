@@ -273,19 +273,42 @@ def befunde(
         # 4. Der Bot kommt an die Rolle nicht heran. Discord erlaubt nur Rollen
         #    unterhalb der eigenen - eine Zuordnung darüber greift stillschweigend nie.
         if z.vergebende_wege and not z.verwaltbar:
-            gefunden.append(Befund(
-                art="unerreichbar", schwere=HOCH, rolle_id=z.rolle_id,
-                titel=f"{z.name} liegt über der Rolle des Bots",
-                text=(
-                    "Discord lässt einen Bot nur Rollen unterhalb seiner eigenen vergeben. "
-                    "Diese Zuordnung ist eingestellt, greift aber nie, und es gibt keine "
-                    "Fehlermeldung dazu."
-                ),
-                empfehlung=(
-                    "In den Discord-Servereinstellungen die Bot-Rolle über "
-                    f"{z.name} ziehen — oder eine andere Rolle zuordnen."
-                ),
-            ))
+            # Ein Recht, das auf eine hoehere Rolle zeigt, ist kein Fehler: Die
+            # Benutzerverwaltung weist so etwas als "nur von Hand" aus, und
+            # Patrick will das ausdruecklich so (06.09.2026, ueber Manager:
+            # "der bot hat nicht das recht einen Manager zu ernennen aber die
+            # rechte kann ein Moderator trotzdem haben"). Eine Reaktions- oder
+            # verdiente Rolle dagegen hat keinen solchen Ausweg - dort erwartet
+            # jemand eine automatische Vergabe, die nie stattfindet.
+            automatisch = {w.art for w in z.vergebende_wege} - {RECHT_ZU_ROLLE}
+            if automatisch:
+                gefunden.append(Befund(
+                    art="unerreichbar", schwere=HOCH, rolle_id=z.rolle_id,
+                    titel=f"{z.name} liegt über der Rolle des Bots",
+                    text=(
+                        "Discord lässt einen Bot nur Rollen unterhalb seiner eigenen "
+                        "vergeben. Über "
+                        + " und ".join(WEG_LABELS[a] for a in sorted(automatisch))
+                        + " soll sie automatisch vergeben werden — das greift nie, "
+                        "und es gibt keine Fehlermeldung dazu."
+                    ),
+                    empfehlung=(
+                        "In den Discord-Servereinstellungen die Bot-Rolle über "
+                        f"{z.name} ziehen — oder eine andere Rolle zuordnen."
+                    ),
+                ))
+            else:
+                gefunden.append(Befund(
+                    art="nur_von_hand", schwere=HINWEIS, rolle_id=z.rolle_id,
+                    titel=f"{z.name} wird von Hand vergeben",
+                    text=(
+                        f"{z.name} liegt über der Rolle des Bots, er kann sie nicht "
+                        "verleihen. Wer eines der zugeordneten Rechte bekommt, behält es "
+                        "trotzdem — die Benutzerverwaltung weist die fehlende Rolle als "
+                        + _z("nur von Hand") + " aus."
+                    ),
+                    empfehlung="Nichts zu tun, solange du die Rolle selbst vergibst.",
+                ))
 
         # 5. Mehrere Wege vergeben dieselbe Rolle. Sie wissen nichts voneinander
         #    und können sich gegenseitig überschreiben.

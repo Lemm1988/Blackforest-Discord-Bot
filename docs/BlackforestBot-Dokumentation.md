@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 853 Tests)
+17. Testsuite (`tests/`, 864 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -739,6 +739,26 @@ Startabgleich alles wieder weg. Das Ergebnis stimmte, der Weg dorthin nicht.
 Der Merker wird deshalb **vor** der Vergabe geschrieben und bei einem Fehlschlag
 wieder entfernt — in `rechtesync.py` wie in `app.py`.
 
+#### Zeitstempel: gespeichert in UTC, angezeigt in Ortszeit (06.09.2026)
+
+SQLite schreibt mit `datetime('now')` **UTC**. Alle sieben Zeitspalten der
+Datenbank entstehen so: `timestamp`, `granted_at`, `created_at`, `unlocked_at`,
+`vergeben_at`, `added_at`, `updated_at`.
+
+Angezeigt wurden sie roh — im Sommer also zwei Stunden neben der Systemuhr. Beim
+Suchen eines Fehlers am 06.09.2026 zeigte der Audit-Log für ein Ereignis 21:29,
+das Systemlog 23:29; es sah nach zwei verschiedenen Vorgängen aus und kostete
+Zeit, bis der Groschen fiel.
+
+Gespeichert bleibt UTC — das ist eindeutig und übersteht jeden Wechsel der
+Zeitzone. Umgerechnet wird erst bei der Anzeige, über den Jinja-Filter
+`lokalzeit` in `backend/app.py`. Ein unbekanntes Format wird bewusst **roh
+durchgereicht** statt verschluckt: Eine leere Zelle erklärt nichts.
+
+`tests/test_zeitanzeige.py` durchsucht alle Vorlagen nach Ausgaben dieser sieben
+Spalten und schlägt an, sobald eine ohne `| lokalzeit` auskommt. Damit fällt eine
+neue Seite auf, die den Fehler wiederholt.
+
 #### Beide Richtungen, für jede Rolle
 
 „wenn ich im bot ein recht gebe muss es auf dem server auch konsistent gesetzt
@@ -1086,7 +1106,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 853 Tests)
+## 17. Testsuite (`tests/`, 864 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1128,8 +1148,9 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_android_build.py` | 4 | Der `cargo update`-Schritt im Build-Workflow, ohne den die APK gegen die kaputte iroh-Version gebaut wird |
 | `test_hilfe.py` | 39 | Rechtefilterung in `/help` mit gestellten Berechtigungen, Modulgliederung, Übergangshinweis für `>` |
 | `test_achievements_konfiguration.py` | 38 | Einstellbare Achievements: Schwellen und Zeitspannen samt ihrer Grenzen, unbrauchbare Werte aus dem Backend, und dass nur selbst angelegte gelöscht werden können |
-| `test_rechteabgleich.py` | 65 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, der Besitzer nie beschnitten wird, dass eine Rolle, die der Bot wegen eines Rechts vergeben hat, nicht zurückwirkt — und dass die Grundausstattung einer Rolle greift, ein bewusst entzogenes Recht aber nicht nachgezogen wird |
-| `test_vergabewege.py` | 40 | Die fünf Vergabewege nebeneinander: dass ein Recht, das eine Rolle holt, von dieser Rolle auch zurückkommt, dass `is_admin` nie über eine Rolle läuft, dass Einträge auf gelöschte oder für den Bot unerreichbare Rollen auffallen und dass eine automatisch vergebene Rolle mit Backend-Rechten sichtbar wird |
+| `test_rechteabgleich.py` | 69 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, der Besitzer nie beschnitten wird, dass eine Rolle, die der Bot wegen eines Rechts vergeben hat, nicht zurückwirkt — und dass die Grundausstattung einer Rolle greift, ein bewusst entzogenes Recht aber nicht nachgezogen wird |
+| `test_vergabewege.py` | 42 | Die fünf Vergabewege nebeneinander: dass ein Recht, das eine Rolle holt, von dieser Rolle auch zurückkommt, dass `is_admin` nie über eine Rolle läuft, dass Einträge auf gelöschte oder für den Bot unerreichbare Rollen auffallen und dass eine automatisch vergebene Rolle mit Backend-Rechten sichtbar wird |
+| `test_zeitanzeige.py` | 5 | Dass jeder angezeigte Zeitstempel durch den `lokalzeit`-Filter geht — SQLite schreibt UTC, und ein Audit-Log, das zwei Stunden neben der Systemuhr liegt, lässt eine Fehlersuche ins Leere laufen |
 | `test_verstoesse.py` | 18 | Verstöße zurücksetzen (Zählung fällt, Historie bleibt) und endgültig löschen; insbesondere, dass die Reset-Grenze beim Löschen mit aufgeräumt wird — sonst würden spätere Verstöße stillschweigend nicht mehr zählen |
 | `test_interaktion.py` | 51 | Discords Drei-Sekunden-Frist: die Vorab-Bestätigung je Befehl, und eine Wache, dass die angegebene Antwortart zu dem passt, was der Befehl tatsächlich sendet |
 | `test_befehlsfehler.py` | 27 | Jeder absehbare Befehlsfehler sagt etwas; Prüfungen antworten nicht mehr selbst |

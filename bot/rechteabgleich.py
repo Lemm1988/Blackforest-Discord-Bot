@@ -91,6 +91,7 @@ def massnahmen(
     zuordnung: dict[str, str] | None = None,
     handverliehen: set[str] | frozenset = frozenset(),
     ausnahmen: set[str] | frozenset = frozenset(),
+    verwaltbare_rollen: set[str] | frozenset | None = None,
 ) -> Rechtemassnahme:
     """Was am Backend zu tun wäre, damit es zu den Rollen passt.
 
@@ -168,20 +169,27 @@ def massnahmen(
         recht for recht in handverliehen
         # Entweder die zugeordnete Rolle wird gerade getragen ...
         if zuordnung.get(recht) in set(rollen)
-        # ... oder das Recht ist ueberhaupt keiner Rolle zugeordnet.
+        # ... oder das Recht ist ueberhaupt keiner Rolle zugeordnet ...
         #
-        # Der zweite Fall ist eine Sicherung gegen einen Fehler, der am
-        # 05.09.2026 echten Schaden angerichtet hat: `create_giveaway` stand in
-        # keiner Zuordnung. Wer es vergab, loeste damit keine Rolle aus - der
-        # Traeger verlor die Moderator-Auszeichnung, und weil die Manager-Rolle
-        # dasselbe Recht fuehrt, galt es als rollenverwaltet und wurde ihm
-        # sofort wieder entzogen. Am Ende hatte er gar nichts mehr und
-        # verschwand aus der Benutzerverwaltung.
-        #
-        # Ein Recht, das keine Rolle repraesentiert, kann auch an keiner
-        # haengen. Es ist eine reine Einzelvergabe und geht den Rollenabgleich
-        # nichts an.
+        # Dieser Fall ist eine Sicherung gegen einen Fehler, der am 05.09.2026
+        # echten Schaden angerichtet hat: `create_giveaway` stand in keiner
+        # Zuordnung. Wer es vergab, loeste damit keine Rolle aus - der Traeger
+        # verlor die Moderator-Auszeichnung, und weil die Manager-Rolle dasselbe
+        # Recht fuehrt, galt es als rollenverwaltet und wurde ihm sofort wieder
+        # entzogen. Am Ende hatte er gar nichts mehr und verschwand aus der
+        # Benutzerverwaltung. Ein Recht, das keine Rolle repraesentiert, kann
+        # auch an keiner haengen.
         or recht not in zuordnung
+        # ... oder seine Rolle liegt ueber dem Bot, er kann sie also gar nicht
+        # vergeben.
+        #
+        # Patrick am 06.09.2026 ueber die Manager-Rolle: „der bot hat nicht das
+        # recht einen Manager zu ernennen aber die rechte kann ein Moderator
+        # trotzdem haben." Die Rolle kann dem Recht hier nicht folgen - wer das
+        # Recht trotzdem an sie bindet, naehme jedem Moderator genau das wieder
+        # weg, was ihm gezielt gegeben wurde.
+        or (verwaltbare_rollen is not None
+            and zuordnung.get(recht) not in set(verwaltbare_rollen))
     }
 
     massnahme = Rechtemassnahme()

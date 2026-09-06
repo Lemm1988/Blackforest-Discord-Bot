@@ -25,7 +25,7 @@
                 <tbody>
                     {% for e in entries %}
                     <tr{% if e.action == 'owner_protection_triggered' %} class="table-danger"{% endif %}>
-                        <td class="text-nowrap">{{ e.timestamp }}</td>
+                        <td class="text-nowrap">{{ e.timestamp | lokalzeit }}</td>
                         <td>
                             {% if e.action == 'owner_protection_triggered' %}
                             <span class="badge bg-danger">⛔ {{ e.action }}</span>

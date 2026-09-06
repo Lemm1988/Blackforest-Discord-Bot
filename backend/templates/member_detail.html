@@ -55,7 +55,7 @@
                         <td><span class="badge bg-secondary">{{ v['violation_type'] }}</span></td>
                         <td>{{ v['matched_word'] }}</td>
                         <td class="text-muted small">{{ v['message_excerpt'] }}</td>
-                        <td class="text-muted small">{{ v['timestamp'] }}</td>
+                        <td class="text-muted small">{{ v['timestamp'] | lokalzeit }}</td>
                         <td class="text-end">
                             <form method="POST" class="d-inline"
                                   action="{{ url_for('moderation_delete_violation', violation_id=v['id']) }}"

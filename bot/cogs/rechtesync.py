@@ -160,6 +160,15 @@ class Rechtesync(commands.Cog):
         # Rolle. `handverliehen` schuetzt dabei das ausloesende Recht davor,
         # gleich wieder entzogen zu werden.
         spiegelrollen = database.bot_vergebene_rollen(uid)
+        # Welche Rollen der Bot ueberhaupt vergeben kann. Rechte, die an einer
+        # hoeher stehenden Rolle haengen (Manager), duerfen nicht entzogen
+        # werden, nur weil ihr Traeger diese Rolle nicht hat - der Bot koennte
+        # sie ihm gar nicht geben.
+        eigene_position = member.guild.me.top_role.position
+        verwaltbare = {
+            str(r.id) for r in member.guild.roles
+            if r.position < eigene_position and not r.managed
+        }
         massnahme = rechteabgleich.massnahmen(
             rollen={str(r.id) for r in member.roles if r.name != "@everyone"},
             rollenrechte=rollenrechte,
@@ -169,6 +178,7 @@ class Rechtesync(commands.Cog):
             zuordnung=database.get_permission_role_map(),
             handverliehen=eigene_rechte - database.bot_gesetzte_rechte(uid),
             ausnahmen=database.ausnahmen(uid),
+            verwaltbare_rollen=verwaltbare,
         )
         if massnahme.leer:
             return []

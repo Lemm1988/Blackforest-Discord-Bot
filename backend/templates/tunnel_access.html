@@ -30,10 +30,10 @@
                     <tr{% if g.revoked_at %} class="table-secondary"{% endif %}>
                         <td>{{ g.label }}</td>
                         <td class="text-nowrap small">{{ g.discord_user_id or "—" }}</td>
-                        <td class="text-nowrap">{{ g.created_at }}</td>
+                        <td class="text-nowrap">{{ g.created_at | lokalzeit }}</td>
                         <td>
                             {% if g.revoked_at %}
-                            <span class="badge bg-secondary">widerrufen am {{ g.revoked_at }}</span>
+                            <span class="badge bg-secondary">widerrufen am {{ g.revoked_at | lokalzeit }}</span>
                             {% else %}
                             <span class="badge bg-success">aktiv</span>
                             {% endif %}

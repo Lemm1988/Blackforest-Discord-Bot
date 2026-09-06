@@ -384,7 +384,7 @@
                 <tbody>
                     {% for v in violations %}
                     <tr>
-                        <td class="text-nowrap">{{ v['timestamp'] }}</td>
+                        <td class="text-nowrap">{{ v['timestamp'] | lokalzeit }}</td>
                         <td>
                             {% if v['violation_type'] == 'spam' %}<span class="badge bg-danger">Spam</span>
                             {% elif v['violation_type'] == 'link' %}<span class="badge bg-info text-dark">Link</span>

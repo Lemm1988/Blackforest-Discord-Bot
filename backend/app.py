@@ -1500,6 +1500,32 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
     # --- Benutzerverwaltung (NUR is_admin - es gibt bewusst kein eigenes
     # "manage_users"-Flag, siehe database.ALL_PERMISSIONS) ---
 
+    @app.template_filter("lokalzeit")
+    def _lokalzeit(wert):
+        """Rechnet einen Zeitstempel aus der Datenbank in Ortszeit um.
+
+        SQLite schreibt mit `datetime('now')` **UTC** - alle sieben
+        Zeitspalten der Datenbank (timestamp, granted_at, created_at,
+        unlocked_at, vergeben_at, added_at, updated_at) liegen deshalb zwei
+        Stunden neben dem, was auf der Uhr steht. Am 06.09.2026 hat das beim
+        Suchen eines Fehlers echte Zeit gekostet: Der Audit-Log zeigte 21:29,
+        das Systemlog 23:29, und es sah nach zwei verschiedenen Ereignissen
+        aus.
+
+        Gespeichert bleibt UTC - das ist richtig und ueberlebt jeden Wechsel
+        der Zeitzone. Umgerechnet wird nur bei der Anzeige.
+        """
+        if not wert:
+            return ""
+        text = str(wert).strip().replace("T", " ").rstrip("Z")
+        for form in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+            try:
+                utc = datetime.strptime(text, form).replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+            return utc.astimezone().strftime("%d.%m.%Y %H:%M")
+        return wert  # unbekanntes Format lieber roh zeigen als verschlucken
+
     def _alle_rechte_labels() -> dict:
         """Bezeichnungen der Kern-Rechte plus der Rechte installierter Module.
 

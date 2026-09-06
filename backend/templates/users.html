@@ -81,7 +81,7 @@
                                     <input type="hidden" name="permission" value="{{ p.key }}">
                                     <button type="submit"
                                         class="badge border-0 px-2 py-2 {% if p.key == 'is_admin' %}bg-danger{% else %}bg-secondary{% endif %}"
-                                        title="Vergeben von {{ p.granted_by }} am {{ p.granted_at }}">
+                                        title="Vergeben von {{ p.granted_by }} am {{ p.granted_at | lokalzeit }}">
                                         {{ permission_labels.get(p.key, p.key) }} ✕
                                     </button>
                                 </form>

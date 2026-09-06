@@ -231,15 +231,37 @@ def test_unbekannte_rolle_bekommt_einen_lesbaren_namen():
 # --- Rollen oberhalb des Bots -----------------------------------------------
 
 
-def test_rolle_ueber_dem_bot_wird_gemeldet_wenn_sie_vergeben_werden_soll():
-    """Discord laesst einen Bot nur Rollen unterhalb seiner eigenen vergeben.
-
-    Die Zuordnung laesst sich einstellen, greift aber nie, und Discord sagt
-    dazu nichts.
+def test_ein_recht_auf_eine_hoehere_rolle_ist_nur_ein_hinweis():
+    """Patrick am 06.09.2026 ueber die Manager-Rolle: „der bot hat nicht das
+    recht einen Manager zu ernennen aber die rechte kann ein Moderator trotzdem
+    haben." Das Recht wirkt, nur die Rolle vergibt er selbst - die
+    Benutzerverwaltung weist sie als „nur von Hand" aus.
     """
     b = vergabewege.befunde(**daten(
         recht_zu_rolle={"moderate_members": MANAGER},
         rolle_zu_rechten={MANAGER: {"moderate_members"}},
+    ))
+    assert arten(b) == ["nur_von_hand"]
+    assert b[0].schwere == vergabewege.HINWEIS
+
+
+def test_eine_automatische_rolle_ueber_dem_bot_ist_ein_echter_fehler():
+    """Hier gibt es keinen Ausweg: Jemand erwartet eine automatische Vergabe,
+    die nie stattfindet, und Discord meldet nichts."""
+    b = vergabewege.befunde(**daten(
+        recht_zu_rolle={},
+        rolle_zu_rechten={},
+        verdiente_rollen=[{"role_id": MANAGER, "bedingung_art": "xp",
+                           "schwelle": 5000, "automatisch": 1}],
+    ))
+    treffer = [x for x in b if x.art == "unerreichbar"]
+    assert treffer and treffer[0].schwere == vergabewege.HOCH
+
+
+def test_eine_reaktionsrolle_ueber_dem_bot_ebenso():
+    b = vergabewege.befunde(**daten(
+        recht_zu_rolle={}, rolle_zu_rechten={},
+        reaktionsrollen=[{"role_id": MANAGER, "emoji": "👍", "enabled": 1}],
     ))
     assert "unerreichbar" in arten(b)
 

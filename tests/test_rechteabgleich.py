@@ -685,3 +685,56 @@ def test_der_merker_wird_vor_der_rollenvergabe_geschrieben():
         vor = quelle.index("merke_rollenvergabe")
         # Das add_roles, das zu dieser Vergabe gehoert, kommt danach.
         assert quelle.index("add_roles", vor) > vor, name
+
+
+# --------------------------------------------------------------------------
+# Rechte an einer Rolle, die der Bot nicht vergeben kann (06.09.2026)
+#
+#   "create Giveaway und manage game settings bekommt nur jemand der Admin ist.
+#    Also Manager auf dem Server. ja Manager kann vom bot nicht zugewiesen
+#    werden wegen der hierarchie aber das ist dann ok so. der bot hat nicht das
+#    recht einen Manager zu ernennen aber die rechte kann ein Moderator
+#    trotzdem haben."
+# --------------------------------------------------------------------------
+
+
+def test_ein_recht_an_einer_unerreichbaren_rolle_bleibt():
+    """Die Rolle kann dem Recht nicht folgen - der Bot darf Manager nicht
+    ernennen. Wuerde die Regel "Recht gilt nur mit seiner Rolle" auch hier
+    greifen, verloere jeder Moderator genau die Rechte wieder, die ihm gezielt
+    gegeben wurden."""
+    m = rechteabgleich.massnahmen(
+        rollen={MODERATOR}, rollenrechte={MANAGER: {"create_giveaway"}},
+        eigene_rechte={"create_giveaway"},
+        zuordnung={"create_giveaway": MANAGER},
+        handverliehen={"create_giveaway"},
+        verwaltbare_rollen={MODERATOR},   # Manager fehlt hier absichtlich
+    )
+    assert m.entziehen == []
+
+
+def test_ein_recht_an_einer_erreichbaren_rolle_haengt_weiter_daran():
+    """Die Ausnahme gilt nur fuer Rollen ueber dem Bot. Alles, was er selbst
+    vergeben kann, folgt weiter der Regel vom 05.09."""
+    m = rechteabgleich.massnahmen(
+        rollen=set(), rollenrechte={MANAGER: {"moderate_members"}},
+        eigene_rechte={"moderate_members"},
+        zuordnung={"moderate_members": MODERATOR},
+        handverliehen={"moderate_members"},
+        verwaltbare_rollen={MODERATOR},
+    )
+    assert m.entziehen == ["moderate_members"]
+
+
+def test_ohne_angabe_der_verwaltbaren_rollen_bleibt_alles_wie_vorher():
+    ohne = rechteabgleich.massnahmen(
+        rollen=set(), rollenrechte={MANAGER: {"moderate_members"}},
+        eigene_rechte={"moderate_members"},
+        zuordnung={"moderate_members": MODERATOR},
+        handverliehen={"moderate_members"})
+    assert ohne.entziehen == ["moderate_members"]
+
+
+def test_das_cog_reicht_die_verwaltbaren_rollen_herein():
+    assert "verwaltbare_rollen=verwaltbare" in COG
+    assert "top_role.position" in COG
