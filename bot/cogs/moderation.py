@@ -157,24 +157,6 @@ def find_matched_word(content: str, badwords, aggressive: bool = True):
     return None
 
 
-def extract_domain(url: str) -> str:
-    """Reduziert eine erkannte URL auf die reine Domain (ohne Schema/www/Pfad),
-    z.B. "https://www.example.com/foo?x=1" -> "example.com"."""
-    cleaned = url
-    for prefix in ("https://", "http://", "www."):
-        if cleaned.lower().startswith(prefix):
-            cleaned = cleaned[len(prefix):]
-    return cleaned.split("/")[0].split("?")[0].split(":")[0].lower()
-
-
-def is_domain_whitelisted(domain: str, whitelist) -> bool:
-    """True, wenn die Domain exakt oder als Subdomain einer Whitelist-Domain matcht
-    (z.B. "cdn.example.com" gilt als erlaubt, wenn "example.com" auf der Liste steht)."""
-    if not domain:
-        return False
-    return any(domain == d or domain.endswith("." + d) for d in whitelist if d)
-
-
 def _load_lines(path):
     try:
         with open(path, "r", encoding="utf-8") as f:

@@ -290,8 +290,9 @@ class Personality(commands.Cog):
             print(f"[personality] Morgengruss: Kanal {channel_id} nicht gefunden - uebersprungen.")
             return
 
+        text = random.choice(texte)
         try:
-            await channel.send(random.choice(texte))
+            await channel.send(text)
         except discord.HTTPException as exc:
             # Kein Tagesmerker bei einem Fehlschlag: Beim naechsten Herzschlag
             # noch einmal versuchen, solange das Nachlauffenster laeuft.
@@ -299,6 +300,12 @@ class Personality(commands.Cog):
             return
 
         database.set_bot_state("last_morning_greeting", tagesmerker)
+        # Auch der Erfolgsfall gehoert ins Log. Am 06.09.2026 war die Frage
+        # "ist der Morgengruss heute rausgegangen?" nur zu beantworten, indem
+        # der Kanal ueber die Discord-API abgefragt wurde - im Log stand
+        # nichts. Faellt der Gruss irgendwann aus, merkt es so niemand.
+        print(f"[personality] Morgengruss in #{getattr(channel, 'name', channel_id)} "
+              f"gesendet: {text[:60]}")
 
     async def _maybe_rotate_status(self):
         if database.get_setting(
