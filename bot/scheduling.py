@@ -29,14 +29,18 @@ def parse_uhrzeit(text: str) -> tuple[int, int] | None:
     return stunde, minute
 
 
-def morgengruss_faellig(
+def taeglich_faellig(
     *,
     jetzt: datetime,
     uhrzeit: str,
     zuletzt_gegruesst: str | None,
     nachlauf_minuten: int,
 ) -> tuple[bool, str]:
-    """Entscheidet, ob jetzt gegruesst werden soll.
+    """Entscheidet, ob eine taegliche Aufgabe jetzt dran ist.
+
+    Urspruenglich nur fuer den Morgengruss gebaut, seit dem 07.09.2026 auch
+    fuer die Rekordpruefung - die Frage ist beide Male dieselbe: "war heute
+    schon?".
 
     Rueckgabe: (senden, tagesmerker_setzen_auf) - der zweite Wert ist das
     heutige Datum, wenn der Tag als erledigt vermerkt werden soll, sonst "".
@@ -74,3 +78,7 @@ def morgengruss_faellig(
         return False, heute
 
     return True, heute
+
+
+#: Frueherer Name, als es die Funktion nur fuer den Morgengruss gab.
+morgengruss_faellig = taeglich_faellig

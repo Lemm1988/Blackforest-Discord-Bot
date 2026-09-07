@@ -36,7 +36,7 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-Aktuell **1005 Tests**.
+Aktuell **1042 Tests**.
 
 Laufen auch in der CI bei jedem Push und Pull Request
 (`.github/workflows/tests.yml`). Sie brauchen **keine** Laufzeit-Abhängigkeiten des

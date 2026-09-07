@@ -166,6 +166,25 @@ DEFAULT_SETTINGS = {
     # faellt auf welcome_channel_id zurueck, damit kein zwingend neuer Kanal
     # eingerichtet werden muss, um das Feature zu nutzen.
     "announcement_channel_id": "",
+    # Ein eigener Zielkanal je Art von Ankuendigung (Patrick, 07.09.2026: "man
+    # soll immer überall einstellen können wohin der bot postet"). Leer heisst
+    # hier NICHT "gar nicht posten", sondern "nimm den allgemeinen Kanal
+    # darueber" - sonst muesste man fuenf Felder ausfuellen, um den Zustand von
+    # vorher zu bekommen.
+    "levelup_channel_id": "",
+    "achievement_channel_id": "",
+    "record_channel_id": "",
+    "milestone_channel_id": "",
+    "streak_channel_id": "",
+    # Die Rekordpruefung lief bis zum 07.09.2026 bei jedem Herzschlag, also
+    # jede Minute - und meldete jeden neuen Hoechststand sofort. An einem
+    # regen Tag wurde daraus eine Nachrichtenflut. Jetzt einmal taeglich fuer
+    # den Tag, der gerade zu Ende ging.
+    "server_record_check_time": "00:00",
+    # Grosszuegig, damit die Pruefung nachgeholt wird, wenn der Pi um
+    # Mitternacht aus war. Ein Rekord, der morgens um sechs gemeldet wird, ist
+    # immer noch richtig.
+    "server_record_grace_minutes": "720",
     "announcements_enabled": "1",
     # Nachrichten-XP (Spec 1): bewusst standardmaessig AUS, da das eine spuerbare
     # Verhaltensaenderung fuer den ganzen Server ist - der Admin soll es bewusst

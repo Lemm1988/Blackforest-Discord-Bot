@@ -508,18 +508,44 @@ class Personality(commands.Cog):
     }
 
     async def _maybe_check_server_records(self):
-        # Bewusst bei JEDEM Heartbeat-Tick (jede Minute) statt eines eigenen
-        # Intervall-Settings - die Vergleichsabfrage ist eine einzelne, billige
-        # SELECT pro Stat-Key, kein spuerbarer Kostenfaktor.
+        """Einmal taeglich, fuer den Tag der gerade zu Ende ging.
+
+        Bis zum 07.09.2026 lief das bei JEDEM Herzschlag, also jede Minute -
+        und weil ein Tageszaehler im Lauf des Tages waechst, wurde jeder neue
+        Hoechststand sofort gemeldet. An einem regen Tag ergab das eine
+        Nachrichtenflut. Patrick: "er meldet jede nachricht die der neue server
+        rekord ist. die prüfung kann auch einfach 1 mal täglich 0 uhr sein."
+
+        Bewertet wird deshalb GESTERN: Um null Uhr steht der heutige Zaehler
+        noch auf null, der gestrige ist endgueltig.
+        """
+        faellig, tagesmerker = scheduling.taeglich_faellig(
+            jetzt=datetime.now(),
+            uhrzeit=database.get_setting(
+                "server_record_check_time", config.DEFAULT_SETTINGS["server_record_check_time"]),
+            zuletzt_gegruesst=database.get_bot_state("last_server_record_check"),
+            nachlauf_minuten=int(database.get_setting(
+                "server_record_grace_minutes",
+                config.DEFAULT_SETTINGS["server_record_grace_minutes"])),
+        )
+        if not faellig:
+            if tagesmerker:
+                # Fenster verpasst (Pi war aus). Tag abhaken, sonst laeuft die
+                # Pruefung spaeter fuer einen laengst vergangenen Tag.
+                database.set_bot_state("last_server_record_check", tagesmerker)
+            return
+
+        gestern = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
         for stat_key, column in self._RECORD_STAT_MAP.items():
-            current_value = database.get_server_stat_today(column)
-            if current_value <= 0:
+            wert = database.get_server_stat_am(column, gestern)
+            if wert <= 0:
                 continue
-            result = database.check_and_update_server_record(stat_key, current_value)
+            result = database.check_and_update_server_record(stat_key, wert, datum=gestern)
             if result:
                 await announcements.announce_server_record(
                     self.bot, stat_key, result["new_value"], result["old_value"]
                 )
+        database.set_bot_state("last_server_record_check", tagesmerker)
 
     async def _maybe_check_milestones(self):
         thresholds = database.parse_csv_ints(

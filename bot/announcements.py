@@ -17,19 +17,25 @@ import database
 import modul_xp_level
 
 
-def _get_announcement_channel(bot: discord.Client):
-    """announcement_channel_id - OHNE Rückfall auf welcome_channel_id (User-
-    Vorgabe: ist kein eigener Kanal zugewiesen, postet der Bot NIRGENDWO, statt
-    unerwartet in einem anderen Kanal aufzutauchen). bot.get_channel() ist eine
-    reine Cache-Abfrage - beide Aufrufer (Quiz-Button-Callback, on_message)
-    laufen bereits im Discord-Gateway-Kontext, keine run_coroutine_threadsafe-
-    Brücke wie beim Backend nötig."""
-    channel_id = database.get_setting(
-        "announcement_channel_id", config.DEFAULT_SETTINGS["announcement_channel_id"]
-    )
-    if not channel_id:
+def _kanal_fuer(bot: discord.Client, schluessel: str):
+    """Der Zielkanal fuer EINE Art von Ankuendigung.
+
+    Patrick am 07.09.2026: "man soll immer überall einstellen können wohin der
+    bot postet wenn er etwas Postet." Level-Aufstiege, Achievements, Rekorde,
+    Meilensteine und Quiz-Serien haben deshalb je einen eigenen Kanal.
+
+    Ist keiner eingetragen, greift der allgemeine `announcement_channel_id` -
+    sonst muesste man fuenf Felder ausfuellen, nur um den Zustand von vorher zu
+    bekommen. Ist auch der leer, postet der Bot NIRGENDWO, statt unerwartet in
+    einem anderen Kanal aufzutauchen.
+    """
+    kanal_id = database.get_setting(schluessel, config.DEFAULT_SETTINGS[schluessel])
+    if not kanal_id:
+        kanal_id = database.get_setting(
+            "announcement_channel_id", config.DEFAULT_SETTINGS["announcement_channel_id"])
+    if not kanal_id:
         return None
-    return bot.get_channel(int(channel_id))
+    return bot.get_channel(int(kanal_id))
 
 
 async def announce_progress(bot: discord.Client, user: discord.abc.User, xp_result):
@@ -45,21 +51,26 @@ async def announce_progress(bot: discord.Client, user: discord.abc.User, xp_resu
     ) != "1":
         return
 
-    channel = _get_announcement_channel(bot)
-    if not channel:
-        return
-
-    if xp_result.get("leveled_up"):
+    # Zwei getrennte Kanaele: Ein Levelaufstieg ist etwas anderes als ein
+    # freigeschaltetes Achievement, und Patrick will beides einzeln steuern
+    # koennen. Faellt einer der beiden weg, laeuft der andere trotzdem - ein
+    # frueher Ausstieg hier haette die Achievements mit verschluckt.
+    levelkanal = _kanal_fuer(bot, "levelup_channel_id")
+    if xp_result.get("leveled_up") and levelkanal:
         embed = discord.Embed(
             description=f"🎉 {user.mention} hat **Level {xp_result['new_level']}** erreicht!",
             color=discord.Color.green(),
         )
         try:
-            await channel.send(embed=embed)
+            await levelkanal.send(embed=embed)
         except discord.HTTPException:
             pass
 
-    for achievement in xp_result.get("unlocked_achievements", []):
+    erfolge = xp_result.get("unlocked_achievements", [])
+    erfolgskanal = _kanal_fuer(bot, "achievement_channel_id") if erfolge else None
+    for achievement in erfolge:
+        if not erfolgskanal:
+            break
         # Geheimhaltung (secret=1) gilt nur für die Vorschau VOR Freischaltung
         # auf /achievements - die Ankündigung danach zeigt immer Klartext.
         embed = discord.Embed(
@@ -70,7 +81,7 @@ async def announce_progress(bot: discord.Client, user: discord.abc.User, xp_resu
             color=discord.Color.gold(),
         )
         try:
-            await channel.send(embed=embed)
+            await erfolgskanal.send(embed=embed)
         except discord.HTTPException:
             pass
 
@@ -97,10 +108,11 @@ def _community_reactions_allowed() -> bool:
     return True
 
 
-async def _send_community_embed(bot: discord.Client, description: str, color: discord.Color):
+async def _send_community_embed(bot: discord.Client, description: str, color: discord.Color,
+                                kanal_schluessel: str = "announcement_channel_id"):
     if not _community_reactions_allowed():
         return
-    channel = _get_announcement_channel(bot)
+    channel = _kanal_fuer(bot, kanal_schluessel)
     if not channel:
         return
     try:
@@ -113,8 +125,9 @@ async def announce_server_record(bot: discord.Client, stat_key: str, new_value: 
     label = _RECORD_LABELS.get(stat_key, stat_key)
     await _send_community_embed(
         bot,
-        f"🏆 Neuer Serverrekord! Heute wurden **{new_value}** {label} — bisheriger Rekord: **{old_value}**.",
+        f"🏆 Neuer Serverrekord! Gestern wurden **{new_value}** {label} — bisheriger Rekord: **{old_value}**.",
         discord.Color.gold(),
+        "record_channel_id",
     )
 
 
@@ -123,6 +136,7 @@ async def announce_streak_milestone(bot: discord.Client, user: discord.abc.User,
         bot,
         f"🔥 {user.mention} hat eine Quiz-Serie von **{streak_length}** richtigen Antworten in Folge erreicht!",
         discord.Color.orange(),
+        "streak_channel_id",
     )
 
 
@@ -131,6 +145,7 @@ async def announce_streak_ended(bot: discord.Client, user: discord.abc.User, str
         bot,
         f"💔 Die Quiz-Serie von {user.mention} ist nach **{streak_length}** richtigen Antworten in Folge zu Ende gegangen.",
         discord.Color.dark_grey(),
+        "streak_channel_id",
     )
 
 
@@ -139,4 +154,5 @@ async def announce_milestone(bot: discord.Client, total_value: int):
         bot,
         f"🎉 Server-Meilenstein! Insgesamt wurden bereits **{total_value}** Quizfragen richtig beantwortet!",
         discord.Color.purple(),
+        "milestone_channel_id",
     )

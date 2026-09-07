@@ -62,6 +62,9 @@
                         {% if has_permission('manage_badword_filter') %}
                         <li><a class="dropdown-item" href="{{ url_for('server_setup_page') }}">Willkommen &amp; Regeln</a></li>
                         {% endif %}
+                        {% if has_permission('is_admin') %}
+                        <li><a class="dropdown-item" href="{{ url_for('kanaele_page') }}">📣 Zielkanäle</a></li>
+                        {% endif %}
                         {% if has_permission('create_giveaway') %}
                         <li><a class="dropdown-item" href="{{ url_for('create_giveaway_page') }}">Giveaway starten</a></li>
                         {% endif %}

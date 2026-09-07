@@ -2204,7 +2204,22 @@ def get_server_stat_today(stat: str) -> int:
         return row[stat] if row else 0
 
 
-def check_and_update_server_record(stat_key: str, current_value: int):
+def get_server_stat_am(stat: str, datum: str) -> int:
+    """Der Tageswert eines Zaehlers an einem BESTIMMTEN Tag.
+
+    Gebraucht seit dem 07.09.2026: Die Rekordpruefung laeuft nachts um null Uhr
+    und bewertet den Tag, der gerade zu Ende ging - nicht den, der gerade erst
+    beginnt und noch bei null steht.
+    """
+    if stat not in _VALID_SERVER_STATS + ("active_users",):
+        raise ValueError(f"Unbekannter server_stats_daily-Schluessel: {stat}")
+    with get_connection() as conn:
+        row = conn.execute(
+            f"SELECT {stat} FROM server_stats_daily WHERE date = ?", (datum,)).fetchone()
+        return row[stat] if row else 0
+
+
+def check_and_update_server_record(stat_key: str, current_value: int, datum: str = None):
     """Vergleicht current_value gegen den bisherigen Rekord fuer stat_key
     (0, falls noch keiner existiert). Bei einem NEUEN Rekord: aktualisiert
     server_records und gibt {"old_value", "new_value"} zurueck - sonst None
@@ -2216,7 +2231,8 @@ def check_and_update_server_record(stat_key: str, current_value: int):
         old_value = row["record_value"] if row else 0
         if current_value <= old_value:
             return None
-        today = time.strftime("%Y-%m-%d")
+        # Das Datum des REKORDS, nicht das der Pruefung - die laeuft am Tag danach.
+        today = datum or time.strftime("%Y-%m-%d")
         conn.execute(
             "INSERT INTO server_records (stat_key, record_value, record_date) VALUES (?, ?, ?) "
             "ON CONFLICT(stat_key) DO UPDATE SET record_value = excluded.record_value, "

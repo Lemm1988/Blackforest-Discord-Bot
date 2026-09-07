@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 1005 Tests)
+17. Testsuite (`tests/`, 1042 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -1106,7 +1106,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 1005 Tests)
+## 17. Testsuite (`tests/`, 1042 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1140,8 +1140,8 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_reaktionsrollen.py` | 20 | Reaktionsrollen: Schema-Zusagen, Umzug der alten Regel, und dass Kanal und Rolle über IDs statt Namen angesprochen werden |
 | `test_rollenrechte.py` | 15 | Eine Rolle bringt Rechte mit: getrennte Tabellen für beide Richtungen, kein `is_admin` über Rollen, Befehl **und** Webformular abgesichert |
 | `test_rollenabgleich.py` | 31 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten und dass eine vom Bot vergebene Rolle mit dem letzten zugeordneten Recht wieder verschwindet |
-| `test_nutzertexte.py` | 109 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
-| `test_csrf_coverage.py` | 81 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
+| `test_nutzertexte.py` | 112 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
+| `test_csrf_coverage.py` | 83 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
 | `test_testbox.py` | 74 | Dass die Testbox beide Filter prüft und dabei **nichts** verändert — die Route wird auf `log_badword_violation`, `delete` und `set_setting` durchsucht — dazu die Wortstufen und dass eine erlaubte Wendung sich nicht zum Durchschmuggeln missbrauchen lässt |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
 | `test_moderation_limits.py` | 33 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
@@ -1153,6 +1153,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_achievements_konfiguration.py` | 38 | Einstellbare Achievements: Schwellen und Zeitspannen samt ihrer Grenzen, unbrauchbare Werte aus dem Backend, und dass nur selbst angelegte gelöscht werden können |
 | `test_rechteabgleich.py` | 69 | Die Gegenrichtung Rolle → Recht: dass `is_admin` nie über eine Rolle läuft, der Besitzer nie beschnitten wird, dass eine Rolle, die der Bot wegen eines Rechts vergeben hat, nicht zurückwirkt — und dass die Grundausstattung einer Rolle greift, ein bewusst entzogenes Recht aber nicht nachgezogen wird |
 | `test_vergabewege.py` | 42 | Die fünf Vergabewege nebeneinander: dass ein Recht, das eine Rolle holt, von dieser Rolle auch zurückkommt, dass `is_admin` nie über eine Rolle läuft, dass Einträge auf gelöschte oder für den Bot unerreichbare Rollen auffallen und dass eine automatisch vergebene Rolle mit Backend-Rechten sichtbar wird |
+| `test_zielkanaele.py` | 32 | Dass jede der elf Stellen, an denen der Bot postet, einen eigenen einstellbaren Kanal hat — und dass die Rekordprüfung täglich für den Vortag läuft statt jede Minute |
 | `test_zeitanzeige.py` | 5 | Dass jeder angezeigte Zeitstempel durch den `lokalzeit`-Filter geht — SQLite schreibt UTC, und ein Audit-Log, das zwei Stunden neben der Systemuhr liegt, lässt eine Fehlersuche ins Leere laufen |
 | `test_verstoesse.py` | 18 | Verstöße zurücksetzen (Zählung fällt, Historie bleibt) und endgültig löschen; insbesondere, dass die Reset-Grenze beim Löschen mit aufgeräumt wird — sonst würden spätere Verstöße stillschweigend nicht mehr zählen |
 | `test_interaktion.py` | 51 | Discords Drei-Sekunden-Frist: die Vorab-Bestätigung je Befehl, und eine Wache, dass die angegebene Antwortart zu dem passt, was der Befehl tatsächlich sendet |
@@ -1518,6 +1519,58 @@ Nach einem Kick oder Bann ist die Person kein Mitglied mehr — `get_member`
 liefert dann nichts, `get_user` meist noch den Namen. Der Moderator wiederum
 wird **vor** dem Sprung auf den Bot-Thread aus der Sitzung gelesen: Dort gibt es
 keinen Flask-Kontext mehr.
+
+
+### Wohin der Bot postet (07.09.2026)
+
+Patrick hat das als Regel für alle künftigen Funktionen ausgesprochen:
+
+> „man soll immer überall einstellen können wohin der bot postet wenn er etwas
+> Postet"
+
+Unter **Bot-Setup → 📣 Zielkanäle** stehen deshalb alle elf Stellen beisammen,
+an denen der Bot in einen Kanal schreibt. Vorher lagen sie über mehrere Seiten
+verstreut — der Ankündigungskanal ausgerechnet unter *Pflanzenquiz*, und fünf
+verschiedene Ankündigungsarten teilten sich denselben.
+
+| Gruppe | Kanäle |
+|---|---|
+| Gemeinschaft | allgemeine Ankündigungen, Level-Aufstiege, Achievements, Server-Rekorde, Meilensteine, Quiz-Serien |
+| Wiederkehrend | Willkommensnachricht, Guten-Morgen-Nachricht, spontane Sprüche, Zufallsereignisse |
+| Nur fürs Team | Moderationsaktionen |
+
+**Leer heißt „nicht posten".** Die einzige Ausnahme ist die Gemeinschafts-Gruppe:
+Was dort keinen eigenen Kanal hat, fällt auf die allgemeinen Ankündigungen
+zurück — sonst müsste man fünf Felder ausfüllen, nur um den Zustand von vorher
+zu bekommen. Ist auch der leer, postet der Bot nirgendwo.
+
+Beim Umbau fiel ein Fehler in der eigenen Änderung auf: Hinter dem
+Level-Up-Kanal stand zunächst ein `return`. Ohne eingestellten Level-Kanal wären
+damit auch die **Achievement**-Meldungen ausgefallen, obwohl sie einen eigenen
+Kanal haben. Ein Test hält die beiden Zweige jetzt auseinander.
+
+#### Server-Rekorde: einmal täglich statt jede Minute
+
+> „er meldet jede nachricht die der neue server rekord ist. die prüfung kann
+> auch einfach 1 mal täglich 0 uhr sein."
+
+Die Prüfung lief bei **jedem Herzschlag**, also jede Minute. Weil ein
+Tageszähler im Lauf des Tages wächst, war jede Nachricht über dem alten Rekord
+ein neuer Rekord — und wurde einzeln gemeldet. An einem regen Tag ergab das eine
+Flut.
+
+Jetzt läuft sie einmal täglich zur eingestellten Uhrzeit (Voreinstellung
+00:00) und bewertet **den Tag, der gerade zu Ende ging**. Um null Uhr steht der
+heutige Zähler noch auf null; der gestrige ist endgültig. Entsprechend heißt es
+in der Meldung „Gestern wurden …" statt „Heute wurden …".
+
+Das Nachlauffenster ist mit zwölf Stunden großzügig: War der Pi um Mitternacht
+aus, wird die Prüfung nachgeholt. Ein Rekord, der morgens um sechs gemeldet
+wird, ist immer noch richtig. Wird auch das Fenster verpasst, wird der Tag
+abgehakt statt später für einen längst vergangenen Tag nachzulaufen — dieselbe
+Logik wie beim Morgengruß, und tatsächlich dieselbe Funktion:
+`scheduling.taeglich_faellig()` hieß vorher `morgengruss_faellig` und
+beantwortet beide Male dieselbe Frage.
 
 
 ## 18. Offene Punkte (Stand 06.09.2026)

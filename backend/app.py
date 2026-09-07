@@ -9,6 +9,7 @@ import asyncio
 import functools
 import logging
 import math
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
@@ -663,6 +664,76 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             "announcements_enabled": announcements_enabled, "announcement_channel_id": announcement_channel_id,
         })
         return redirect(url_for("quiz_game_page"))
+
+    # --- Zielkanäle: wohin der Bot postet (07.09.2026) ---
+    #
+    # Patrick: "man soll immer überall einstellen können wohin der bot postet
+    # wenn er etwas Postet." Die Einstellungen lagen ueber mehrere Seiten
+    # verteilt - der Ankuendigungskanal ausgerechnet unter Pflanzenquiz. Hier
+    # stehen sie beisammen, damit man auf einen Blick sieht, wo etwas landet.
+
+    KANAL_EINSTELLUNGEN = [
+        ("Gemeinschaft", [
+            ("announcement_channel_id", "Allgemeine Ankündigungen",
+             "Rückfallebene: Was unten keinen eigenen Kanal hat, landet hier."),
+            ("levelup_channel_id", "Level-Aufstiege", "„… hat Level 12 erreicht!“"),
+            ("achievement_channel_id", "Achievements", "Freigeschaltete Auszeichnungen."),
+            ("record_channel_id", "Server-Rekorde",
+             "Einmal täglich für den Vortag — nicht mehr bei jeder Nachricht."),
+            ("milestone_channel_id", "Meilensteine", "Etwa die 1000. richtig beantwortete Frage."),
+            ("streak_channel_id", "Quiz-Serien", "Anfang und Ende einer Serie richtiger Antworten."),
+        ]),
+        ("Wiederkehrend", [
+            ("welcome_channel_id", "Willkommensnachricht", "Wenn jemand neu dazukommt."),
+            ("morning_greeting_channel_id", "Guten-Morgen-Nachricht", "Täglich zur eingestellten Uhrzeit."),
+            ("personality_spontaneous_channel_id", "Spontane Sprüche", "Gelegentliche Wortmeldungen des Bots."),
+            ("event_channel_id", "Zufallsereignisse", "Kleine Ereignisse für die Gemeinschaft."),
+        ]),
+        ("Nur fürs Team", [
+            ("moderation_log_channel_id", "Moderationsaktionen",
+             "Kick, Bann, Entbannung, Timeout — gehört in einen Kanal, den nur das Team sieht."),
+        ]),
+    ]
+
+    @app.route("/kanaele")
+    @require_permission("is_admin")
+    def kanaele_page():
+        werte = {
+            schluessel: database.get_setting(schluessel, config.DEFAULT_SETTINGS[schluessel])
+            for _, eintraege in KANAL_EINSTELLUNGEN for schluessel, _, _ in eintraege
+        }
+        return render_template(
+            "kanaele.html", gruppen=KANAL_EINSTELLUNGEN, werte=werte,
+            record_zeit=database.get_setting(
+                "server_record_check_time", config.DEFAULT_SETTINGS["server_record_check_time"]),
+        )
+
+    @app.route("/kanaele/save", methods=["POST"])
+    @require_permission("is_admin")
+    def kanaele_save():
+        alt, neu = {}, {}
+        for _, eintraege in KANAL_EINSTELLUNGEN:
+            for schluessel, _, _ in eintraege:
+                vorher = database.get_setting(schluessel, config.DEFAULT_SETTINGS[schluessel])
+                wert = (request.form.get(schluessel) or "").strip()
+                if wert and not wert.isdigit():
+                    wert = ""      # ungueltige Eingabe heisst "kein Kanal", nicht "kaputt"
+                if wert != vorher:
+                    alt[schluessel], neu[schluessel] = vorher, wert
+                database.set_setting(schluessel, wert)
+
+        zeit = (request.form.get("server_record_check_time") or "").strip()
+        if re.fullmatch(r"[0-2]\d:[0-5]\d", zeit or ""):
+            vorher = database.get_setting(
+                "server_record_check_time", config.DEFAULT_SETTINGS["server_record_check_time"])
+            if zeit != vorher:
+                alt["server_record_check_time"], neu["server_record_check_time"] = vorher, zeit
+            database.set_setting("server_record_check_time", zeit)
+
+        if alt:
+            _log_settings_change("config_change", alt, neu)
+        flash("Zielkanäle gespeichert." if alt else "Nichts geändert.", "success")
+        return redirect(url_for("kanaele_page"))
 
     # --- XP & Level (eigenes Kern-Modul, Menü-Reorganisation) - gespeist sowohl
     # vom Quiz (xp_per_quiz) als auch von Nachrichten-XP, deshalb bewusst NICHT
