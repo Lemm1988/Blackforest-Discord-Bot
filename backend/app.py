@@ -679,7 +679,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             ("levelup_channel_id", "Level-Aufstiege", "„… hat Level 12 erreicht!“"),
             ("achievement_channel_id", "Achievements", "Freigeschaltete Auszeichnungen."),
             ("record_channel_id", "Server-Rekorde",
-             "Einmal täglich für den Vortag — nicht mehr bei jeder Nachricht."),
+             "Einmal täglich für den Vortag geprüft, nicht mehr bei jeder Nachricht."),
             ("milestone_channel_id", "Meilensteine", "Etwa die 1000. richtig beantwortete Frage."),
             ("streak_channel_id", "Quiz-Serien", "Anfang und Ende einer Serie richtiger Antworten."),
         ]),

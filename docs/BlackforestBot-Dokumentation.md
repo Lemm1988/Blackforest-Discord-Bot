@@ -1560,7 +1560,7 @@ ein neuer Rekord — und wurde einzeln gemeldet. An einem regen Tag ergab das ei
 Flut.
 
 Jetzt läuft sie einmal täglich zur eingestellten Uhrzeit (Voreinstellung
-00:00) und bewertet **den Tag, der gerade zu Ende ging**. Um null Uhr steht der
+00:00, das Feld steht direkt neben dem Rekord-Kanal — es betrifft nur diesen einen Punkt) und bewertet **den Tag, der gerade zu Ende ging**. Um null Uhr steht der
 heutige Zähler noch auf null; der gestrige ist endgültig. Entsprechend heißt es
 in der Meldung „Gestern wurden …" statt „Heute wurden …".
 

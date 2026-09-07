@@ -28,27 +28,18 @@
                         <option value="">— nicht posten —</option>
                     </select>
                 </div>
-            </div>
-            {% endfor %}
-
-            {% if titel == 'Gemeinschaft' %}
-            <hr>
-            <div class="row g-2 align-items-center">
-                <div class="col-12 col-md-4">
-                    <label class="form-label mb-0" for="server_record_check_time">
-                        Rekorde prüfen um
-                    </label>
-                    <div class="form-text">
-                        Einmal täglich, für den Tag davor. Vorher lief die Prüfung jede Minute
-                        und meldete jeden neuen Höchststand sofort.
-                    </div>
-                </div>
-                <div class="col-6 col-md-3">
+                {% if schluessel == 'record_channel_id' %}
+                {# Die Uhrzeit gehoert hierher und nicht ans Ende der Gruppe: Sie
+                   betrifft ausschliesslich die Rekordpruefung. #}
+                <div class="col-12 col-md-3">
+                    <label class="form-label mb-0 small" for="server_record_check_time">Prüfen um</label>
                     <input type="time" class="form-control" id="server_record_check_time"
                            name="server_record_check_time" value="{{ record_zeit }}">
                 </div>
+                {% endif %}
             </div>
-            {% endif %}
+            {% endfor %}
+
         </div>
     </div>
     {% endfor %}
