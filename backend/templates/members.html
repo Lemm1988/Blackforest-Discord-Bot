@@ -27,9 +27,20 @@
                     <option value="">— keine Meldungen —</option>
                 </select>
             </div>
-            <div class="col-12 col-md-3">
+            <div class="col-6 col-md-3">
                 <button type="submit" class="btn btn-primary w-100">Speichern</button>
             </div>
+        </form>
+        <form method="POST" action="{{ url_for('members_meldekanal_test') }}" class="mt-2">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-secondary btn-sm"
+                    {% if not meldekanal %}disabled{% endif %}>
+                🧪 Probemeldung senden
+            </button>
+            <span class="form-text ms-2">
+                Schickt eine als Probe gekennzeichnete Meldung in den Kanal — ohne dass
+                jemand gekickt wird.
+            </span>
         </form>
     </div>
 </div>

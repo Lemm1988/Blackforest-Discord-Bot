@@ -2890,6 +2890,7 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
         "ban": ("🔨 Gebannt", 0xC0392B),
         "unban": ("🕊️ Entbannt", 0x27AE60),
         "timeout": ("🔇 Stummgeschaltet", 0xF1C40F),
+        "test": ("🧪 Probemeldung", 0x3498DB),
     }
 
     def _melde_moderation(aktion: str, user_id: str, grund: str = "", zusatz: str = "") -> None:
@@ -2938,6 +2939,26 @@ def create_app(bot, bot_loop: asyncio.AbstractEventLoop) -> Flask:
             fehler = str(exc)
         if fehler:
             flash(f"Die Aktion lief durch, die Meldung im Kanal aber nicht: {fehler}", "warning")
+
+    @app.route("/members/meldekanal/test", methods=["POST"])
+    @require_permission("moderate_members")
+    def members_meldekanal_test():
+        """Schickt eine Probemeldung in den eingestellten Kanal.
+
+        Ohne das liesse sich die Einstellung nur pruefen, indem man jemanden
+        wirklich kickt - eine schlechte Art, eine Konfiguration zu testen.
+        Die Meldung ist als Probe gekennzeichnet, damit im Kanal niemand denkt,
+        es sei etwas passiert.
+        """
+        kanal_id = database.get_setting(
+            "moderation_log_channel_id", config.DEFAULT_SETTINGS["moderation_log_channel_id"])
+        if not kanal_id:
+            flash("Es ist kein Meldekanal eingestellt.", "error")
+            return redirect(url_for("members_overview"))
+        _melde_moderation("test", session["discord_user_id"],
+                          "Probemeldung aus dem Backend — es ist nichts passiert.")
+        flash("Probemeldung verschickt. Sieh im Kanal nach.", "success")
+        return redirect(url_for("members_overview"))
 
     @app.route("/members/<user_id>/kick", methods=["POST"])
     @require_permission("moderate_members")

@@ -281,3 +281,116 @@ def test_die_alte_verstoss_schwelle_ist_weg():
         assert "badword_timeout_threshold" not in quelle, name
     assert "timeout_threshold" not in SEITE.replace("link_threshold", "").replace("spam_threshold", "")
     assert "link_filter_timeout_threshold" in APP, "Der Linkfilter braucht seine Schwelle weiter"
+
+
+# --------------------------------------------------------------------------
+# Erkennung nachgeschärft (07.09.2026)
+#
+# Patrick: "ich habe einige dinge bei schimpfwortfilter versucht. zum beispiel
+# hurensoohn würde durchgehen. oder arschlooch undsoweiter also da musst du
+# nochmal viel besser nachbessern."
+#
+# Drei Luecken, die dabei ans Licht kamen.
+# --------------------------------------------------------------------------
+
+WORTFILTER = (REPO / "bot" / "wortfilter.py").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("eingabe", [
+    "arschlooch", "arschloooch", "arschlochhh", "arrschloch",
+    "hurensoohn", "huuurensohn", "fiick", "scheiiisse",
+])
+def test_gedehnte_schreibweisen_werden_erkannt(eingabe):
+    """`normalize()` zog nur DREI und mehr gleiche Zeichen zusammen - doppelte
+    ueberlebten. `arschlooch` ging damit glatt durch."""
+    assert wortfilter.pruefe(eingabe, {"arschloch": "mittel", "hurensohn": "schwer",
+                                       "fick": "mittel", "scheisse": "leicht"}).getroffen
+
+
+def test_doppelte_buchstaben_werden_nicht_im_text_zusammengezogen():
+    """Der naheliegende Weg waere gewesen, im Text jede Doppelung zu
+    reduzieren. Das zerstoert die Sprache: Kaffee -> Kafe, Schiff -> Schif."""
+    assert wortfilter.normalize("Kaffee Schiff alle") == "kaffee schiff alle"
+
+
+@pytest.mark.parametrize("eingabe", ["arschloch!", "arschloch!!!", "du arschloch!"])
+def test_satzzeichen_am_wortende_hebeln_die_erkennung_nicht_aus(eingabe):
+    """Die Leetspeak-Tabelle macht aus `!` ein `i`. Aus `arschloch!` wurde
+    dadurch `arschlochi` - die Wortgrenze war hin und das Wort ging durch,
+    obwohl es voellig unverschleiert dastand."""
+    assert wortfilter.pruefe(eingabe, {"arschloch": "mittel"}).getroffen
+
+
+@pytest.mark.parametrize("eingabe", ["@rschloch", "hu$o", "n!gger"])
+def test_leetspeak_mit_satzzeichen_greift_weiterhin(eingabe):
+    """Die Zeichen einfach nicht mehr zu ersetzen waere die falsche Antwort -
+    das hier sind echte Umgehungen. Deshalb zwei Fassungen."""
+    liste = {"arschloch": "mittel", "huso": "schwer", "nigger": "schwer"}
+    assert wortfilter.pruefe(eingabe, liste).getroffen
+
+
+def test_es_gibt_zwei_fassungen_nur_wenn_noetig():
+    """Im Normalfall - und das ist fast jede Nachricht - bleibt es bei einer."""
+    assert len(wortfilter.varianten("ganz normaler text")) == 1
+    assert len(wortfilter.varianten("arschloch!")) == 2
+
+
+@pytest.mark.parametrize("eingabe", ["huren sohn", "huren  sohn", "du huren sohn du"])
+def test_mit_leerzeichen_zerlegte_woerter_werden_erkannt(eingabe):
+    """Die naheliegendste Umgehung ueberhaupt. Der Durchlauf fuer
+    auseinandergezogene Schreibweisen greift dort nicht - der sucht nach
+    EINZELNEN Buchstaben, nicht nach zwei ganzen Silben."""
+    assert wortfilter.pruefe(eingabe, {"hurensohn": "schwer"}).getroffen
+
+
+def test_kurze_woerter_werden_nicht_zusammengesetzt():
+    """Sonst entstuenden Treffer aus zwei harmlosen Silben. Erst ab sechs
+    Zeichen wird ueber ein Leerzeichen hinweg gesucht."""
+    assert wortfilter.MINDESTLAENGE_GETEILT >= 6
+    assert not wortfilter.pruefe("die ka cke", {"kacke": "leicht"}).getroffen
+
+
+@pytest.mark.parametrize("satz", [
+    "Ich hab neue Samen bestellt",
+    "Die Analyse der Bodenprobe steht an",
+    "Ich trinke Kaffee und schaue nach dem Schiff",
+    "Ein Klasse Ergebnis, wirklich!",
+    "Guten Morgen zusammen!",
+    "Die Pflanze wächst geil, echt jetzt!",
+    "Frischer Pferdemist als Dünger",
+    "Der Ritter der Kokosnuss",
+    "Die Mitte des Beetes ist zu nass",
+    "Meine Hündin liegt im Beet",
+])
+def test_die_schaerfere_erkennung_erzeugt_keine_fehlalarme(satz):
+    """Die Gegenprobe zu allem oben. Ein Filter, der harmlose Saetze loescht,
+    ist schlimmer als einer, der etwas durchlaesst."""
+    # Bewusst nur Woerter, die auch wirklich in der Liste stehen. "geil",
+    # "samen" oder "mist" gehoeren nicht dazu - sie wurden am 06.09.2026
+    # aussortiert, weil sie in einer Grow-Gruppe Alltagssprache sind.
+    liste = {w: "mittel" for w in
+             ("arschloch", "hurensohn", "kacke", "hure", "fick", "arsch",
+              "titten", "analritter", "scheisse")}
+    assert not wortfilter.pruefe(satz, liste).getroffen
+
+
+def test_die_muster_sind_gepuffert():
+    """Die Wortliste wird bei jeder Nachricht durchlaufen und aendert sich
+    dabei selten."""
+    assert "lru_cache" in WORTFILTER
+
+
+# --- Probemeldung ------------------------------------------------------------
+
+
+def test_es_gibt_eine_probemeldung():
+    """Sonst liesse sich die Einstellung nur pruefen, indem man jemanden
+    wirklich kickt - eine schlechte Art, eine Konfiguration zu testen."""
+    assert "members_meldekanal_test" in APP
+    assert '"test": (' in APP
+
+
+def test_die_probemeldung_ist_als_probe_erkennbar():
+    """Damit im Kanal niemand denkt, es sei etwas passiert."""
+    stelle = APP[APP.index("def members_meldekanal_test"):][:1200]
+    assert "Probemeldung" in stelle

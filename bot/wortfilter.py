@@ -23,10 +23,26 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 
-LEET_MAP = str.maketrans({
+_LEET = {
     "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "@": "a", "$": "s", "!": "i",
-})
+}
+
+#: Diese drei sind auch ganz normale Satzzeichen. `arschloch!` wurde dadurch zu
+#: `arschlochi` - aus dem Ausrufezeichen ein Buchstabe, und die Wortgrenze war
+#: hin. Das Wort ging glatt durch, obwohl es unverschleiert dastand (gefunden
+#: von Patrick am 07.09.2026).
+#:
+#: Sie einfach nicht mehr zu ersetzen wäre die falsche Antwort: `hu$o` und
+#: `@rschloch` sind echte Umgehungen. Deshalb wird die Nachricht in ZWEI
+#: Fassungen geprüft (siehe varianten()) - einmal mit, einmal ohne.
+MEHRDEUTIG = "!@$"
+
+LEET_MAP = str.maketrans(_LEET)
+LEET_MAP_OHNE_SATZZEICHEN = str.maketrans(
+    {zeichen: wert for zeichen, wert in _LEET.items() if zeichen not in MEHRDEUTIG}
+)
 
 # Unicode-Homoglyphen (Look-alikes aus anderen Schriftsystemen, in der Praxis
 # haeufig zur Filterumgehung genutzt, z.B. kyrillisches "а" statt lateinischem
@@ -66,7 +82,7 @@ _NON_LETTER_RE = re.compile(r"[^a-zäöüß]")
 # Verschleierung uebrig (siehe find_matched_word() Durchlauf 3).
 _TOKEN_EDGE_STRIP_RE = re.compile(r"^[^a-zäöüß]+|[^a-zäöüß]+$")
 
-def normalize(text: str, aggressive: bool = True) -> str:
+def normalize(text: str, aggressive: bool = True, leet_satzzeichen: bool = True) -> str:
     """Kleinschreibung, Leetspeak aufgelöst, wiederholte Zeichen reduziert.
 
     `aggressive` steuert zusätzlich die Homoglyphen-Auflösung (Cyrillic/
@@ -74,10 +90,23 @@ def normalize(text: str, aggressive: bool = True) -> str:
     Leetspeak/Wiederholungs-Reduktion liefen schon vor der Modernisierung
     immer, bleiben also unabhängig vom neuen Schalter aktiv (keine Verhaltens-
     änderung für bestehende, bereits als sicher erprobte Erkennung)."""
-    text = text.lower().translate(LEET_MAP)
+    text = text.lower().translate(LEET_MAP if leet_satzzeichen else LEET_MAP_OHNE_SATZZEICHEN)
     if aggressive:
         text = text.translate(HOMOGLYPH_TRANSLATE)
     return _REPEAT_RE.sub(r"\1", text)
+
+
+def varianten(text: str, aggressive: bool = True) -> list:
+    """Die Fassungen, in denen eine Nachricht geprüft wird.
+
+    Zwei, weil `!`, `@` und `$` beides sein können: Leetspeak oder Satzzeichen.
+    Mit Ersetzung greift `@rschloch`, ohne sie greift `arschloch!` — und beides
+    soll greifen. Sind beide Fassungen gleich (der Normalfall, weil die Zeichen
+    gar nicht vorkommen), bleibt es bei einer.
+    """
+    mit = normalize(text, aggressive=aggressive, leet_satzzeichen=True)
+    ohne = normalize(text, aggressive=aggressive, leet_satzzeichen=False)
+    return [mit] if mit == ohne else [mit, ohne]
 
 
 def _find_obfuscated_token_match(normalized: str, badwords):
@@ -107,6 +136,32 @@ def _find_obfuscated_token_match(normalized: str, badwords):
     return None
 
 
+@lru_cache(maxsize=4096)
+def wortmuster(wort: str):
+    """Ein Suchmuster, das gedehnte Schreibweisen mitnimmt.
+
+    Aus `arschloch` wird `a+r+s+c+h+l+o+c+h+` — damit greift auch `arschlooch`,
+    `arrschloch` oder `arschlochhh`.
+
+    **Warum nicht einfach doppelte Buchstaben im Text zusammenziehen?** Weil das
+    die Sprache zerstört: `Kaffee` würde zu `Kafe`, `Schiff` zu `Schif`, `alle`
+    zu `ale`. Die Toleranz gehört deshalb ins Muster des gesuchten Wortes und
+    nicht in den Text — dort trifft sie nur, was ohnehin gesucht wird.
+
+    `normalize()` zieht drei und mehr gleiche Zeichen weiterhin vorher zusammen;
+    beides greift ineinander. Übrig bleiben Doppelungen, und genau die deckt das
+    `+` hier ab.
+
+    Die Wortgrenzen bleiben erhalten: `ass` schlägt in `Klasse` weiterhin nicht
+    an, und `mist` nicht in `Pferdemist`.
+
+    Gepuffert, weil die Wortliste bei jeder Nachricht durchlaufen wird und sich
+    dabei selten ändert.
+    """
+    kern = "".join(re.escape(zeichen) + "+" for zeichen in wort)
+    return re.compile(rf"(?<![{_WORDCHARS}]){kern}(?![{_WORDCHARS}])")
+
+
 def find_matched_word(content: str, badwords, aggressive: bool = True):
     """Prüft eine Nachricht gegen die Schimpfwortliste.
 
@@ -126,26 +181,62 @@ def find_matched_word(content: str, badwords, aggressive: bool = True):
     """
     if not badwords:
         return None
-    normalized = normalize(content, aggressive=aggressive)
+    for fassung in varianten(content, aggressive=aggressive):
+        treffer = _suche_in(fassung, badwords, aggressive)
+        if treffer:
+            return treffer
+    return None
 
+
+#: Ab dieser Länge wird ein Wort auch gesucht, wenn es über ein Leerzeichen
+#: hinweg zerlegt wurde ("huren sohn"). Kurze Wörter bleiben aussen vor: Sie
+#: liessen sich aus zwei harmlosen Silben zusammensetzen, und ein Fehlalarm
+#: waere hier teuer.
+MINDESTLAENGE_GETEILT = 6
+
+
+def _suche_getrennt(normalisiert: str, badwords):
+    """Findet Wörter, die mit einem Leerzeichen zerlegt wurden.
+
+    "huren sohn" ist die naheliegendste Umgehung überhaupt, und der
+    Durchlauf für auseinandergezogene Schreibweisen greift dort nicht: Der
+    sucht nach EINZELNEN Buchstaben mit Trennzeichen dazwischen, nicht nach
+    zwei ganzen Silben.
+
+    Geprüft werden nur benachbarte Paare, nicht beliebige Kombinationen — und
+    nur Wörter ab `MINDESTLAENGE_GETEILT`.
+    """
+    tokens = normalisiert.split()
+    for erstes, zweites in zip(tokens, tokens[1:]):
+        zusammen = _NON_LETTER_RE.sub("", erstes + zweites)
+        if len(zusammen) < MINDESTLAENGE_GETEILT:
+            continue
+        for word in badwords:
+            if word and len(word) >= MINDESTLAENGE_GETEILT and wortmuster(word).fullmatch(zusammen):
+                return word
+    return None
+
+
+def _suche_in(normalisiert: str, badwords, aggressive: bool):
+    """Die vier Durchläufe auf EINER normalisierten Fassung."""
     for word in badwords:
         if not word:
             continue
-        pattern = rf"(?<![{_WORDCHARS}]){re.escape(word)}(?![{_WORDCHARS}])"
-        if re.search(pattern, normalized):
+        if wortmuster(word).search(normalisiert):
             return word
 
-    for match in _SPACED_RUN_RE.finditer(normalized):
+    for match in _SPACED_RUN_RE.finditer(normalisiert):
         collapsed = _NON_LETTER_RE.sub("", match.group(0))
         for word in badwords:
             if word and word in collapsed:
                 return word
 
-    if aggressive:
-        obfuscated = _find_obfuscated_token_match(normalized, badwords)
-        if obfuscated:
-            return obfuscated
+    getrennt = _suche_getrennt(normalisiert, badwords)
+    if getrennt:
+        return getrennt
 
+    if aggressive:
+        return _find_obfuscated_token_match(normalisiert, badwords)
     return None
 
 
@@ -240,16 +331,14 @@ def pruefe(
         return Treffer()
     stufen = dict(woerter) if isinstance(woerter, dict) else {w: STANDARDSTUFE for w in woerter}
 
-    normalisiert = normalize(content, aggressive=aggressive)
-    erlaubte = _ausnahme_spannen(normalisiert, ausnahmen)
-
-    for wort in stufen:
-        if not wort:
-            continue
-        muster = rf"(?<![{_WORDCHARS}]){re.escape(wort)}(?![{_WORDCHARS}])"
-        for fund in re.finditer(muster, normalisiert):
-            if not _liegt_in_ausnahme(fund.span(), erlaubte):
-                return Treffer(wort, stufen.get(wort) or STANDARDSTUFE)
+    for normalisiert in varianten(content, aggressive=aggressive):
+        erlaubte = _ausnahme_spannen(normalisiert, ausnahmen)
+        for wort in stufen:
+            if not wort:
+                continue
+            for fund in wortmuster(wort).finditer(normalisiert):
+                if not _liegt_in_ausnahme(fund.span(), erlaubte):
+                    return Treffer(wort, stufen.get(wort) or STANDARDSTUFE)
 
     rest = find_matched_word(content, [w for w in stufen if w], aggressive=aggressive)
     if rest:

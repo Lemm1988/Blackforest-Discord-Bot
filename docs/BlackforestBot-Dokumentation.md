@@ -29,7 +29,7 @@ Quelle der Wahrheit für den Code seit der Umstellung auf Git-Versionsverlauf).
 14. Umgesetzte Sicherheitsmaßnahmen
 15. Unterschiede zum alten Bot
 16. Den Bot erweitern
-17. Testsuite (`tests/`, 972 Tests)
+17. Testsuite (`tests/`, 1005 Tests)
 18. Offene Punkte (Stand 05.09.2026)
 19. Chronik (03. bis 05.09.2026)
 
@@ -1106,7 +1106,7 @@ wäre sonst `undefined`).
 
 ---
 
-## 17. Testsuite (`tests/`, 972 Tests)
+## 17. Testsuite (`tests/`, 1005 Tests)
 
 Die Tests laufen bei jedem Push auf `main` und bei jedem Pull Request
 (`.github/workflows/tests.yml`) und lokal mit:
@@ -1142,7 +1142,7 @@ dann auseinanderlaufen, wenn es darauf ankommt), gibt es zwei Techniken:
 | `test_rollenabgleich.py` | 31 | Abgleich Backend-Rechte gegen Discord-Rollen; insbesondere dass nicht zugeordnete Rollen nie als überzählig gelten und dass eine vom Bot vergebene Rolle mit dem letzten zugeordneten Recht wieder verschwindet |
 | `test_nutzertexte.py` | 109 | Oberflächentexte enthalten keine Entwicklerhistorie, keinen Jargon und keine Verweise auf das alte Befehlspräfix |
 | `test_csrf_coverage.py` | 81 | Jedes POST-Formular und jeder `fetch`-POST trägt ein CSRF-Token — auf **beiden** zulässigen Wegen (verstecktes Feld oder `X-CSRF-Token`-Header) |
-| `test_testbox.py` | 41 | Dass die Testbox beide Filter prüft und dabei **nichts** verändert — die Route wird auf `log_badword_violation`, `delete` und `set_setting` durchsucht — dazu die Wortstufen und dass eine erlaubte Wendung sich nicht zum Durchschmuggeln missbrauchen lässt |
+| `test_testbox.py` | 74 | Dass die Testbox beide Filter prüft und dabei **nichts** verändert — die Route wird auf `log_badword_violation`, `delete` und `set_setting` durchsucht — dazu die Wortstufen und dass eine erlaubte Wendung sich nicht zum Durchschmuggeln missbrauchen lässt |
 | `test_tunnel_access.py` | 14 | Widerruf von Iroh-Zugängen, insbesondere das Fail-Open-Verhalten bei fehlendem sudo |
 | `test_moderation_limits.py` | 33 | Timeout-Deckelung auf 28 Tage, DM-Länge, SQL-Spalten-Whitelists |
 | `test_linkfilter.py` | 33 | Die Reihenfolge der Linkfilter-Regeln — insbesondere dass die Sperrliste vor der Erlaubtliste greift, dass Unterdomains eingeschlossen sind und `notexample.com` nicht unter `example.com` fällt |
@@ -1397,6 +1397,46 @@ dass etwas passiert, ist schlimmer als keines. Der **Linkfilter** behält seine
 eigene Schwelle (`link_filter_timeout_threshold`); er zählt weiterhin Verstöße,
 nicht Punkte.
 
+##### Drei Lücken in der Erkennung (07.09.2026)
+
+Patrick beim Ausprobieren: „zum beispiel hurensoohn würde durchgehen. oder
+arschlooch undsoweiter." Er hatte recht — und beim Nachgehen kam eine dritte,
+schlimmere Lücke ans Licht.
+
+**1. Gedehnte Schreibweisen.** `normalize()` zog nur **drei und mehr** gleiche
+Zeichen zusammen; Doppelungen überlebten. `arschlooch` blieb `arschlooch` und
+traf auf kein Listenwort.
+
+Der naheliegende Weg — im Text jede Doppelung reduzieren — wäre falsch gewesen:
+Er zerstört die Sprache. `Kaffee` würde zu `Kafe`, `Schiff` zu `Schif`, `alle`
+zu `ale`. Die Toleranz gehört deshalb ins **Muster des gesuchten Wortes**:
+`wortmuster("arschloch")` ergibt `a+r+s+c+h+l+o+c+h+` und trifft damit
+`arschlooch`, `arrschloch` und `arschlochhh`, ohne ein einziges normales Wort zu
+berühren. Die Muster sind gepuffert, weil die Liste bei jeder Nachricht
+durchlaufen wird.
+
+**2. Satzzeichen am Wortende.** Die schwerste der drei, und sie stand die ganze
+Zeit da: Die Leetspeak-Tabelle macht aus `!` ein `i`. Aus **`arschloch!` wurde
+`arschlochi`** — die Wortgrenze war hin, das Wort ging glatt durch, obwohl es
+völlig unverschleiert dastand. Dasselbe gilt für `@` und `$`.
+
+Diese drei einfach nicht mehr zu ersetzen wäre die falsche Antwort: `@rschloch`,
+`hu$o` und `n!gger` sind echte Umgehungen. Die Nachricht wird deshalb in **zwei
+Fassungen** geprüft (`varianten()`) — einmal mit Ersetzung, einmal ohne. Sind
+beide gleich, und das ist fast jede Nachricht, bleibt es bei einer.
+
+**3. Mit Leerzeichen zerlegte Wörter.** `huren sohn` kam durch. Der Durchlauf
+für auseinandergezogene Schreibweisen greift dort nicht — der sucht nach
+*einzelnen* Buchstaben mit Trennzeichen dazwischen, nicht nach zwei ganzen
+Silben. Jetzt werden zusätzlich **benachbarte Paare** zusammengezogen und
+geprüft, aber erst ab sechs Zeichen (`MINDESTLAENGE_GETEILT`): Kürzere ließen
+sich aus zwei harmlosen Silben zusammensetzen, und ein Fehlalarm wäre hier
+teuer.
+
+Gegengeprüft mit dreißig typischen Sätzen aus der Gruppe: **kein einziger
+Fehlalarm.** `Kaffee`, `Schiff`, `Klasse`, `Ritter`, `Mitte` und `Pferdemist`
+bleiben unangetastet.
+
 #### Erlaubte Wendungen
 
 Die zweite benannte Schwäche war der fehlende Kontext. Dafür gibt es jetzt
@@ -1453,6 +1493,11 @@ Der Kanal wird unter **Moderation → Aktionen & Überwachung** eingestellt
 (`moderation_log_channel_id`). **Leer heißt: keine Meldung** — wer nichts
 einstellt, bekommt auch nichts. Empfohlen ist ein Kanal, den nur das Team sieht:
 Wer wen warum gekickt hat, geht nicht jeden etwas an.
+
+Zum Ausprobieren gibt es einen Knopf **„🧪 Probemeldung senden"** — sonst ließe
+sich die Einstellung nur prüfen, indem man jemanden wirklich kickt. Die Probe
+ist im Kanal als solche gekennzeichnet, damit niemand denkt, es sei etwas
+passiert.
 
 Die Meldung ist ein Embed mit Betroffenem, Moderator, Grund und je nach Aktion
 einem Zusatz — beim Bann der gelöschte Nachrichtenzeitraum, beim Timeout die
