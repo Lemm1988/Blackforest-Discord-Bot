@@ -1,0 +1,124 @@
+Blackforest-Discord-Bot – Nutzungsbedingungen / Terms of Use
+
+Copyright © 2026 P. Lemm (GitHub: Lemm1988). Alle Rechte vorbehalten. All rights reserved.
+
+DEUTSCH (maßgebliche Fassung)
+-----------------------------
+
+1. Urheberrecht
+
+Blackforest-Discord-Bot – Quelltext von Bot, Backend und Android-App, Dokumentation und Grafiken –
+ist urheberrechtlich geschützt. Alle Rechte liegen beim Urheber, soweit diese Bedingungen nichts
+anderes ausdrücklich erlauben. Dass der Quelltext öffentlich einsehbar ist, macht das Projekt nicht
+zu Open-Source-Software; eine Open-Source-Lizenz wird nicht erteilt.
+
+2. Erlaubte Nutzung
+
+Der Quelltext darf auf GitHub angesehen werden. Veröffentlicht der Urheber fertige Programmversionen
+zum Herunterladen (z. B. unter „Releases“), dürfen diese kostenlos genutzt werden.
+
+3. Nicht gestattet
+
+Über die Nutzung nach Nr. 2 hinaus ist es ohne vorherige Zustimmung des Urhebers (Textform genügt,
+z. B. E-Mail) nicht gestattet,
+
+   a) den Quelltext, die Programmdateien oder Inhalte ganz oder teilweise zu vervielfältigen, zu
+      verändern, zu übersetzen (auch zu kompilieren), in andere Software oder Werke zu übernehmen
+      oder eigene Instanzen daraus zu betreiben;
+   b) das Projekt oder Teile davon weiterzugeben, zu veröffentlichen, zu verkaufen, zu vermieten
+      oder als eigenes Werk auszugeben;
+   c) Urheber-, Lizenz- und Markenhinweise zu entfernen oder zu verändern.
+
+Das Verlinken auf das Repository bzw. die offizielle Download-Seite ist ausdrücklich erlaubt.
+Unberührt bleiben die gesetzlich erlaubten Nutzungen (insbesondere §§ 44a ff., 69d und 69e UrhG)
+sowie das Ansehen und Forken des Repositorys auf GitHub im Rahmen der GitHub-Nutzungsbedingungen.
+
+4. Bestandteile Dritter
+
+Das Projekt enthält bzw. nutzt Bestandteile Dritter, darunter Bootstrap 5.3.3 und flatpickr 4.6.13
+in backend/static/vendor/ (MIT-Lizenz, Lizenztexte liegen daneben) sowie die über pip bzw. Gradle
+eingebundenen Pakete (z. B. discord.py, Flask, requests, waitress und die Bibliotheken der
+Android-App). Für sie gelten ausschließlich deren eigene Lizenzen; diese Bedingungen schränken die
+Rechte aus jenen Lizenzen nicht ein.
+
+5. Haftung und Gewährleistung
+
+Die Überlassung ist unentgeltlich. Der Urheber haftet deshalb nur für Vorsatz und grobe
+Fahrlässigkeit sowie für arglistig verschwiegene Mängel (§§ 521, 523, 524 BGB). Die Haftung nach dem
+Produkthaftungsgesetz und jede sonstige zwingende gesetzliche Haftung bleiben unberührt.
+
+Es wird keine Gewähr dafür übernommen, dass Blackforest-Discord-Bot fehlerfrei arbeitet oder für
+einen bestimmten Zweck geeignet ist. Ein Anspruch auf Fehlerbehebung, Updates oder Support besteht
+nicht. Sichern Sie Ihre Daten regelmäßig.
+
+6. Marken
+
+Discord ist eine Marke der Discord Inc. Dieses Projekt steht in keiner Verbindung zu Discord Inc.
+Alle anderen genannten Produkt- und Firmennamen sind Marken ihrer jeweiligen Inhaber.
+
+7. Schlussbestimmungen
+
+Es gilt das Recht der Bundesrepublik Deutschland. Zwingende Verbraucherschutzvorschriften des
+Staates, in dem Sie Ihren gewöhnlichen Aufenthalt haben, bleiben unberührt. Ist eine Bestimmung
+unwirksam, bleiben die übrigen wirksam. Kontakt (z. B. für eine Zustimmung nach Nr. 3):
+https://github.com/Lemm1988
+
+ENGLISH (translation – in case of doubt, the German version prevails)
+---------------------------------------------------------------------
+
+1. Copyright
+
+Blackforest-Discord-Bot – source code of the bot, backend and Android app, documentation and
+graphics – is protected by copyright. All rights remain with the author unless these terms expressly
+permit otherwise. The fact that the source code is publicly visible does not make this project
+open-source software; no open-source licence is granted.
+
+2. Permitted use
+
+The source code may be viewed on GitHub. If the author publishes ready-to-use program versions for
+download (e.g. under "Releases"), these may be used free of charge.
+
+3. Not permitted
+
+Beyond the use permitted under section 2, you may not, without the author's prior consent (text
+form, e.g. e-mail, suffices):
+
+   a) reproduce, modify or translate (including compile) the source code, program files or content
+      in whole or in part, incorporate them into other software or works, or run your own instances
+      of them;
+   b) distribute, publish, sell or rent out the project or parts of it, or pass it off as your own
+      work;
+   c) remove or alter copyright, licence or trademark notices.
+
+Linking to the repository or the official download page is expressly permitted. Uses permitted by
+law (in particular sections 44a et seq., 69d and 69e of the German Copyright Act) and viewing and
+forking the repository on GitHub under the GitHub Terms of Service remain unaffected.
+
+4. Third-party components
+
+The project contains or uses third-party components, including Bootstrap 5.3.3 and flatpickr 4.6.13
+in backend/static/vendor/ (MIT licence, licence texts stored alongside) and the packages referenced
+via pip or Gradle (e.g. discord.py, Flask, requests, waitress and the libraries of the Android app).
+They are governed exclusively by their own licences; these terms do not restrict the rights granted
+by those licences.
+
+5. Liability and warranty
+
+The software is provided free of charge. The author is therefore liable only for intent and gross
+negligence and for fraudulently concealed defects (sections 521, 523, 524 German Civil Code).
+Liability under the German Product Liability Act and any other mandatory statutory liability remain
+unaffected.
+
+No warranty is given that Blackforest-Discord-Bot works without errors or is fit for a particular
+purpose. There is no entitlement to bug fixes, updates or support. Back up your data regularly.
+
+6. Trademarks
+
+Discord is a trademark of Discord Inc. This project is not affiliated with Discord Inc. All other
+product and company names mentioned are trademarks of their respective owners.
+
+7. Final provisions
+
+These terms are governed by German law. Mandatory consumer protection provisions of the country of
+your habitual residence remain unaffected. If a provision is invalid, the remaining provisions
+remain valid. Contact (e.g. for consent under section 3): https://github.com/Lemm1988
